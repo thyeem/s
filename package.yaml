@@ -1,0 +1,67 @@
+name:                s
+version:             0.1.0.0
+license:             MIT
+author:              "Francis Lim"
+maintainer:          "thyeem@gmail.com"
+copyright:           "Francis, 2022"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+- parallel
+- bytestring
+- random
+- raw-strings-qq
+- pretty-simple
+# - aeson
+# - yaml
+# - docopt >= 0.7.0.6
+# - regex-tdfa
+# - PyF
+
+default-extensions:
+- QuasiQuotes
+- TemplateHaskell
+- DataKinds
+- RecordWildCards
+- DeriveGeneric
+
+
+library:
+  source-dirs: src
+
+executables:
+  s:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -feager-blackholing
+    - -dynamic
+    - -g0
+    - -optP-Wno-nonportable-include-path
+    dependencies:
+    - s
+    when:
+    - condition: false
+      other-modules: Paths_s
+
+tests:
+  s-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - tasty
+    - tasty-hunit
+    - tasty-quickcheck
+    - s

@@ -1,0 +1,34 @@
+# mac
+.DS_Store
+
+# emacs
+[#]*[#]
+
+# vim
+*.sw?
+*~
+
+# c/c++ object file
+*.o
+
+# Makefile
+*.d
+
+# windows
+Thumbs.db
+
+# haskell
+.stack-work/
+dist-newstyle/
+*.hi
+
+# auto-generated *.cabal
+s.cabal
+
+
+# python
+*.ipynb_checkpoints
+__pycache__
+
+# bin
+app/s
