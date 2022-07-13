@@ -15,6 +15,7 @@ dependencies:
 - parallel
 - bytestring
 - random
+- text
 - raw-strings-qq
 - pretty-simple
 # - aeson
@@ -24,6 +25,10 @@ dependencies:
 # - PyF
 
 default-extensions:
+- FlexibleInstances
+- RankNTypes
+- GeneralizedNewtypeDeriving
+- MultiParamTypeClasses
 - QuasiQuotes
 - TemplateHaskell
 - DataKinds
