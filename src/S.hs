@@ -10,8 +10,6 @@ import qualified Data.Text.Lazy                as TL
 import           Text.RawString.QQ
 
 
-
--- | stream kind: source input such as string, bytestring, lazybytestring ..
 class Stream s where
   uncons :: s -> Maybe (Char, s)
 
@@ -30,50 +28,87 @@ instance Stream TL.Text where
 instance Stream [Char] where
   uncons = L.uncons
 
+-------------
+-- Parser-S
+-------------
+-- A generailized parser combinator easy-to-read and easy-to-read
+-- The most simplified ever but robust.
 
-data SourceLoc = SourceLoc
+-- | Type of Parser-S
+-- self-describing process of parsing work
+newtype Parser'S t s = Parser'S
+  {
+    unpack :: forall a .
+    State s ->                             -- state including stream input
+    (t -> State s -> ParseError -> a) ->   -- ok. somthing comsumed
+    (ParseError -> a) ->                   -- error. nothing consumed
+    a
+  }
+
+type ErrorMessage = String
+
+data Source = Source
   { sourceName   :: FilePath
   , sourceLine   :: !Int
   , sourceColumn :: !Int
   }
   deriving (Show, Eq)
 
-initSourceLoc :: FilePath -> SourceLoc
-initSourceLoc n = SourceLoc n 1 1
+initSource :: FilePath -> Source
+initSource file = Source file 1 1
 
-type ErrorMessage = String
 
 data State s = State
   { stateStream      :: s
-  , stateSourceLoc   :: SourceLoc
+  , stateSource      :: Source
   , stateParseErrors :: [ParseError]
   }
   deriving (Show, Eq)
 
+initState :: Stream s => FilePath -> s -> State s
+initState file stream = State stream (initSource file) []
 
-data ParseError = ParseError !SourceLoc [ErrorMessage]
+
+data ParseError = ParseError !Source [ErrorMessage]
   deriving (Show, Eq)
 
-
-data Result a s = Ok a !(State s) ParseError
+data Result t = Ok t
                 | Error ParseError
                 deriving (Show, Eq)
 
-data Munched a = Munched a
-               | Nil !a
-               deriving (Show, Eq)
+data Return t s = Return (Result t) (State s)
+  deriving (Show, Eq)
 
--- generalized parser
-newtype Parse s a = Parse
-  { unPack :: forall b . State s -> b }
+-- get a concrete-type parser
+type Parser a = Parser'S String a
 
--- Down to a concrete type
-type Parser a = Parse String a
+-- runParser :: Parser'S t s -> State s -> Result t s
+-- runParser parser state =  parser state ok err
+ -- where
+  -- ok result state' error = Ok result state' error
+  -- err error = Error error
 
 
--- combinators
+-- parse :: Stream s => Parser'S t s -> State s -> Either ParseError t
+-- parse parser state = do
+  -- r <- parse'S parser state
 
-stream = [r|
+parse'S :: Stream s => Parser'S t s -> State s -> Return t s
+parse'S parser state = unpack parser state ok err
+ where
+  ok t state' = Return (Ok t) state'
+  err error = Error error
+
+-- parseFromFile :: Stream a => Parser a -> FilePath -> IO (Either ParseError a)
+-- parseFromFile parser file = do
+  -- stream <- readFile file
+  -- return $ parse parser file stream
+
+parserOf :: Stream s => (Char -> Bool) -> Parser'S t s
+parserOf predicate = undefined
+
+
+stream' = [r|
   public class Simple {
 
     /* block comment
@@ -87,6 +122,6 @@ stream = [r|
 |]
 
 
-loc = initSourceLoc "simple.java"
+loc = initSource "simple.java"
 st :: State String
-st = State stream loc []
+st = State stream' loc []
