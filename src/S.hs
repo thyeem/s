@@ -11,41 +11,22 @@ import           Text.RawString.QQ
 
 
 class Stream s where
-  uncons :: s -> Maybe (Char, s)
+  unCons :: s -> Maybe (Char, s)
 
 instance Stream C.ByteString where
-  uncons = C.uncons
+  unCons = C.uncons
 
 instance Stream CL.ByteString where
-  uncons = CL.uncons
+  unCons = CL.uncons
 
 instance Stream T.Text where
-  uncons = T.uncons
+  unCons = T.uncons
 
 instance Stream TL.Text where
-  uncons = TL.uncons
+  unCons = TL.uncons
 
 instance Stream [Char] where
-  uncons = L.uncons
-
--------------
--- Parser-S
--------------
--- A generailized parser combinator easy-to-read and easy-to-read
--- The most simplified ever but robust.
-
--- | Type of Parser-S
--- self-describing process of parsing work
-newtype Parser'S t s = Parser'S
-  {
-    unpack :: forall a .
-    State s ->                             -- state including stream input
-    (t -> State s -> ParseError -> a) ->   -- ok. somthing comsumed
-    (ParseError -> a) ->                   -- error. nothing consumed
-    a
-  }
-
-type ErrorMessage = String
+  unCons = L.uncons
 
 data Source = Source
   { sourceName   :: FilePath
@@ -56,6 +37,13 @@ data Source = Source
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
+
+updateSourceByChar :: Char -> Source -> Source
+updateSourceByChar c src@Source {..} = case c of
+  '\n' -> src { sourceLine = sourceLine + 1, sourceColumn = 1 }
+  '\t' -> src { sourceColumn = addTab sourceColumn 4 }
+  _    -> src { sourceColumn = sourceColumn + 1 }
+  where addTab col size = col + size - ((col - 1) `mod` size)
 
 
 data State s = State
@@ -68,45 +56,82 @@ data State s = State
 initState :: Stream s => FilePath -> s -> State s
 initState file stream = State stream (initSource file) []
 
+type ErrorMessage = String
 
-data ParseError = ParseError !Source [ErrorMessage]
+data ParseError = ParseError
+  { errorSource   :: !Source
+  , errorMessages :: [ErrorMessage]
+  }
   deriving (Show, Eq)
 
-data Result t = Ok t
-                | Error ParseError
-                deriving (Show, Eq)
+fakeError :: ParseError
+fakeError = ParseError fakeSource fakeErrors where
+  fakeSource = initSource "fakePath"
+  fakeErrors =
+    [ "Error: The Sun has become a blackhole."
+    , "Error: The Riemann conjecture has just proved."
+    ]
 
-data Return t s = Return (Result t) (State s)
+data Result a = Ok a
+              | Error ParseError
+              deriving (Show, Eq)
+
+data Return a s = Return (Result a) (State s)
   deriving (Show, Eq)
+
+-------------
+-- Parser-S
+-------------
+-- A generailized parser combinator easy-to-use/read
+-- The most simplified ever but robust.
+
+-- | Type of Parser-S
+-- self-describing process of parsing work
+newtype Parser'S s a = Parser'S {
+  unpack :: forall b.
+    State s ->                                 -- state including stream input
+    (a -> State s -> b) ->            -- ok. somthing comsumed
+    (ParseError -> State s -> b) ->   -- error. nothing consumed
+    b
+  }
+
 
 -- get a concrete-type parser
 type Parser a = Parser'S String a
 
--- runParser :: Parser'S t s -> State s -> Result t s
--- runParser parser state =  parser state ok err
- -- where
-  -- ok result state' error = Ok result state' error
-  -- err error = Error error
+parseFromFile :: Parser a -> FilePath -> IO (Either ParseError a)
+parseFromFile parser file = do
+  stream <- readFile file
+  let state = initState file stream
+  return $ parse parser state
+
+parse :: Stream s => Parser'S s a -> State s -> Either ParseError a
+parse parser state = case result of
+  Ok ok | null (stateParseErrors state') -> Right ok
+        | otherwise                      -> Left fakeError
+  Error _ -> Left fakeError
+  where (Return result state') = parse'S parser state
 
 
--- parse :: Stream s => Parser'S t s -> State s -> Either ParseError t
--- parse parser state = do
-  -- r <- parse'S parser state
-
-parse'S :: Stream s => Parser'S t s -> State s -> Return t s
-parse'S parser state = unpack parser state ok err
+parse'S :: Stream s => Parser'S s a -> State s -> Return a s
+parse'S parser state = unpack parser state answerOk answerErr
  where
-  ok t state' = Return (Ok t) state'
-  err error = Error error
+  answerOk ok state' = Return (Ok ok) state'
+  answerErr error state' = Return (Error error) state'
 
--- parseFromFile :: Stream a => Parser a -> FilePath -> IO (Either ParseError a)
--- parseFromFile parser file = do
-  -- stream <- readFile file
-  -- return $ parse parser file stream
+parserOf :: Stream s => (Char -> Bool) -> Parser'S s a
+parserOf predicate = Parser'S unpack'
+ where
+  unpack' = \state@(State stream src errors) answerOk answerErr ->
+    case unCons stream of
+      Nothing      -> answerErr fakeError state
+      Just (c, cs) -> if predicate c then undefined else undefined
 
-parserOf :: Stream s => (Char -> Bool) -> Parser'S t s
-parserOf predicate = undefined
+anyChar :: Stream s => Parser'S s a
+anyChar = parserOf (const True)
 
+oneOf :: Stream s => [Char] -> Parser'S s a
+oneOf cs = parserOf (`elem` cs)
 
 stream' = [r|
   public class Simple {
