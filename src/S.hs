@@ -124,8 +124,10 @@ parserOf predicate = Parser'S unpack'
  where
   unpack' = \state@(State stream src errors) answerOk answerErr ->
     case unCons stream of
-      Nothing      -> answerErr fakeError state
-      Just (c, cs) -> if predicate c then undefined else undefined
+      Nothing -> answerErr fakeError state
+      Just (c, cs) | predicate c -> answerOk c state'
+                   | otherwise   -> answerErr fakeError state'
+        where state' = undefined
 
 anyChar :: Stream s => Parser'S s a
 anyChar = parserOf (const True)
