@@ -2,6 +2,8 @@
 {-# HLINT ignore "Use newtype instead of data" #-}
 module S where
 
+import           Control.Applicative
+import           Control.Monad
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as CL
 import qualified Data.List                     as L
@@ -89,11 +91,43 @@ data Return a s = Return (Result a) (State s)
 -- self-describing process of parsing work
 newtype Parser'S s a = Parser'S {
   unpack :: forall b.
-    State s ->                                 -- state including stream input
+    State s ->                        -- state including stream input
     (a -> State s -> b) ->            -- ok. somthing comsumed
     (ParseError -> State s -> b) ->   -- error. nothing consumed
     b
   }
+
+-- | Parser'S is Functor
+instance Functor (Parser'S s) where
+  fmap = smap
+
+smap :: (a -> b) -> Parser'S s a -> Parser'S s b
+smap f parser =
+  Parser'S $ \state fOk fError -> unpack parser state (fOk . f) fError
+
+-- | Parser'S is Applicative
+instance Applicative (Parser'S s) where
+  pure x = Parser'S $ \state ok _ -> ok x state
+  (<*>) = liftA2 id
+  liftA2 f x = (<*>) (fmap f x)
+  (*>) a b = (id <$ a) <*> b
+  (<*) = liftA2 const
+
+-- | Parser'S is Monad
+instance Monad (Parser'S s) where
+  return = pure
+  (>>=)  = sbind
+  (>>)   = (*>)
+  -- m >>= return . f
+  -- f <$> m
+
+sbind :: Parser'S s a -> (a -> Parser'S s b) -> Parser'S s b
+-- sbind parser f = parser >>= f
+sbind parser f = Parser'S unpack'
+  where unpack' = \state fOk fError -> undefined
+
+
+
 
 
 -- get a concrete-type parser
@@ -103,18 +137,18 @@ parseFromFile :: Parser a -> FilePath -> IO (Either ParseError a)
 parseFromFile parser file = do
   stream <- readFile file
   let state = initState file stream
-  return $ parse parser state
+  return . parse parser $ state
 
 parse :: Stream s => Parser'S s a -> State s -> Either ParseError a
 parse parser state = case result of
   Ok ok | null (stateParseErrors state') -> Right ok
         | otherwise                      -> Left fakeError
   Error _ -> Left fakeError
-  where (Return result state') = parse'S parser state
+  where (Return result state') = runParser parser state
 
 
-parse'S :: Stream s => Parser'S s a -> State s -> Return a s
-parse'S parser state = unpack parser state answerOk answerErr
+runParser :: Stream s => Parser'S s a -> State s -> Return a s
+runParser parser state = unpack parser state answerOk answerErr
  where
   answerOk ok state' = Return (Ok ok) state'
   answerErr error state' = Return (Error error) state'
@@ -125,15 +159,15 @@ parserOf predicate = Parser'S unpack'
   unpack' = \state@(State stream src errors) answerOk answerErr ->
     case unCons stream of
       Nothing -> answerErr fakeError state
-      Just (c, cs) | predicate c -> answerOk c state'
+      Just (c, cs) | predicate c -> undefined
                    | otherwise   -> answerErr fakeError state'
         where state' = undefined
 
-anyChar :: Stream s => Parser'S s a
-anyChar = parserOf (const True)
+-- anyChar :: Stream s => Parser'S s a
+-- anyChar = parserOf (const True)
 
-oneOf :: Stream s => [Char] -> Parser'S s a
-oneOf cs = parserOf (`elem` cs)
+-- oneOf :: Stream s => [Char] -> Parser'S s a
+-- oneOf cs = parserOf (`elem` cs)
 
 stream' = [r|
   public class Simple {
