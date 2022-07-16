@@ -87,13 +87,12 @@ data Return a s = Return (Result a) (State s)
 -- A generailized parser combinator easy-to-use/read
 -- The most simplified ever but robust.
 
--- | Type of Parser-S
--- self-describing process of parsing work
+-- | Parser-S: data type of self-describing the process of parsing work
 newtype Parser'S s a = Parser'S {
   unpack :: forall b.
     State s ->                        -- state including stream input
-    (a -> State s -> b) ->            -- ok. somthing comsumed
-    (ParseError -> State s -> b) ->   -- error. nothing consumed
+    (a -> State s -> b) ->            -- answer Ok: when somthing comsumed
+    (ParseError -> State s -> b) ->   -- answer Error: when nothing consumed
     b
   }
 
@@ -108,21 +107,23 @@ smap f parser =
 -- | Parser'S is Applicative
 instance Applicative (Parser'S s) where
   pure x = Parser'S $ \state ok _ -> ok x state
-  (<*>) = liftA2 id
-  liftA2 f x = (<*>) (fmap f x)
-  (*>) a b = (id <$ a) <*> b
-  (<*) = liftA2 const
+  (<*>) = sap
+  a *> b = a `sbind` const b
+  a <* b = b `sbind` const a
+
+sap :: Parser'S s (a -> b) -> Parser'S s a -> Parser'S s b
+sap f parser = Parser'S $ \state fOk fError ->
+  let fOk' x state' = unpack parser state' (fOk . x) fError
+  in  unpack f state fOk' fError
+
 
 -- | Parser'S is Monad
 instance Monad (Parser'S s) where
   return = pure
   (>>=)  = sbind
   (>>)   = (*>)
-  -- m >>= return . f
-  -- f <$> m
 
 sbind :: Parser'S s a -> (a -> Parser'S s b) -> Parser'S s b
--- sbind parser f = parser >>= f
 sbind parser f = Parser'S $ \state fOk fError ->
   let fOk' x state' = unpack (f x) state' fOk fError
   in  unpack parser state fOk' fError
