@@ -7,6 +7,9 @@ import           Control.Monad
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as CL
 import qualified Data.List                     as L
+import           Data.List                      ( intercalate
+                                                , nub
+                                                )
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 import           Text.RawString.QQ
@@ -35,7 +38,16 @@ data Source = Source
   , sourceLine   :: !Int
   , sourceColumn :: !Int
   }
-  deriving (Show, Eq)
+  deriving Eq
+
+instance Show Source where
+  show src@Source {..} = unwords
+    [ sourceName
+    , "(line"
+    , show sourceLine <> ","
+    , "column"
+    , show sourceColumn <> "):"
+    ]
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
@@ -58,13 +70,21 @@ data State s = State
 initState :: Stream s => FilePath -> s -> State s
 initState file stream = State stream (initSource file) []
 
-type ErrorMessage = String
 
 data ParseError = ParseError
   { errorSource   :: !Source
   , errorMessages :: [ErrorMessage]
   }
-  deriving (Show, Eq)
+  deriving Eq
+
+type ErrorMessage = String
+
+instance Show ParseError where
+  show err = intercalate "\n\t" $ show (errorSource err) : errorMessages err
+
+-- showErrorMessages :: ParseError -> String
+-- showErrorMessages = intercalate "\n\t" . clean . errorMessages
+  -- where clean = nub . filter (not . null)
 
 fakeError :: ParseError
 fakeError = ParseError fakeSource fakeErrors where
