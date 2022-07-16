@@ -123,12 +123,9 @@ instance Monad (Parser'S s) where
 
 sbind :: Parser'S s a -> (a -> Parser'S s b) -> Parser'S s b
 -- sbind parser f = parser >>= f
-sbind parser f = Parser'S unpack'
-  where unpack' = \state fOk fError -> undefined
-
-
-
-
+sbind parser f = Parser'S $ \state fOk fError ->
+  let fOk' x state' = unpack (f x) state' fOk fError
+  in  unpack parser state fOk' fError
 
 -- get a concrete-type parser
 type Parser a = Parser'S String a
