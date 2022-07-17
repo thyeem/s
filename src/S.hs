@@ -97,20 +97,34 @@ data ParseError = ParseError
 type ErrorMessage = String
 
 instance Show ParseError where
-  show err = intercalate "\n\t" $ show (errorSource err) : errorMessages err
+  show err =
+    (<> "\n")
+      <$> intercalate "\n\t"
+      $   show (errorSource err)
+      :   errorMessages err
 
--- showErrorMessages :: ParseError -> String
--- showErrorMessages = intercalate "\n\t" . clean . errorMessages
-  -- where clean = nub . filter (not . null)
+newErrorMessage :: Source -> ErrorMessage -> ParseError
+newErrorMessage source message = ParseError source []
 
-fakeError :: ParseError
-fakeError = ParseError fakeSource fakeErrors where
-  fakeSource = initSource "fakePath"
-  fakeErrors =
-    [ "Error: The Sun has become a blackhole."
-    , "Error: The Riemann conjecture has just proved."
-    ]
+setErrorMessage :: ErrorMessage -> ParseError -> ParseError
+setErrorMessage message ParseError {..} =
+  ParseError errorSource (message : filter (message /=) errorMessages)
 
+setErrorSource :: Source -> ParseError -> ParseError
+setErrorSource source ParseError {..} = ParseError source errorMessages
+
+
+fakeSource :: Source
+fakeSource = initSource "/fake/path/fakeName.s"
+
+fakeErrorMessages :: [ErrorMessage]
+fakeErrorMessages =
+  [ "Error: The Sun has become a blackhole."
+  , "Error: The Riemann conjecture has just proved."
+  ]
+
+fakeParseError :: ParseError
+fakeParseError = ParseError fakeSource fakeErrorMessages
 
 data Result a = Ok a
               | Error ParseError
@@ -178,26 +192,24 @@ parseFromFile parser file = do
 parse :: Stream s => Parser'S s a -> State s -> Either ParseError a
 parse parser state = case result of
   Ok ok | null (stateParseErrors state') -> Right ok
-        | otherwise                      -> Left fakeError
-  Error _ -> Left fakeError
+        | otherwise                      -> Left fakeParseError
+  Error _ -> Left fakeParseError
   where (Return result state') = runParser parser state
 
 
 runParser :: Stream s => Parser'S s a -> State s -> Return a s
-runParser parser state = unpack parser state answerOk answerErr
+runParser parser state = unpack parser state fOk fErr
  where
-  answerOk ok state' = Return (Ok ok) state'
-  answerErr error state' = Return (Error error) state'
+  fOk ok state' = Return (Ok ok) state'
+  fErr error state' = Return (Error error) state'
 
 parserOf :: Stream s => (Char -> Bool) -> Parser'S s a
-parserOf predicate = Parser'S unpack'
- where
-  unpack' = \state@(State stream src errors) answerOk answerErr ->
-    case unCons stream of
-      Nothing -> answerErr fakeError state
-      Just (c, cs) | predicate c -> undefined
-                   | otherwise   -> answerErr fakeError state'
-        where state' = undefined
+parserOf predicate = Parser'S $ \state@(State stream src errors) fOk fErr ->
+  case unCons stream of
+    Nothing -> fErr fakeParseError state
+    Just (c, cs) | predicate c -> undefined
+                 | otherwise   -> fErr fakeParseError state'
+      where state' = undefined
 
 
 ---------------------
@@ -247,6 +259,6 @@ testStream = [r|
 
 testSource = initSource "simple.java"
 
-testErrors = replicate 3 fakeError
+testErrors = replicate 3 fakeParseError
 
 testState = State testStream testSource testErrors
