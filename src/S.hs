@@ -2,18 +2,14 @@
 {-# HLINT ignore "Use newtype instead of data" #-}
 module S where
 
-import           Control.Applicative
-import           Control.Monad
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as CL
-import           Data.Char
+import           Data.Char                      ( isDigit )
+import           Data.List                      ( intercalate )
 import qualified Data.List                     as L
-import           Data.List                      ( intercalate
-                                                , nub
-                                                )
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
-import           Text.RawString.QQ
+import           Text.RawString.QQ              ( r )
 
 
 class Stream s where
@@ -217,8 +213,8 @@ digit = parserOf isDigit
 -- string :: Stream s => String -> Parser'S s a
 -- string []       = undefined
 
-spaces :: Parser'S s a
-spaces = many $ oneOf " \n\r"
+many :: Parser'S s a -> Parser'S s [a]
+many parser = undefined
 
 anyChar :: Stream s => Parser'S s a
 anyChar = parserOf (const True)
