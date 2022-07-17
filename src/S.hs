@@ -33,6 +33,15 @@ instance Stream TL.Text where
 instance Stream [Char] where
   unCons = L.uncons
 
+reduceStream :: (Stream s, Show s) => s -> Int -> String -> String
+reduceStream stream n fromSource =
+  intercalate "\n\t"
+    $ header
+    : [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
+ where
+  s      = show stream
+  header = unwords ["stream (from", fromSource <> "):"]
+
 data Source = Source
   { sourceName   :: FilePath
   , sourceLine   :: !Int
@@ -62,10 +71,21 @@ updateSourceByChar c src@Source {..} = case c of
 
 data State s = State
   { stateStream      :: s
-  , stateSource      :: Source
+  , stateSource      :: !Source
   , stateParseErrors :: [ParseError]
   }
-  deriving (Show, Eq)
+  deriving Eq
+
+instance (Stream s, Show s) => Show (State s) where
+  show state@State {..} = intercalate
+    "\n\n"
+    [showStream, unlines $ show <$> stateParseErrors]
+   where
+    stream = show stateStream
+    showStream
+      | length stream < 200 = stream
+      | otherwise = reduceStream stateStream 60 (sourceName stateSource)
+
 
 initState :: Stream s => FilePath -> s -> State s
 initState file stream = State stream (initSource file) []
@@ -94,9 +114,11 @@ fakeError = ParseError fakeSource fakeErrors where
     , "Error: The Riemann conjecture has just proved."
     ]
 
+
 data Result a = Ok a
               | Error ParseError
               deriving (Show, Eq)
+
 
 data Return a s = Return (Result a) (State s)
   deriving (Show, Eq)
@@ -116,6 +138,7 @@ newtype Parser'S s a = Parser'S {
     b
   }
 
+
 -- | Parser'S is Functor
 instance Functor (Parser'S s) where
   fmap = smap
@@ -123,6 +146,7 @@ instance Functor (Parser'S s) where
 smap :: (a -> b) -> Parser'S s a -> Parser'S s b
 smap f parser =
   Parser'S $ \state fOk fError -> unpack parser state (fOk . f) fError
+
 
 -- | Parser'S is Applicative
 instance Applicative (Parser'S s) where
@@ -147,6 +171,7 @@ sbind :: Parser'S s a -> (a -> Parser'S s b) -> Parser'S s b
 sbind parser f = Parser'S $ \state fOk fError ->
   let fOk' x state' = unpack (f x) state' fOk fError
   in  unpack parser state fOk' fError
+
 
 -- get a concrete-type parser
 type Parser a = Parser'S String a
@@ -181,11 +206,11 @@ parserOf predicate = Parser'S unpack'
                    | otherwise   -> answerErr fakeError state'
         where state' = undefined
 
--- anyChar :: Stream s => Parser'S s a
--- anyChar = parserOf (const True)
+anyChar :: Stream s => Parser'S s a
+anyChar = parserOf (const True)
 
--- oneOf :: Stream s => [Char] -> Parser'S s a
--- oneOf cs = parserOf (`elem` cs)
+oneOf :: Stream s => [Char] -> Parser'S s a
+oneOf cs = parserOf (`elem` cs)
 
 stream' = [r|
   public class Simple {
@@ -203,4 +228,4 @@ stream' = [r|
 
 loc = initSource "simple.java"
 st :: State String
-st = State stream' loc []
+st = State stream' loc [fakeError, fakeError]
