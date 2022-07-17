@@ -6,6 +6,7 @@ import           Control.Applicative
 import           Control.Monad
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as CL
+import           Data.Char
 import qualified Data.List                     as L
 import           Data.List                      ( intercalate
                                                 , nub
@@ -172,10 +173,6 @@ sbind parser f = Parser'S $ \state fOk fError ->
   let fOk' x state' = unpack (f x) state' fOk fError
   in  unpack parser state fOk' fError
 
-
--- get a concrete-type parser
-type Parser a = Parser'S String a
-
 parseFromFile :: Parser a -> FilePath -> IO (Either ParseError a)
 parseFromFile parser file = do
   stream <- readFile file
@@ -206,13 +203,39 @@ parserOf predicate = Parser'S unpack'
                    | otherwise   -> answerErr fakeError state'
         where state' = undefined
 
+
+---------------------
+-- combinators
+---------------------
+
+char :: Stream s => Char -> Parser'S s a
+char c = parserOf (c ==)
+
+digit :: Stream s => Parser'S s a
+digit = parserOf isDigit
+
+-- string :: Stream s => String -> Parser'S s a
+-- string []       = undefined
+
+spaces :: Parser'S s a
+spaces = many $ oneOf " \n\r"
+
 anyChar :: Stream s => Parser'S s a
 anyChar = parserOf (const True)
 
 oneOf :: Stream s => [Char] -> Parser'S s a
 oneOf cs = parserOf (`elem` cs)
 
-stream' = [r|
+
+
+---------------------
+-- debug section
+---------------------
+-- get a concrete-type parser
+type Parser a = Parser'S String a
+
+
+testStream = [r|
   public class Simple {
 
     /* block comment
@@ -226,6 +249,8 @@ stream' = [r|
 |]
 
 
-loc = initSource "simple.java"
-st :: State String
-st = State stream' loc [fakeError, fakeError]
+testSource = initSource "simple.java"
+
+testErrors = replicate 3 fakeError
+
+testState = State testStream testSource testErrors
