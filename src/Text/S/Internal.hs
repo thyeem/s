@@ -90,6 +90,18 @@ data Source = Source
   }
   deriving (Eq, Ord)
 
+instance Semigroup Source where
+  (<>) = mergeSource
+
+instance Monoid Source where
+  mempty = Source mempty 1 1
+
+mergeSource :: Source -> Source -> Source
+mergeSource src1@(Source f1 _ _) src2@(Source f2 _ _)
+  | f1 /= f2 = error . unwords $ ["filepaths don't match:", f1, "and", f2]
+  | otherwise = case src1 `compare` src2 of
+    LT -> src2
+    _  -> src1
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
@@ -120,7 +132,7 @@ instance Semigroup ParseError where
   (<>) = mergeError
 
 instance Monoid ParseError where
-  mempty = ParseError (initSource mempty) []
+  mempty = ParseError mempty empty
 
 mergeError :: ParseError -> ParseError -> ParseError
 mergeError e1@(ParseError src1 msgs1) e2@(ParseError src2 msgs2) =
@@ -151,7 +163,7 @@ data State s = State
   deriving Eq
 
 initState :: Stream s => FilePath -> s -> State s
-initState file stream = State stream (initSource file) []
+initState file stream = State stream (initSource file) empty
 
 
 -------------------------

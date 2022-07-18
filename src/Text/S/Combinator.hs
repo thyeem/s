@@ -14,9 +14,8 @@ import           Text.S.Internal
 
 
 -------------------------
--- primitive parser
+-- primitive parsers
 -------------------------
-
 char :: Stream s => Char -> Parser'S s Char
 char c = charParserOf (== c) <?> show [c]
 
@@ -78,7 +77,6 @@ noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
 -------------------------
 -- parser combinators
 -------------------------
-
 choice :: Stream s => [Parser'S s a] -> Parser'S s a
 choice = foldl (<|>) mzero
 
