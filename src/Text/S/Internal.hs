@@ -1,34 +1,16 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use newtype instead of data" #-}
-module S where
+module Text.S.Internal where
 
 import           Control.Applicative            ( Alternative(..) )
 import           Control.Monad                  ( MonadPlus(..) )
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as CL
-import           Data.Char                      ( isAlpha
-                                                , isAlphaNum
-                                                , isDigit
-                                                , isHexDigit
-                                                , isLower
-                                                , isSpace
-                                                , isUpper
-                                                )
 import           Data.List                      ( intercalate )
 import qualified Data.List                     as L
 import qualified Data.Text                     as T
+import qualified Data.Text.IO                  as TIO
 import qualified Data.Text.Lazy                as TL
-import           Text.RawString.QQ              ( r )
-
----------------------
--- Utils
----------------------
-
-joinTab :: [String] -> String
-joinTab = Data.List.intercalate "\n\t"
-
-joinLF :: [String] -> String
-joinLF = Data.List.intercalate "\n"
+import qualified Data.Text.Lazy.IO             as TLIO
+import           System.IO                      ( readFile )
 
 
 ---------------------
@@ -37,20 +19,33 @@ joinLF = Data.List.intercalate "\n"
 class Stream s where
   unCons :: s -> Maybe (Char, s)
 
+  readStream :: FilePath -> IO s
+
 instance Stream C.ByteString where
-  unCons = C.uncons
+  unCons     = C.uncons
+
+  readStream = C.readFile
+
 
 instance Stream CL.ByteString where
-  unCons = CL.uncons
+  unCons     = CL.uncons
+
+  readStream = CL.readFile
 
 instance Stream T.Text where
-  unCons = T.uncons
+  unCons     = T.uncons
+
+  readStream = TIO.readFile
 
 instance Stream TL.Text where
-  unCons = TL.uncons
+  unCons     = TL.uncons
 
-instance Stream [Char] where
-  unCons = L.uncons
+  readStream = TLIO.readFile
+
+instance Stream String where
+  unCons     = L.uncons
+
+  readStream = readFile
 
 reduceStream :: (Stream s, Show s) => s -> Int -> String
 reduceStream stream n = joinTab
@@ -168,11 +163,8 @@ addErrorMessage ParseError {..} msg =
 
 
 ---------------------
--- Parser S internal
+-- Parser S
 ---------------------
--- A generailized parser combinator easy-to-use/read
--- The most simplified ever but robust.
-
 -- | Parser-S: data type of self-describing the process of parsing work
 newtype Parser'S s a = Parser'S {
   unpack :: forall b.
@@ -250,164 +242,11 @@ splus p q = Parser'S $ \state fOk fError ->
 
 
 ---------------------
--- Main
+-- Utils
 ---------------------
 
-parse :: Stream s => Parser'S s a -> State s -> Either ParseError a
-parse parser state = case result of
-  Ok    ok  -> Right ok
-  Error err -> Left err
-  where Return result state' = runParser parser state
+joinTab :: [String] -> String
+joinTab = Data.List.intercalate "\n\t"
 
-runParser :: Stream s => Parser'S s a -> State s -> Return a s
-runParser parser state = unpack parser state fOk fError
- where
-  fOk    = Return . Ok
-  fError = Return . Error
-
----------------------
--- string parser
----------------------
--- get a concrete-type parser
-type Parser = Parser'S String
--- type Parser a = Parser'S C.ByteString a
-
-parseFromFile :: Parser a -> FilePath -> IO (Either ParseError a)
-parseFromFile parser file = do
-  stream <- readFile file
-  let state = initState file stream
-  return . parse parser $ state
-
-
----------------------
--- primitive parser
----------------------
-
--- | get a char parser satisfying given predicates
-charParserOf :: Stream s => (Char -> Bool) -> Parser'S s Char
-charParserOf predicate =
-  Parser'S $ \state@(State stream src errors) fOk fError ->
-    case unCons stream of
-      Nothing -> fError (newError src "end of stream: nothing to parse") state
-      Just (c, cs) | predicate c -> seq src' $ seq state' $ fOk c state'
-                   | otherwise   -> seq state' $ fError error' state'
-       where
-        src'   = updatePos src c
-        state' = State cs src' errors
-        error' = newError src $ unwords
-          ["failed to satisfy predicate with char unexpected:", show c]
-
-
-char :: Stream s => Char -> Parser'S s Char
-char c = charParserOf (== c) <?> show [c]
-
-anyChar :: Stream s => Parser'S s Char
-anyChar = charParserOf (const True)
-
-anyCharBut :: Stream s => Char -> Parser'S s Char
-anyCharBut c = charParserOf (/= c)
-
--- string :: Stream s => String -> Parser'S s a
--- string []       = undefined
-
-digit :: Stream s => Parser'S s Char
-digit = charParserOf Data.Char.isDigit <?> "digit"
-
-letter :: Stream s => Parser'S s Char
-letter = charParserOf isAlpha <?> "letter"
-
-alphaNum :: Stream s => Parser'S s Char
-alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
-
-hex :: Stream s => Parser'S s Char
-hex = charParserOf isHexDigit <?> "hex-string"
-
-lower :: Stream s => Parser'S s Char
-lower = charParserOf isLower <?> "lowercase-letter"
-
-upper :: Stream s => Parser'S s Char
-upper = charParserOf isUpper <?> "uppercase-letter"
-
-tab :: Stream s => Parser'S s Char
-tab = char '\t' <?> "tab"
-
-lf :: Stream s => Parser'S s Char
-lf = char '\n' <?> "linefeed"
-
-crlf :: Stream s => Parser'S s Char
-crlf = char '\r' >> char '\n' <?> "carrige-return + linefeed"
-
-eol :: Stream s => Parser'S s Char
-eol = lf <|> crlf <?> "end-of-line"
-
-space :: Stream s => Parser'S s Char
-space = charParserOf isSpace <?> "space"
-
--- spaces
-
-oneOf :: Stream s => [Char] -> Parser'S s Char
-oneOf cs = charParserOf (`elem` cs) <?> label'oneof
-  where label'oneof = unwords ["one of", show ((: []) <$> cs)]
-
-noneOf :: Stream s => [Char] -> Parser'S s Char
-noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
-  where label'noneof = unwords ["none of", show ((: []) <$> cs)]
-
--- many :: Parser'S s a -> Parser'S s [a]
--- many parser = undefined
-
----------------------
--- combinators
----------------------
-
-choice :: Stream s => [Parser'S s a] -> Parser'S s a
-choice = foldl (<|>) mzero
-
-fallback :: Stream s => a -> Parser'S s a -> Parser'S s a
-fallback x parser = parser <|> return x
-
-optional :: Stream s => Parser'S s a -> Parser'S s ()
-optional parser =
-  do
-    _ <- parser
-    return ()
-  <|> return ()
-
----------------------
--- debug section
----------------------
-
-fakeSource :: Source
-fakeSource = initSource "/fake/path/fakeName.s"
-
-fakeErrorMessages :: [Message]
-fakeErrorMessages =
-  [ "Error: The Sun has become a blackhole."
-  , "Error: The Riemann conjecture has just proved."
-  ]
-
-fakeError :: ParseError
-fakeError = ParseError fakeSource fakeErrorMessages
-
-
-testStream = [r|
-  public class Simple {
-
-    /* block comment
-    */
-
-    public static void main(String[] args) { /* Wow  */
-        System.out.println("get/*ting better");
-    }
-    // line comment
-}
-|]
-
-
-testSource = initSource "simple.java"
-
-testErrors = replicate 3 fakeError
-
-testState = State testStream testSource testErrors
-
-debugs s = State s fakeSource []
+joinLF :: [String] -> String
+joinLF = Data.List.intercalate "\n"
