@@ -3,26 +3,29 @@ module Text.S.Internal
   , LazyByteString'
   , Text'
   , LazyText'
-  , Message
   , Stream(..)
-  , Source(..)
-  , ParseError(..)
-  , Result(..)
-  , Return(..)
-  , State(..)
-  , Parser'S(..)
-  , (<|>)
-  , (<?>)
   , reduceStream
+  , Source(..)
   , initSource
   , updatePos
   , updatePos'
-  , initState
+  , Message
+  , ParseError(..)
   , mergeError
   , initError
   , newError
   , addErrorMessage
+  , Result(..)
+  , Return(..)
+  , State(..)
+  , initState
+  , Parser'S(..)
+  , (<|>)
+  , (<?>)
   , label
+  , parseFromFile
+  , parse
+  , runParser
   ) where
 
 import           Control.Applicative            ( Alternative(..) )
@@ -36,6 +39,7 @@ import qualified Data.Text.IO                  as TIO
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text.Lazy.IO             as TLIO
 import           System.IO                      ( readFile )
+
 
 
 type ByteString' = C.ByteString
@@ -74,11 +78,6 @@ instance Stream String where
   unCons     = L.uncons
   readStream = readFile
 
-reduceStream :: (Stream s, Show s) => s -> Int -> String
-reduceStream stream n = joinTab
-  [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
-  where s = show stream
-
 
 ---------------------
 -- Source
@@ -90,14 +89,6 @@ data Source = Source
   }
   deriving (Eq, Ord)
 
-instance Show Source where
-  show src@Source {..} = unwords
-    [ sourceName
-    , "(line"
-    , show sourceLine <> ","
-    , "column"
-    , show sourceColumn <> "):"
-    ]
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
@@ -115,19 +106,6 @@ updatePos' = foldl updatePos
 ---------------------
 -- State / Result
 ---------------------
-data Result a = Ok a
-              | Error ParseError
-              deriving (Show, Eq)
-
-
-data Return a s = Return (Result a) (State s)
-  deriving Eq
-
-
-instance (Stream s, Show a, Show s) => Show (Return a s) where
-  show (Return result state) = joinLF [show result, show state]
-
-
 data State s = State
   { stateStream      :: s
   , stateSource      :: !Source
@@ -135,16 +113,13 @@ data State s = State
   }
   deriving Eq
 
-instance (Stream s, Show s) => Show (State s) where
-  show state@State {..} = joinLF
-    [ joinTab ["source from:", sourceName stateSource]
-    , joinTab ["stream:", showStream]
-    , joinLF $ show <$> stateParseErrors
-    ]
-   where
-    stream = show stateStream
-    showStream | length stream < 200 = stream
-               | otherwise           = reduceStream stateStream 60
+data Result a = Ok a
+              | Error ParseError
+              deriving (Show, Eq)
+
+
+data Return a s = Return (Result a) (State s)
+  deriving Eq
 
 
 initState :: Stream s => FilePath -> s -> State s
@@ -161,9 +136,6 @@ data ParseError = ParseError
   , errorMessages :: [Message]
   }
   deriving Eq
-
-instance Show ParseError where
-  show err = joinTab $ show (errorSource err) : errorMessages err
 
 instance Semigroup ParseError where
   (<>) = mergeError
@@ -192,7 +164,7 @@ addErrorMessage ParseError {..} msg =
 ---------------------
 -- Parser S
 ---------------------
--- | Parser-S: data type of self-describing the process of parsing work
+-- | Parser-S data type of self-describing the process of parsing work
 newtype Parser'S s a = Parser'S {
   unpack :: forall b.
     State s ->                        -- state including stream input
@@ -268,8 +240,29 @@ splus p q = Parser'S $ \state fOk fError ->
   in  unpack p state fOk fError'
 
 
+parseFromFile
+  :: Stream s => Parser'S s a -> FilePath -> IO (Either ParseError a)
+parseFromFile parser file = do
+  stream <- readStream file
+  let state = initState file stream
+  return . parse parser $ state
+
+parse :: Stream s => Parser'S s a -> State s -> Either ParseError a
+parse parser state = case result of
+  Ok    ok  -> Right ok
+  Error err -> Left err
+  where Return result state' = runParser parser state
+
+runParser :: Stream s => Parser'S s a -> State s -> Return a s
+runParser parser state = unpack parser state fOk fError
+ where
+  fOk    = Return . Ok
+  fError = Return . Error
+
+
+
 ---------------------
--- Utils
+-- Show instances
 ---------------------
 
 joinTab :: [String] -> String
@@ -277,3 +270,34 @@ joinTab = Data.List.intercalate "\n\t"
 
 joinLF :: [String] -> String
 joinLF = Data.List.intercalate "\n"
+
+reduceStream :: (Stream s, Show s) => s -> Int -> String
+reduceStream stream n = joinTab
+  [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
+  where s = show stream
+
+instance Show Source where
+  show src@Source {..} = unwords
+    [ sourceName
+    , "(line"
+    , show sourceLine <> ","
+    , "column"
+    , show sourceColumn <> "):"
+    ]
+
+instance (Stream s, Show a, Show s) => Show (Return a s) where
+  show (Return result state) = joinLF [show result, show state]
+
+instance Show ParseError where
+  show err = joinTab $ show (errorSource err) : errorMessages err
+
+instance (Stream s, Show s) => Show (State s) where
+  show state@State {..} = joinLF
+    [ joinTab ["source from:", sourceName stateSource]
+    , joinTab ["stream:", showStream]
+    , joinLF $ show <$> stateParseErrors
+    ]
+   where
+    stream = show stateStream
+    showStream | length stream < 200 = stream
+               | otherwise           = reduceStream stateStream 60
