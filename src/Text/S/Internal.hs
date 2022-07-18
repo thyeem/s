@@ -1,4 +1,29 @@
-module Text.S.Internal where
+module Text.S.Internal
+  ( ByteString'
+  , LazyByteString'
+  , Text'
+  , LazyText'
+  , Message
+  , Stream(..)
+  , Source(..)
+  , ParseError(..)
+  , Result(..)
+  , Return(..)
+  , State(..)
+  , Parser'S(..)
+  , (<|>)
+  , (<?>)
+  , reduceStream
+  , initSource
+  , updatePos
+  , updatePos'
+  , initState
+  , mergeError
+  , initError
+  , newError
+  , addErrorMessage
+  , label
+  ) where
 
 import           Control.Applicative            ( Alternative(..) )
 import           Control.Monad                  ( MonadPlus(..) )
@@ -13,38 +38,40 @@ import qualified Data.Text.Lazy.IO             as TLIO
 import           System.IO                      ( readFile )
 
 
+type ByteString' = C.ByteString
+
+type LazyByteString' = CL.ByteString
+
+type Text' = T.Text
+
+type LazyText' = TL.Text
+
 ---------------------
 -- Stream
 ---------------------
+
 class Stream s where
   unCons :: s -> Maybe (Char, s)
-
   readStream :: FilePath -> IO s
 
-instance Stream C.ByteString where
+instance Stream ByteString' where
   unCons     = C.uncons
-
   readStream = C.readFile
 
-
-instance Stream CL.ByteString where
+instance Stream LazyByteString' where
   unCons     = CL.uncons
-
   readStream = CL.readFile
 
-instance Stream T.Text where
+instance Stream Text' where
   unCons     = T.uncons
-
   readStream = TIO.readFile
 
-instance Stream TL.Text where
+instance Stream LazyText' where
   unCons     = TL.uncons
-
   readStream = TLIO.readFile
 
 instance Stream String where
   unCons     = L.uncons
-
   readStream = readFile
 
 reduceStream :: (Stream s, Show s) => s -> Int -> String
