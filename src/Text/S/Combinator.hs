@@ -12,24 +12,10 @@ import           Data.Char                      ( isAlpha
                                                 )
 import           Text.S.Internal
 
----------------------
+
+-------------------------
 -- primitive parser
----------------------
-
--- | get a char parser satisfying given predicates
-charParserOf :: Stream s => (Char -> Bool) -> Parser'S s Char
-charParserOf predicate =
-  Parser'S $ \state@(State stream src errors) fOk fError ->
-    case unCons stream of
-      Nothing -> fError (newError src "end of stream: nothing to parse") state
-      Just (c, cs) | predicate c -> seq src' $ seq state' $ fOk c state'
-                   | otherwise   -> seq state' $ fError error' state'
-       where
-        src'   = updatePos src c
-        state' = State cs src' errors
-        error' = newError src $ unwords
-          ["failed to satisfy predicate with char unexpected:", show c]
-
+-------------------------
 
 char :: Stream s => Char -> Parser'S s Char
 char c = charParserOf (== c) <?> show [c]
@@ -89,9 +75,9 @@ noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
 -- many :: Parser'S s a -> Parser'S s [a]
 -- many parser = undefined
 
----------------------
--- combinators
----------------------
+-------------------------
+-- parser combinators
+-------------------------
 
 choice :: Stream s => [Parser'S s a] -> Parser'S s a
 choice = foldl (<|>) mzero

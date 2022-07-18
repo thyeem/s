@@ -26,34 +26,35 @@ module Text.S.Internal
   , parseFromFile
   , parse
   , runParser
+  , charParserOf
   ) where
 
 import           Control.Applicative            ( Alternative(..) )
 import           Control.Monad                  ( MonadPlus(..) )
 import qualified Data.ByteString.Char8         as C
-import qualified Data.ByteString.Lazy.Char8    as CL
+import qualified Data.ByteString.Lazy.Char8    as C'
 import           Data.List                      ( intercalate )
 import qualified Data.List                     as L
 import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as TIO
-import qualified Data.Text.Lazy                as TL
-import qualified Data.Text.Lazy.IO             as TLIO
+import qualified Data.Text.Lazy                as T'
+import qualified Data.Text.Lazy.IO             as TIO'
 import           System.IO                      ( readFile )
 
 
 
 type ByteString' = C.ByteString
 
-type LazyByteString' = CL.ByteString
+type LazyByteString' = C'.ByteString
 
 type Text' = T.Text
 
-type LazyText' = TL.Text
+type LazyText' = T'.Text
 
----------------------
+
+-------------------------
 -- Stream
----------------------
-
+-------------------------
 class Stream s where
   unCons :: s -> Maybe (Char, s)
   readStream :: FilePath -> IO s
@@ -63,25 +64,25 @@ instance Stream ByteString' where
   readStream = C.readFile
 
 instance Stream LazyByteString' where
-  unCons     = CL.uncons
-  readStream = CL.readFile
+  unCons     = C'.uncons
+  readStream = C'.readFile
 
 instance Stream Text' where
   unCons     = T.uncons
   readStream = TIO.readFile
 
 instance Stream LazyText' where
-  unCons     = TL.uncons
-  readStream = TLIO.readFile
+  unCons     = T'.uncons
+  readStream = TIO'.readFile
 
 instance Stream String where
   unCons     = L.uncons
   readStream = readFile
 
 
----------------------
+-------------------------
 -- Source
----------------------
+-------------------------
 data Source = Source
   { sourceName   :: FilePath
   , sourceLine   :: !Int
@@ -103,32 +104,10 @@ updatePos src@Source {..} c = case c of
 updatePos' :: Source -> String -> Source
 updatePos' = foldl updatePos
 
----------------------
--- State / Result
----------------------
-data State s = State
-  { stateStream      :: s
-  , stateSource      :: !Source
-  , stateParseErrors :: [ParseError]
-  }
-  deriving Eq
 
-data Result a = Ok a
-              | Error ParseError
-              deriving (Show, Eq)
-
-
-data Return a s = Return (Result a) (State s)
-  deriving Eq
-
-
-initState :: Stream s => FilePath -> s -> State s
-initState file stream = State stream (initSource file) []
-
-
----------------------
+-------------------------
 -- ParseError
----------------------
+-------------------------
 type Message = String
 
 data ParseError = ParseError
@@ -161,9 +140,35 @@ addErrorMessage ParseError {..} msg =
   ParseError errorSource (msg : filter (msg /=) errorMessages)
 
 
----------------------
+-------------------------
+-- State
+-------------------------
+data State s = State
+  { stateStream      :: s
+  , stateSource      :: !Source
+  , stateParseErrors :: [ParseError]
+  }
+  deriving Eq
+
+initState :: Stream s => FilePath -> s -> State s
+initState file stream = State stream (initSource file) []
+
+
+-------------------------
+-- Result / Return
+-------------------------
+data Result a = Ok a
+              | Error ParseError
+              deriving (Show, Eq)
+
+
+data Return a s = Return (Result a) (State s)
+  deriving Eq
+
+
+-------------------------
 -- Parser S
----------------------
+-------------------------
 -- | Parser-S data type of self-describing the process of parsing work
 newtype Parser'S s a = Parser'S {
   unpack :: forall b.
@@ -260,22 +265,25 @@ runParser parser state = unpack parser state fOk fError
   fError = Return . Error
 
 
+-- | get a char parser satisfying given predicates
+charParserOf :: Stream s => (Char -> Bool) -> Parser'S s Char
+charParserOf predicate =
+  Parser'S $ \state@(State stream src errors) fOk fError ->
+    case unCons stream of
+      Nothing -> fError (newError src "end of stream: nothing to parse") state
+      Just (c, cs) | predicate c -> seq src' $ seq state' $ fOk c state'
+                   | otherwise   -> seq state' $ fError error' state'
+       where
+        src'   = updatePos src c
+        state' = State cs src' errors
+        error' = newError src $ unwords
+          ["failed to satisfy predicate with char unexpected:", show c]
 
----------------------
+
+
+-------------------------
 -- Show instances
----------------------
-
-joinTab :: [String] -> String
-joinTab = Data.List.intercalate "\n\t"
-
-joinLF :: [String] -> String
-joinLF = Data.List.intercalate "\n"
-
-reduceStream :: (Stream s, Show s) => s -> Int -> String
-reduceStream stream n = joinTab
-  [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
-  where s = show stream
-
+-------------------------
 instance Show Source where
   show src@Source {..} = unwords
     [ sourceName
@@ -285,19 +293,34 @@ instance Show Source where
     , show sourceColumn <> "):"
     ]
 
+
 instance (Stream s, Show a, Show s) => Show (Return a s) where
-  show (Return result state) = joinLF [show result, show state]
+  show (Return result state) = join'LF [show result, show state]
+
 
 instance Show ParseError where
-  show err = joinTab $ show (errorSource err) : errorMessages err
+  show err = join'Tab $ show (errorSource err) : errorMessages err
+
 
 instance (Stream s, Show s) => Show (State s) where
-  show state@State {..} = joinLF
-    [ joinTab ["source from:", sourceName stateSource]
-    , joinTab ["stream:", showStream]
-    , joinLF $ show <$> stateParseErrors
+  show state@State {..} = join'LF
+    [ join'Tab ["source from:", sourceName stateSource]
+    , join'Tab ["stream:", showStream]
+    , join'LF $ show <$> stateParseErrors
     ]
    where
     stream = show stateStream
     showStream | length stream < 200 = stream
                | otherwise           = reduceStream stateStream 60
+
+
+join'Tab :: [String] -> String
+join'Tab = Data.List.intercalate "\n\t"
+
+join'LF :: [String] -> String
+join'LF = Data.List.intercalate "\n"
+
+reduceStream :: (Stream s, Show s) => s -> Int -> String
+reduceStream stream n = join'Tab
+  [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
+  where s = show stream
