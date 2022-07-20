@@ -209,11 +209,11 @@ data Return a s = Return (Result a) (State s)
 -------------------------
 -- | Parser-S data type of self-describing the process of parsing work
 newtype Parser'S s a = Parser'S {
-  runParser :: forall b.
-    State s ->                        -- state including stream input
-    (a -> State s -> b) ->            -- answer Ok: when somthing comsumed
-    (ParseError -> State s -> b) ->   -- answer Error: when nothing consumed
-    b
+    runParser :: forall b.
+      State s ->                       -- state including stream input
+      (a -> State s -> b) ->           -- answer Ok: when somthing comsumed
+      (ParseError -> State s -> b) ->  -- answer Error: when nothing consumed
+      b
   }
 
 

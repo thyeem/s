@@ -29,6 +29,10 @@ import           Text.S.Combinator
 -------------------------
 -- primitive parsers
 -------------------------
+-- | Parses a single character
+--
+-- >> dot = char '.'
+--
 char :: Stream s => Char -> Parser'S s Char
 char c = charParserOf (== c) <?> show [c]
 
@@ -92,6 +96,7 @@ oneOf cs = charParserOf (`elem` cs) <?> label'oneof
 noneOf :: Stream s => [Char] -> Parser'S s Char
 noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
   where label'noneof = unwords ["none of", show ((: []) <$> cs)]
+
 
 
 -------------------------
