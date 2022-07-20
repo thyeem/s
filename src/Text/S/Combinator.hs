@@ -48,8 +48,8 @@ sepBy1 p sep = liftA2 (:) p (many (sep *> p))
 
 -- | parses 0+ occurrences of parser, ended by sep
 --
--- >>> parseTest ( endBy (space <|> digit) (char ',' ) ) "[1,2,3,4]"
--- 111 1,2,3,4
+-- >>> parseTest' ( endBy (many letter) (char ';' ) ) "statement;"
+-- Right ["statement0"]
 --
 endBy :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
 endBy p sep = many (p <* sep)

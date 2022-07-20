@@ -25,15 +25,22 @@ dependencies:
 # - PyF
 
 default-extensions:
-- FlexibleInstances
+- DataKinds
 - RankNTypes
+- RecordWildCards
+- TypeSynonymInstances
+- FlexibleInstances
+- ExplicitForAll
+- ScopedTypeVariables
 - GeneralizedNewtypeDeriving
+- StandaloneDeriving
 - MultiParamTypeClasses
 - QuasiQuotes
-- TemplateHaskell
-- DataKinds
-- RecordWildCards
-- DeriveGeneric
+# - TypeOperators
+# - ExplicitNamespaces
+# - QuantifiedConstraints
+# - TemplateHaskell
+# - DeriveGeneric
 
 
 library:
@@ -69,5 +76,5 @@ tests:
     - tasty
     - tasty-hunit
     - tasty-quickcheck
-    - doctest
     - s
+    - doctest

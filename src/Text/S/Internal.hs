@@ -209,7 +209,7 @@ data Return a s = Return (Result a) (State s)
 -------------------------
 -- Parser S
 -------------------------
--- | Parser-S data type that self-describing the process of parsing work
+-- Parser-S data type that self-describing the process of parsing work
 newtype Parser'S s a = Parser'S {
     runParser :: forall b.
       State s ->                      -- state including stream input
@@ -220,6 +220,8 @@ newtype Parser'S s a = Parser'S {
 
 
 -- | infix operator of label
+-- >>> 11 * 2
+-- 22
 (<?>) :: Parser'S s a -> String -> Parser'S s a
 (<?>) = label
 

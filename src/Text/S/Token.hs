@@ -124,10 +124,10 @@ blockComment bra ket = bra *> manyTill anychar ket
 
 -- caseGuard :: Stream s => Bool -> Parser'S s String -> Parser'S s String
 -- caseGuard sensitive p | sensitive = p
-                      -- | otherwise = many caseChar
+                      ---- | otherwise = many caseChar
  -- where
   -- caseChar c | isAlpha c = char (toLower c) <|> char (toUpper c)
-             -- | otherwise = char c
+             ---- | otherwise = char c
 
 identifier
   :: Stream s => Parser'S s Char -> Parser'S s String -> Parser'S s String
