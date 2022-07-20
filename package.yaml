@@ -69,4 +69,5 @@ tests:
     - tasty
     - tasty-hunit
     - tasty-quickcheck
+    - doctest
     - s

@@ -48,7 +48,9 @@ sepBy1 p sep = liftA2 (:) p (many (sep *> p))
 
 -- | parses 0+ occurrences of parser, ended by sep
 --
--- >> statements = statements `endBy` semi
+-- >>> parseTest ( endBy (space <|> digit) (char ',' ) ) "[1,2,3,4]"
+-- 111 1,2,3,4
+--
 endBy :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
 endBy p sep = many (p <* sep)
 
@@ -57,7 +59,7 @@ endBy1 p sep = some (p <* sep)
 
 -- | apply parser 0+ times until parser 'end' succeeds
 --
--- >> comment = (string "<!--") >> manyTill anychar (string "-->")
+-- >>> comment = (string "<!--") >> manyTill anychar (string "-->")
 manyTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s [a]
 manyTill p end = go where go = (end $> []) <|> liftA2 (:) p go
 

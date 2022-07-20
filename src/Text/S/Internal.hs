@@ -29,6 +29,7 @@ module Text.S.Internal
   , parse'
   , parseFromFile
   , parseTest
+  , unwrap
   , try
   , charParserOf
   ) where
@@ -286,35 +287,40 @@ instance MonadFail (Parser'S s) where
     Parser'S $ \state _ fError -> fError (ParseError mempty [Message msg]) state
 
 
--- | parse it!
+-- | Takes a given state and parses it. The outermost function of the @Parser'S@
 parse :: Parser'S s a -> State s -> Return a s
 parse parser state = runParser parser state fOk fError
  where
   fOk    = Return . Ok
   fError = Return . Error
 
--- | the same to 'parse', but unwrap the reuslt of Ok | Error
+-- | The same to `parse`, but unwrap the @Return@ of parse result
 parse' :: Parser'S s a -> State s -> Either ParseError a
-parse' parser state = case result of
-  Ok    ok  -> Right ok
-  Error err -> Left err
-  where Return result state' = parse parser state
+parse' parser state = unwrap $ parse parser state
 
+-- | The same to `parse`, but takes the stream from a given file
 parseFromFile :: Stream s => Parser'S s a -> FilePath -> IO (Return a s)
 parseFromFile parser file = do
   stream <- readStream file
   let state = initState file stream
   return . parse parser $ state
 
+-- | Tests parsers and its combinators with given strings
 parseTest :: Parser'S String a -> String -> Return a String
 parseTest parser s = parse parser (State s mempty)
 
--- | attempt a parse without comsuming any input (looking ahead)
+-- | Unwraps @Return result state@, then return the result only
+unwrap :: Return a s -> Either ParseError a
+unwrap (Return r _) = case r of
+  Ok    ok  -> Right ok
+  Error err -> Left err
+
+-- | Attempts a parse without comsuming any input
 try :: Parser'S s a -> Parser'S s a
 try parser = Parser'S $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError
 
--- | get a char parser satisfying given predicates
+-- | Gets a char parser that satisfies the given predicate
 charParserOf :: Stream s => (Char -> Bool) -> Parser'S s Char
 charParserOf predicate = Parser'S $ \state@(State stream src) fOk fError ->
   case unCons stream of
