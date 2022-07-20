@@ -9,12 +9,15 @@ module Text.S.Internal
   , initSource
   , updatePos
   , updatePos'
-  , Message
+  , ErrorMessage(..)
+  , message
+  , mergeMessages
   , ParseError(..)
-  , mergeError
-  , initError
+  , appendError
   , newError
-  , addErrorMessage
+  , unexpectedError
+  , expectedError
+  , msgError
   , Result(..)
   , Return(..)
   , State(..)
@@ -90,14 +93,17 @@ data Source = Source
   }
   deriving (Eq, Ord)
 
+
 instance Semigroup Source where
-  (<>) = mergeSource
+  (<>) = appendSource
+
 
 instance Monoid Source where
   mempty = Source mempty 1 1
 
-mergeSource :: Source -> Source -> Source
-mergeSource src1@(Source f1 _ _) src2@(Source f2 _ _)
+
+appendSource :: Source -> Source -> Source
+appendSource src1@(Source f1 _ _) src2@(Source f2 _ _)
   | f1 /= f2 = error . unwords $ ["filepaths don't match:", f1, "and", f2]
   | otherwise = case src1 `compare` src2 of
     LT -> src2
@@ -118,52 +124,80 @@ updatePos' = foldl updatePos
 
 
 -------------------------
+-- ErrorMessage
+-------------------------
+data ErrorMessage = Unexpected !String
+                  | Expected !String
+                  | Message !String
+                  deriving (Eq, Show, Ord)
+
+
+message :: ErrorMessage -> String
+message msg = case msg of
+  Unexpected msg -> msg
+  Expected   msg -> msg
+  Message    msg -> msg
+
+-- | merge ErrorMessages by folding consecutive expected errors
+mergeMessages :: [ErrorMessage] -> [ErrorMessage]
+mergeMessages = foldr merge []
+ where
+  merge msg msgs = case msgs of
+    msg' : msgs' -> case (msg, msg') of
+      (e1@Expected{}, e2@Expected{}) -> e2 : msgs'
+      (e1           , e2           ) -> e1 : msgs
+    _ -> [msg]
+
+
+-------------------------
 -- ParseError
 -------------------------
-type Message = String
-
 data ParseError = ParseError
   { errorSource   :: !Source
-  , errorMessages :: [Message]
+  , errorMessages :: [ErrorMessage]
   }
   deriving Eq
 
+
 instance Semigroup ParseError where
-  (<>) = mergeError
+  (<>) = appendError
+
 
 instance Monoid ParseError where
   mempty = ParseError mempty empty
 
-mergeError :: ParseError -> ParseError -> ParseError
-mergeError e1@(ParseError src1 msgs1) e2@(ParseError src2 msgs2) =
+
+appendError :: ParseError -> ParseError -> ParseError
+appendError e1@(ParseError src1 msgs1) e2@(ParseError src2 msgs2) =
   case src1 `compare` src2 of
     LT -> e2
     GT -> e1
     EQ -> ParseError src1 $ msgs1 <> msgs2
 
-initError :: Source -> ParseError
-initError src = ParseError src []
+newError :: Source -> (String -> ErrorMessage) -> String -> ParseError
+newError src e msg = ParseError src [e msg]
 
-newError :: Source -> Message -> ParseError
-newError src = addErrorMessage (initError src)
+unexpectedError :: Source -> String -> ParseError
+unexpectedError src = newError src Unexpected
 
-addErrorMessage :: ParseError -> Message -> ParseError
-addErrorMessage ParseError {..} msg =
-  ParseError errorSource (msg : filter (msg /=) errorMessages)
+expectedError :: Source -> String -> ParseError
+expectedError src = newError src Expected
+
+msgError :: Source -> String -> ParseError
+msgError src = newError src Message
 
 
 -------------------------
 -- State
 -------------------------
 data State s = State
-  { stateStream      :: s
-  , stateSource      :: !Source
-  , stateParseErrors :: [ParseError]
+  { stateStream :: s
+  , stateSource :: !Source
   }
   deriving Eq
 
-initState :: Stream s => FilePath -> s -> State s
-initState file stream = State stream (initSource file) empty
+initState :: FilePath -> s -> State s
+initState file stream = State stream $ initSource file
 
 
 -------------------------
@@ -195,13 +229,12 @@ newtype Parser'S s a = Parser'S {
 (<?>) = label
 
 label :: Parser'S s a -> String -> Parser'S s a
-label parser msg = Parser'S $ \state@(State _ src _) fOk fError ->
+label parser msg = Parser'S $ \state@(State _ src) fOk fError ->
   let fError' err = fError (err <> expected)
-      expected = newError src (unwords ["->", "expected:", msg])
+      expected = expectedError src $ unwords ["->", "expected:", msg]
   in  unpack parser state fOk fError'
 
 
--- | Parser'S is Functor
 instance Functor (Parser'S s) where
   fmap = smap
 
@@ -210,12 +243,9 @@ smap f parser =
   Parser'S $ \state fOk fError -> unpack parser state (fOk . f) fError
 
 
--- | Parser'S is Applicative
 instance Applicative (Parser'S s) where
   pure x = Parser'S $ \state ok _ -> ok x state
   (<*>) = sap
-  a *> b = a `sbind` const b
-  a <* b = b `sbind` const a
 
 sap :: Parser'S s (a -> b) -> Parser'S s a -> Parser'S s b
 sap f parser = Parser'S $ \state fOk fError ->
@@ -223,7 +253,6 @@ sap f parser = Parser'S $ \state fOk fError ->
   in  unpack f state fOk' fError
 
 
--- | Parser'S is Monad
 instance Monad (Parser'S s) where
   return = pure
   (>>=)  = sbind
@@ -234,20 +263,18 @@ sbind parser f = Parser'S $ \state fOk fError ->
   let fOk' x state' = unpack (f x) state' fOk fError
   in  unpack parser state fOk' fError
 
--- | Parser'S is Alternative
 instance Alternative (Parser'S s) where
   empty = mzero
   (<|>) = mplus
 
 
--- | Parser'S is MonadPlus
 instance MonadPlus (Parser'S s) where
   mzero = szero
   mplus = splus
 
 
 szero :: Parser'S s a
-szero = Parser'S $ \state _ fError -> fError mempty state
+szero = fail mempty
 
 splus :: Parser'S s a -> Parser'S s a -> Parser'S s a
 splus p q = Parser'S $ \state fOk fError ->
@@ -257,6 +284,11 @@ splus p q = Parser'S $ \state fOk fError ->
   in  unpack p state fOk fError'
 
 
+instance MonadFail (Parser'S s) where
+  fail msg =
+    Parser'S $ \state _ fError -> fError (ParseError mempty [Message msg]) state
+
+
 parseFromFile
   :: Stream s => Parser'S s a -> FilePath -> IO (Either ParseError a)
 parseFromFile parser file = do
@@ -264,13 +296,13 @@ parseFromFile parser file = do
   let state = initState file stream
   return . parse parser $ state
 
-parse :: Stream s => Parser'S s a -> State s -> Either ParseError a
+parse :: Parser'S s a -> State s -> Either ParseError a
 parse parser state = case result of
   Ok    ok  -> Right ok
   Error err -> Left err
   where Return result state' = runParser parser state
 
-runParser :: Stream s => Parser'S s a -> State s -> Return a s
+runParser :: Parser'S s a -> State s -> Return a s
 runParser parser state = unpack parser state fOk fError
  where
   fOk    = Return . Ok
@@ -279,18 +311,17 @@ runParser parser state = unpack parser state fOk fError
 
 -- | get a char parser satisfying given predicates
 charParserOf :: Stream s => (Char -> Bool) -> Parser'S s Char
-charParserOf predicate =
-  Parser'S $ \state@(State stream src errors) fOk fError ->
-    case unCons stream of
-      Nothing -> fError (newError src "end of stream: nothing to parse") state
-      Just (c, cs) | predicate c -> seq src' $ seq state' $ fOk c state'
-                   | otherwise   -> seq state' $ fError error' state'
-       where
-        src'   = updatePos src c
-        state' = State cs src' errors
-        error' = newError src $ unwords
-          ["failed to satisfy predicate with char unexpected:", show c]
-
+charParserOf predicate = Parser'S $ \state@(State stream src) fOk fError ->
+  case unCons stream of
+    Nothing ->
+      fError (unexpectedError src "end of stream: nothing to parse") state
+    Just (c, cs) | predicate c -> seq src' $ seq state' $ fOk c state'
+                 | otherwise   -> seq state' $ fError error' state
+     where
+      src'   = updatePos src c
+      state' = State cs src'
+      error' = unexpectedError src $ unwords
+        ["failed to satisfy predicate with char unexpected:", show c]
 
 
 -------------------------
@@ -311,14 +342,16 @@ instance (Stream s, Show a, Show s) => Show (Return a s) where
 
 
 instance Show ParseError where
-  show err = join'Tab $ show (errorSource err) : errorMessages err
+  show err =
+    join'LF'Tab
+      $ show (errorSource err)
+      : (message <$> (mergeMessages . errorMessages $ err))
 
 
 instance (Stream s, Show s) => Show (State s) where
   show state@State {..} = join'LF
-    [ join'Tab ["source from:", sourceName stateSource]
-    , join'Tab ["stream:", showStream]
-    , join'LF $ show <$> stateParseErrors
+    [ join'LF'Tab ["source from:", sourceName stateSource]
+    , join'LF'Tab ["stream:", showStream]
     ]
    where
     stream = show stateStream
@@ -326,13 +359,13 @@ instance (Stream s, Show s) => Show (State s) where
                | otherwise           = reduceStream stateStream 60
 
 
-join'Tab :: [String] -> String
-join'Tab = Data.List.intercalate "\n\t"
+join'LF'Tab :: [String] -> String
+join'LF'Tab = intercalate "\n\t"
 
 join'LF :: [String] -> String
-join'LF = Data.List.intercalate "\n"
+join'LF = intercalate "\n"
 
 reduceStream :: (Stream s, Show s) => s -> Int -> String
-reduceStream stream n = join'Tab
+reduceStream stream n = join'LF'Tab
   [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
   where s = show stream

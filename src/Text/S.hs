@@ -1,11 +1,16 @@
+-----------------------------------------------------------------------------
 -- |
 -- Module      : Text.S
 -- License     : MIT
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
+-- Stability   : experimental
+-- Portability : portable
 --
--- Parser S is a generailized parser combinator easy-to-use/read.
--- Not verbose at all, rather the most simplified yet robust.
+-- Parser S is a generalized parser combinator easy-to-read.
+-- Intensively focused on usability, scalability and non-verbosity.
 --
+-----------------------------------------------------------------------------
+
 module Text.S
   ( module Text.S.Internal
   , module Text.S.Combinator
@@ -48,4 +53,4 @@ testFromFile parser = do
   return . runParser parser $ state
 
 test :: Parser a -> String -> Return a String
-test parser s = runParser parser (State s (initSource "/s/fake.q") [])
+test parser s = runParser parser (State s $ initSource "/s/fake.q")

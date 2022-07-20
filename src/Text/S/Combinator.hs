@@ -1,7 +1,18 @@
-module Text.S.Combinator where
+module Text.S.Combinator
+  ( module Text.S.Combinator
+  , many
+  , some
+  , (<|>)
+  , ($>)
+  ) where
 
-import           Control.Applicative            ( Alternative(..) )
-import           Control.Monad                  ( MonadPlus(..) )
+import           Control.Applicative            ( Alternative(..)
+                                                , liftA2
+                                                )
+import           Control.Monad                  ( MonadPlus(..)
+                                                , replicateM
+                                                , replicateM_
+                                                )
 import           Data.Char                      ( isAlpha
                                                 , isAlphaNum
                                                 , isDigit
@@ -10,6 +21,7 @@ import           Data.Char                      ( isAlpha
                                                 , isSpace
                                                 , isUpper
                                                 )
+import           Data.Functor                   ( ($>) )
 import           Text.S.Internal
 
 
@@ -23,22 +35,26 @@ anyChar :: Stream s => Parser'S s Char
 anyChar = charParserOf (const True)
 
 anyCharBut :: Stream s => Char -> Parser'S s Char
-anyCharBut c = charParserOf (/= c)
+anyCharBut c =
+  charParserOf (/= c) <?> unwords ["any character except for", show c]
 
--- string :: Stream s => String -> Parser'S s a
--- string []       = undefined
+string :: Stream s => String -> Parser'S s String
+string = mapM char
 
-digit :: Stream s => Parser'S s Char
-digit = charParserOf isDigit <?> "digit"
+anyString :: Stream s => Parser'S s String
+anyString = many anyChar
 
 letter :: Stream s => Parser'S s Char
 letter = charParserOf isAlpha <?> "letter"
 
+digit :: Stream s => Parser'S s Char
+digit = charParserOf isDigit <?> "digit"
+
+hexDigit :: Stream s => Parser'S s Char
+hexDigit = charParserOf isHexDigit <?> "hex-string"
+
 alphaNum :: Stream s => Parser'S s Char
 alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
-
-hex :: Stream s => Parser'S s Char
-hex = charParserOf isHexDigit <?> "hex-string"
 
 lower :: Stream s => Parser'S s Char
 lower = charParserOf isLower <?> "lowercase-letter"
@@ -49,19 +65,23 @@ upper = charParserOf isUpper <?> "uppercase-letter"
 tab :: Stream s => Parser'S s Char
 tab = char '\t' <?> "tab"
 
-lf :: Stream s => Parser'S s Char
-lf = char '\n' <?> "linefeed"
+linefeed :: Stream s => Parser'S s Char
+linefeed = char '\n' <?> "linefeed"
 
 crlf :: Stream s => Parser'S s Char
-crlf = char '\r' >> char '\n' <?> "carrige-return + linefeed"
+crlf = (char '\r' >> char '\n') <?> "carrige-return + linefeed"
 
 eol :: Stream s => Parser'S s Char
-eol = lf <|> crlf <?> "end-of-line"
+eol = (linefeed <|> crlf) <?> "end-of-line"
 
 space :: Stream s => Parser'S s Char
 space = charParserOf isSpace <?> "space"
 
--- spaces
+spaces :: Stream s => Parser'S s String
+spaces = many space <?> "whitespaces"
+
+skipSpaces :: Stream s => Parser'S s ()
+skipSpaces = skipMany space <?> "skip whitespaces"
 
 oneOf :: Stream s => [Char] -> Parser'S s Char
 oneOf cs = charParserOf (`elem` cs) <?> label'oneof
@@ -71,21 +91,70 @@ noneOf :: Stream s => [Char] -> Parser'S s Char
 noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
   where label'noneof = unwords ["none of", show ((: []) <$> cs)]
 
--- many :: Parser'S s a -> Parser'S s [a]
--- many parser = undefined
 
 -------------------------
 -- parser combinators
 -------------------------
+
+-- | attempt a parse without comsuming any input (looking ahead)
+try :: Stream s => Parser'S s a -> Parser'S s a
+try = id
+
 choice :: Stream s => [Parser'S s a] -> Parser'S s a
 choice = foldl (<|>) mzero
 
-fallback :: Stream s => a -> Parser'S s a -> Parser'S s a
-fallback x parser = parser <|> return x
+option :: Stream s => a -> Parser'S s a -> Parser'S s a
+option x p = p <|> return x
 
-optional :: Stream s => Parser'S s a -> Parser'S s ()
-optional parser =
-  do
-    _ <- parser
-    return ()
-  <|> return ()
+count :: Stream s => Int -> Parser'S s a -> Parser'S s [a]
+count = replicateM
+
+optionMaybe :: Stream s => Parser'S s a -> Parser'S s (Maybe a)
+optionMaybe p = option Nothing (Just <$> p)
+
+between
+  :: Stream s
+  => Parser'S s bra
+  -> Parser'S s ket
+  -> Parser'S s a
+  -> Parser'S s a
+between bra ket p = bra *> p <* ket
+
+sepBy :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
+sepBy p sep = sepBy1 p sep <|> pure []
+
+sepBy1 :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
+sepBy1 p sep = liftA2 (:) p (many (sep *> p))
+
+-- | parses 0+ occurrences of parser, ended by sep
+--
+-- >> statements = statements `endBy` semi
+endBy :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
+endBy p sep = many (p <* sep)
+
+-- | apply parser 0+ times until parser 'end' succeeds
+--
+-- >> comment = (string "<!--") >> manyTill anyChar (string "-->")
+manyTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s [a]
+manyTill p end = go where go = (end $> []) <|> liftA2 (:) p go
+
+someTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s [a]
+someTill p end = liftA2 (:) p (manyTill p end)
+
+skipOptional :: Stream s => Parser'S s a -> Parser'S s ()
+skipOptional p = (() <$ p) <|> pure ()
+
+skipMany :: Stream s => Parser'S s a -> Parser'S s ()
+skipMany p = () <$ many p
+
+skipSome :: Stream s => Parser'S s a -> Parser'S s ()
+skipSome p = p *> skipMany p
+
+skipCount :: Stream s => Int -> Parser'S s a -> Parser'S s ()
+skipCount = replicateM_
+
+skipManyTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s end
+skipManyTill p end = go where go = end <|> (p *> go)
+
+skipSomeTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s end
+skipSomeTill p end = p *> skipManyTill p end
