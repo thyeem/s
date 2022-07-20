@@ -50,7 +50,7 @@ testFromFile parser = do
   let file = "simple.java"
   s <- readStream file
   let state = initState file s
-  return . runParser parser $ state
+  return . parse parser $ state
 
 test :: Parser a -> String -> Return a String
-test parser s = runParser parser (State s $ initSource "/s/fake.q")
+test = parseTest

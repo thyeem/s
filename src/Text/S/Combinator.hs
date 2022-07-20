@@ -2,7 +2,6 @@ module Text.S.Combinator
   ( module Text.S.Combinator
   , many
   , some
-  , (<|>)
   , ($>)
   ) where
 
@@ -13,93 +12,14 @@ import           Control.Monad                  ( MonadPlus(..)
                                                 , replicateM
                                                 , replicateM_
                                                 )
-import           Data.Char                      ( isAlpha
-                                                , isAlphaNum
-                                                , isDigit
-                                                , isHexDigit
-                                                , isLower
-                                                , isSpace
-                                                , isUpper
-                                                )
 import           Data.Functor                   ( ($>) )
 import           Text.S.Internal
 
-
--------------------------
--- primitive parsers
--------------------------
-char :: Stream s => Char -> Parser'S s Char
-char c = charParserOf (== c) <?> show [c]
-
-anyChar :: Stream s => Parser'S s Char
-anyChar = charParserOf (const True)
-
-anyCharBut :: Stream s => Char -> Parser'S s Char
-anyCharBut c =
-  charParserOf (/= c) <?> unwords ["any character except for", show c]
-
-string :: Stream s => String -> Parser'S s String
-string = mapM char
-
-anyString :: Stream s => Parser'S s String
-anyString = many anyChar
-
-letter :: Stream s => Parser'S s Char
-letter = charParserOf isAlpha <?> "letter"
-
-digit :: Stream s => Parser'S s Char
-digit = charParserOf isDigit <?> "digit"
-
-hexDigit :: Stream s => Parser'S s Char
-hexDigit = charParserOf isHexDigit <?> "hex-string"
-
-alphaNum :: Stream s => Parser'S s Char
-alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
-
-lower :: Stream s => Parser'S s Char
-lower = charParserOf isLower <?> "lowercase-letter"
-
-upper :: Stream s => Parser'S s Char
-upper = charParserOf isUpper <?> "uppercase-letter"
-
-tab :: Stream s => Parser'S s Char
-tab = char '\t' <?> "tab"
-
-linefeed :: Stream s => Parser'S s Char
-linefeed = char '\n' <?> "linefeed"
-
-crlf :: Stream s => Parser'S s Char
-crlf = (char '\r' >> char '\n') <?> "carrige-return + linefeed"
-
-eol :: Stream s => Parser'S s Char
-eol = (linefeed <|> crlf) <?> "end-of-line"
-
-space :: Stream s => Parser'S s Char
-space = charParserOf isSpace <?> "space"
-
-spaces :: Stream s => Parser'S s String
-spaces = many space <?> "whitespaces"
-
-skipSpaces :: Stream s => Parser'S s ()
-skipSpaces = skipMany space <?> "skip whitespaces"
-
-oneOf :: Stream s => [Char] -> Parser'S s Char
-oneOf cs = charParserOf (`elem` cs) <?> label'oneof
-  where label'oneof = unwords ["one of", show ((: []) <$> cs)]
-
-noneOf :: Stream s => [Char] -> Parser'S s Char
-noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
-  where label'noneof = unwords ["none of", show ((: []) <$> cs)]
 
 
 -------------------------
 -- parser combinators
 -------------------------
-
--- | attempt a parse without comsuming any input (looking ahead)
-try :: Stream s => Parser'S s a -> Parser'S s a
-try = id
-
 choice :: Stream s => [Parser'S s a] -> Parser'S s a
 choice = foldl (<|>) mzero
 
@@ -132,9 +52,12 @@ sepBy1 p sep = liftA2 (:) p (many (sep *> p))
 endBy :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
 endBy p sep = many (p <* sep)
 
+endBy1 :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
+endBy1 p sep = some (p <* sep)
+
 -- | apply parser 0+ times until parser 'end' succeeds
 --
--- >> comment = (string "<!--") >> manyTill anyChar (string "-->")
+-- >> comment = (string "<!--") >> manyTill anychar (string "-->")
 manyTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s [a]
 manyTill p end = go where go = (end $> []) <|> liftA2 (:) p go
 
@@ -142,7 +65,7 @@ someTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s [a]
 someTill p end = liftA2 (:) p (manyTill p end)
 
 skipOptional :: Stream s => Parser'S s a -> Parser'S s ()
-skipOptional p = (() <$ p) <|> pure ()
+skipOptional p = () <$ p <|> pure ()
 
 skipMany :: Stream s => Parser'S s a -> Parser'S s ()
 skipMany p = () <$ many p
