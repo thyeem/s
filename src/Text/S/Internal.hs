@@ -29,6 +29,7 @@ module Text.S.Internal
   , parse'
   , parseFromFile
   , parseTest
+  , parseTest'
   , unwrap
   , try
   , charParserOf
@@ -208,12 +209,12 @@ data Return a s = Return (Result a) (State s)
 -------------------------
 -- Parser S
 -------------------------
--- | Parser-S data type of self-describing the process of parsing work
+-- | Parser-S data type that self-describing the process of parsing work
 newtype Parser'S s a = Parser'S {
     runParser :: forall b.
-      State s ->                       -- state including stream input
-      (a -> State s -> b) ->           -- answer Ok: when somthing comsumed
-      (ParseError -> State s -> b) ->  -- answer Error: when nothing consumed
+      State s ->                      -- state including stream input
+      (a -> State s -> b) ->          -- call @Ok@ when somthing comsumed
+      (ParseError -> State s -> b) -> -- call @Error@ when nothing consumed
       b
   }
 
@@ -296,7 +297,7 @@ parse parser state = runParser parser state fOk fError
 
 -- | The same to `parse`, but unwrap the @Return@ of parse result
 parse' :: Parser'S s a -> State s -> Either ParseError a
-parse' parser state = unwrap $ parse parser state
+parse' parser = unwrap . parse parser
 
 -- | The same to `parse`, but takes the stream from a given file
 parseFromFile :: Stream s => Parser'S s a -> FilePath -> IO (Return a s)
@@ -308,6 +309,9 @@ parseFromFile parser file = do
 -- | Tests parsers and its combinators with given strings
 parseTest :: Parser'S String a -> String -> Return a String
 parseTest parser s = parse parser (State s mempty)
+
+parseTest' :: Parser'S String a -> String -> Either ParseError a
+parseTest' parser = unwrap . parseTest parser
 
 -- | Unwraps @Return result state@, then return the result only
 unwrap :: Return a s -> Either ParseError a
