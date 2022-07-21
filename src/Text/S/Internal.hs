@@ -22,15 +22,16 @@ module Text.S.Internal
   , initState
   , Parser'S(..)
   , (<|>)
-  , (<?>)
   , empty
+  , (<?>)
   , label
   , parse
   , parse'
   , parseFromFile
-  , parseTest
-  , parseTest'
+  , t
+  , t'
   , unwrap
+  , unwrap'
   , try
   , charParserOf
   ) where
@@ -39,8 +40,9 @@ import           Control.Applicative            ( Alternative(..) )
 import           Control.Monad                  ( MonadPlus(..) )
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as C'
-import           Data.List                      ( intercalate )
-import qualified Data.List                     as L
+import           Data.List                      ( intercalate
+                                                , uncons
+                                                )
 import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as TIO
 import qualified Data.Text.Lazy                as T'
@@ -81,7 +83,7 @@ instance Stream LazyText' where
   readStream = TIO'.readFile
 
 instance Stream String where
-  unCons     = L.uncons
+  unCons     = uncons
   readStream = readFile
 
 
@@ -220,8 +222,6 @@ newtype Parser'S s a = Parser'S {
 
 
 -- | infix operator of label
--- >>> 11 * 2
--- 22
 (<?>) :: Parser'S s a -> String -> Parser'S s a
 (<?>) = label
 
@@ -309,17 +309,21 @@ parseFromFile parser file = do
   return . parse parser $ state
 
 -- | Tests parsers and its combinators with given strings
-parseTest :: Parser'S String a -> String -> Return a String
-parseTest parser s = parse parser (State s mempty)
+t :: Parser'S String a -> String -> Return a String
+t parser s = parse parser (State s mempty)
 
-parseTest' :: Parser'S String a -> String -> Either ParseError a
-parseTest' parser = unwrap . parseTest parser
+t' :: Parser'S String a -> String -> Either ParseError a
+t' parser = unwrap . t parser
 
--- | Unwraps @Return result state@, then return the result only
+-- | Unwraps @Return a s@, then return the result @a@ only
 unwrap :: Return a s -> Either ParseError a
 unwrap (Return r _) = case r of
   Ok    ok  -> Right ok
   Error err -> Left err
+
+-- | Unwraps @Return a s@, then return stream from the state @s@
+unwrap' :: Stream s => Return a s -> s
+unwrap' (Return _ (State s _)) = s
 
 -- | Attempts a parse without comsuming any input
 try :: Parser'S s a -> Parser'S s a
@@ -331,7 +335,7 @@ charParserOf :: Stream s => (Char -> Bool) -> Parser'S s Char
 charParserOf predicate = Parser'S $ \state@(State stream src) fOk fError ->
   case unCons stream of
     Nothing ->
-      fError (unexpectedError src "end of stream: nothing to parse") state
+      fError (unexpectedError src "end-of-stream: nothing to parse") state
     Just (c, cs) | predicate c -> seq src' $ seq state' $ fOk c state'
                  | otherwise   -> seq state' $ fError error' state
      where

@@ -1,5 +1,5 @@
-module Text.S.Token
-  ( module Text.S.Token
+module Text.S.Lexer
+  ( module Text.S.Lexer
   ) where
 
 import           Control.Monad                  ( mapM )
@@ -115,9 +115,17 @@ token s bra ket p = p <* jump (lineComment s) (blockComment bra ket)
 -- |
 -- symbol :: Stream s => String -> Parser'S s String
 -- symbol name = token (string name)
+
 -- | skipping unnecesary part including whitespaces and comments
-
-
+-- >>> :{
+--   unwrap' $ t
+--     (jump (lineComment $ string "#")
+--           (blockComment (string "/*")
+--           (string "*/")))
+--     "  ## line-comment starts\n \r\n  /*inner block*/  end-of-jump"
+-- :}
+-- "end-of-jump"
+--
 jump :: Stream s => Parser'S s a -> Parser'S s a -> Parser'S s ()
 jump lc bc = skipMany $ skipSome space <|> skipSome lc <|> skipSome bc
 
@@ -138,12 +146,3 @@ caseGuard sensitive s | sensitive = string s
 identifier
   :: Stream s => Parser'S s Char -> Parser'S s String -> Parser'S s String
 identifier start body = (:) <$> start <*> body
-
-
-
-jump' :: Parser'S String ()
-jump' =
-  jump (lineComment $ string "#") (blockComment (string "/*") (string "*/"))
-
-s =
-  "    ## line coment start blah \n    /*\n\n\n\n Here is inner block*/francis"

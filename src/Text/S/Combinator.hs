@@ -12,7 +12,9 @@ import           Control.Monad                  ( MonadPlus(..)
                                                 , replicateM
                                                 , replicateM_
                                                 )
-import           Data.Functor                   ( ($>) )
+import           Data.Functor                   ( ($>)
+                                                , (<&>)
+                                                )
 import           Text.S.Internal
 
 
@@ -20,66 +22,94 @@ import           Text.S.Internal
 -------------------------
 -- parser combinators
 -------------------------
-choice :: Stream s => [Parser'S s a] -> Parser'S s a
+-- | Try to parse with parsers in the list untill one of them succeeds
+--
+-- >>> t' (choice [letter, special, digit]) "$parser'S"
+-- Right '$'
+--
+choice :: MonadPlus m => [m a] -> m a
 choice = foldl (<|>) mzero
 
-option :: Stream s => a -> Parser'S s a -> Parser'S s a
+option :: MonadPlus m => a -> m a -> m a
 option x p = p <|> return x
 
-count :: Stream s => Int -> Parser'S s a -> Parser'S s [a]
+count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
 
-optionMaybe :: Stream s => Parser'S s a -> Parser'S s (Maybe a)
+optionMaybe :: MonadPlus m => m a -> m (Maybe a)
 optionMaybe p = option Nothing (Just <$> p)
 
-between
-  :: Stream s
-  => Parser'S s bra
-  -> Parser'S s ket
-  -> Parser'S s a
-  -> Parser'S s a
+between :: MonadPlus m => m b -> m b -> m a -> m a
 between bra ket p = bra *> p <* ket
 
-sepBy :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
+sepBy :: MonadPlus m => m a -> m b -> m [a]
 sepBy p sep = sepBy1 p sep <|> pure []
 
-sepBy1 :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
-sepBy1 p sep = liftA2 (:) p (many (sep *> p))
+sepBy1 :: MonadPlus m => m a -> m b -> m [a]
+sepBy1 p sep = liftA2 (:) p (some (sep *> p))
 
--- | parses 0+ occurrences of parser, ended by sep
+-- | Parses 0+ occurrences of parser @p@, ended by separator @sep@
 --
--- >>> parseTest' ( endBy (many letter) (char ';' ) ) "statement;"
--- Right ["statement0"]
+-- >>> :{
+--   t' (endBy (many alphaNum) (char ';'))
+--      "statement1;statement2;statement3;"
+-- :}
+-- Right ["statement1","statement2","statement3"]
 --
-endBy :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
+endBy :: MonadPlus m => m a -> m b -> m [a]
 endBy p sep = many (p <* sep)
 
-endBy1 :: Stream s => Parser'S s a -> Parser'S s sep -> Parser'S s [a]
+endBy1 :: MonadPlus m => m a -> m b -> m [a]
 endBy1 p sep = some (p <* sep)
 
--- | apply parser 0+ times until parser 'end' succeeds
+-- | Apply parser @p@ 0+ times until parser @end@ succeeds
 --
--- >>> comment = (string "<!--") >> manyTill anychar (string "-->")
-manyTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s [a]
+-- >>> :{
+--   t' (string "{-" >> manyTill anychar (string "-}"))
+--      "{- haskell block comment here -}"
+-- :}
+-- Right " haskell block comment here "
+--
+manyTill :: MonadPlus m => m a -> m b -> m [a]
 manyTill p end = go where go = (end $> []) <|> liftA2 (:) p go
 
-someTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s [a]
+someTill :: MonadPlus m => m a -> m b -> m [a]
 someTill p end = liftA2 (:) p (manyTill p end)
 
-skipOptional :: Stream s => Parser'S s a -> Parser'S s ()
+skipOptional :: MonadPlus m => m a -> m ()
 skipOptional p = () <$ p <|> pure ()
 
-skipMany :: Stream s => Parser'S s a -> Parser'S s ()
+skipMany :: MonadPlus m => m a -> m ()
 skipMany p = () <$ many p
 
-skipSome :: Stream s => Parser'S s a -> Parser'S s ()
+skipSome :: MonadPlus m => m a -> m ()
 skipSome p = p *> skipMany p
 
-skipCount :: Stream s => Int -> Parser'S s a -> Parser'S s ()
+skipCount :: MonadPlus m => Int -> m a -> m ()
 skipCount = replicateM_
 
-skipManyTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s end
+skipManyTill :: MonadPlus m => m a -> m b -> m b
 skipManyTill p end = go where go = end <|> (p *> go)
 
-skipSomeTill :: Stream s => Parser'S s a -> Parser'S s end -> Parser'S s end
+skipSomeTill :: MonadPlus m => m a -> m b -> m b
 skipSomeTill p end = p *> skipManyTill p end
+
+-- | Parses 0+ occurrences of @p@
+chainl :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
+-- chainl p op x = chainl1 p op <|> return x
+chainl p op x = option x (chainl1 p op)
+
+chainl1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
+chainl1 p op = p >>= go
+  where go x = (op >>= (\f -> p >>= go . f x)) <|> pure x
+
+-- | Parses 0+ occurrences of @p@
+chainr :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
+-- chainr p op x = chainlr p op <|> return x
+chainr p op x = option x (chainr1 p op)
+
+chainr1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
+chainr1 p op = g
+ where
+  g = p >>= go
+  go x = op >>= (\f -> g <&> f x)

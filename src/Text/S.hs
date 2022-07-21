@@ -12,7 +12,7 @@
 module Text.S
   ( module Text.S.Internal
   , module Text.S.Combinator
-  , module Text.S.Token
+  , module Text.S.Lexer
   , module Text.S.Language
   , module Text.S
   ) where
@@ -20,7 +20,7 @@ module Text.S
 import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Language
-import           Text.S.Token
+import           Text.S.Lexer
 
 
 -- | Parser using String or [Char]
@@ -39,16 +39,10 @@ type ParserT = Parser'S Text'
 type ParserT' = Parser'S LazyText'
 
 
------------------------------------
--- debug section (will be erased)
------------------------------------
-
-testFromFile :: Parser a -> IO (Return a String)
-testFromFile parser = do
+-- | test function (will be erased)
+tf :: Parser a -> IO (Return a String)
+tf parser = do
   let file = "simple.java"
   s <- readStream file
   let state = initState file s
   return . parse parser $ state
-
-test :: Parser a -> String -> Return a String
-test = parseTest

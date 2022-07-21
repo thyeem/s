@@ -36,10 +36,10 @@ default-extensions:
 - StandaloneDeriving
 - MultiParamTypeClasses
 - QuasiQuotes
+- TemplateHaskell
 # - TypeOperators
 # - ExplicitNamespaces
 # - QuantifiedConstraints
-# - TemplateHaskell
 # - DeriveGeneric
 
 
