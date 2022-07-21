@@ -39,60 +39,88 @@ char c = charParserOf (== c) <?> show [c]
 
 -- | Parses any single character
 --
--- >>> t' anychar "parser"
--- Right 'p'
+-- >>> t' anychar "$parser"
+-- Right '$'
 --
 anychar :: Stream s => Parser'S s Char
 anychar = charParserOf (const True) <?> "all kinds of character"
 
 -- | Parses every single character except for a given character
 --
--- >>> t' (anycharBut 'q') "parser"
--- Right 'p'
+-- >>> t' (many $ anycharBut 's') "parser"
+-- Right "par"
 --
 anycharBut :: Stream s => Char -> Parser'S s Char
 anycharBut c =
   charParserOf (/= c) <?> unwords ["any character except for", show c]
 
 -- | Parses a given string
--- >>> t' (string "parser") "parser combinator"
--- Right "parser"
+-- >>> t' (string "par") "parser"
+-- Right "par"
 --
 string :: Stream s => String -> Parser'S s String
 string = mapM char
 
--- | Parses any given string
--- >>> t' (anystring) "parser combinator"
--- Right "parser combinator"
+-- | Parses any string and consumes everything
+-- >>> t' anystring "stop COVID-19"
+-- Right "stop COVID-19"
 --
 anystring :: Stream s => Parser'S s String
 anystring = many anychar
 
--- | Parses any single digit
+-- | Parses any single digit, [0-9]
 -- >>> t' digit "3.1415926535"
 -- Right '3'
 --
 digit :: Stream s => Parser'S s Char
 digit = charParserOf isDigit <?> "digit"
 
+-- | Parses any single hexadecimal number, [0-9a-f]
+-- >>> t' (many hexDigit) "f8f8f8xyz"
+-- Right "f8f8f8"
+--
 hexDigit :: Stream s => Parser'S s Char
 hexDigit = charParserOf isHexDigit <?> "hex-string"
 
+-- | Parses any single alphabetical character, [a-zA-Z]
+-- >>> t' (many alpha) "stop COVID-19"
+-- Right "stop"
+--
 alpha :: Stream s => Parser'S s Char
 alpha = charParserOf isAlpha <?> "letter"
 
+-- | The same to @alpha@
+-- >>> t' (many letter) "COVID-19"
+-- Right "COVID"
+--
 letter :: Stream s => Parser'S s Char
 letter = alpha
 
+-- | Parses any alphabetical or numeric character. [0-9a-zA-Z]
+-- >>> t' (many alphaNum) "year2022"
+-- Right "year2022"
+--
 alphaNum :: Stream s => Parser'S s Char
 alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
 
+-- | Parses any single lowercase letter, [a-z]
+-- >>> t' (many lower) "covID-19"
+-- Right "cov"
+--
 lower :: Stream s => Parser'S s Char
 lower = charParserOf isLower <?> "lowercase-letter"
 
+-- | Parses any single uppercase letter, [A-Z]
+-- >>> t' (many upper) "COVID-19"
+-- Right "COVID"
+--
 upper :: Stream s => Parser'S s Char
 upper = charParserOf isUpper <?> "uppercase-letter"
 
+-- | Parses a single special character, anychar = alphaNum <|> special
+-- >>> t' special "# stop COVID-19 -->"
+-- Right '#'
+--
 special :: Stream s => Parser'S s Char
 special = charParserOf isSpecial <?> "special-character"
   where isSpecial c = or $ ($ c) <$> [isPunctuation, isSymbol]
