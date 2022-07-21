@@ -29,26 +29,49 @@ import           Text.S.Combinator
 -------------------------
 -- primitive parsers
 -------------------------
--- | Parses a single character
+-- | Parses a given single character
 --
--- >> dot = char '.'
+-- >>> t' (char 'p') "parser"
+-- Right 'p'
 --
 char :: Stream s => Char -> Parser'S s Char
 char c = charParserOf (== c) <?> show [c]
 
+-- | Parses any single character
+--
+-- >>> t' anychar "parser"
+-- Right 'p'
+--
 anychar :: Stream s => Parser'S s Char
 anychar = charParserOf (const True) <?> "all kinds of character"
 
+-- | Parses every single character except for a given character
+--
+-- >>> t' (anycharBut 'q') "parser"
+-- Right 'p'
+--
 anycharBut :: Stream s => Char -> Parser'S s Char
 anycharBut c =
   charParserOf (/= c) <?> unwords ["any character except for", show c]
 
+-- | Parses a given string
+-- >>> t' (string "parser") "parser combinator"
+-- Right "parser"
+--
 string :: Stream s => String -> Parser'S s String
 string = mapM char
 
+-- | Parses any given string
+-- >>> t' (anystring) "parser combinator"
+-- Right "parser combinator"
+--
 anystring :: Stream s => Parser'S s String
 anystring = many anychar
 
+-- | Parses any single digit
+-- >>> t' digit "3.1415926535"
+-- Right '3'
+--
 digit :: Stream s => Parser'S s Char
 digit = charParserOf isDigit <?> "digit"
 
@@ -115,6 +138,7 @@ token s bra ket p = p <* jump (lineComment s) (blockComment bra ket)
 -- |
 -- symbol :: Stream s => String -> Parser'S s String
 -- symbol name = token (string name)
+
 
 -- | skipping unnecesary part including whitespaces and comments
 -- >>> :{

@@ -24,7 +24,7 @@ import           Text.S.Internal
 -------------------------
 -- | Try to parse with parsers in the list untill one of them succeeds
 --
--- >>> t' (choice [letter, special, digit]) "$parser'S"
+-- >>> t' (choice [letter, special, digit]) "$parser"
 -- Right '$'
 --
 choice :: MonadPlus m => [m a] -> m a
