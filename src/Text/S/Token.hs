@@ -102,16 +102,22 @@ noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
 -------------------------
 -- token parsers: lexer
 -------------------------
-token :: Stream s => Parser'S s a -> Parser'S s a
-token p = p <* many space
+-- | generate a lexical parser for the given parser @p@
+token
+  :: Stream s
+  => Parser'S s String  -- parser for line comment mark
+  -> Parser'S s String  -- parser for block comment opener
+  -> Parser'S s String  -- parser for block comment closure
+  -> Parser'S s a       -- parser for target lexeme
+  -> Parser'S s a
+token s bra ket p = p <* jump (lineComment s) (blockComment bra ket)
 
--- reserved :: Stream s => String -> Parser'S s String
--- reserved s = token (string s)
-
-symbol :: Stream s => String -> Parser'S s String
-symbol name = token (string name)
-
+-- |
+-- symbol :: Stream s => String -> Parser'S s String
+-- symbol name = token (string name)
 -- | skipping unnecesary part including whitespaces and comments
+
+
 jump :: Stream s => Parser'S s a -> Parser'S s a -> Parser'S s ()
 jump lc bc = skipMany $ skipSome space <|> skipSome lc <|> skipSome bc
 
