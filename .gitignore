@@ -21,7 +21,6 @@ Thumbs.db
 .stack-work/
 dist-newstyle/
 *.hi
-*.hs
 *.o
 
 # auto-generated *.cabal
