@@ -1,3 +1,17 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      : Text.S.Combinator
+-- License     : MIT
+--
+-- Maintainer  : Francis Lim <thyeem@gmail.com>
+-- Stability   : experimental
+--
+-- This module defines some useful monadic parser combinators.
+-- Put simply, combining "sets of parsers" creates a single new large parser
+-- for more complex structures.
+--
+-----------------------------------------------------------------------------
+
 module Text.S.Combinator
   ( module Text.S.Combinator
   , many

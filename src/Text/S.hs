@@ -1,19 +1,21 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      : Text.S
--- Description : Parser S is a generalized parser combinator easy-to-read.
---               Focused on usability, scalability and non-verbosity.
 -- License     : MIT
+--
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
+--
+-- The parser-S is a generalized parser and its combinator easy-to-read.
+-- It is designed to focused on usability, scalability and non-verbosity.
 --
 -----------------------------------------------------------------------------
 
 module Text.S
-  ( module Text.S.Internal
+  ( module Text.S.Base
   , module Text.S.Combinator
+  , module Text.S.Internal
   , module Text.S.Lexer
-  , module Text.S.Base
   , module Text.S.Language
   , module Text.S
   ) where

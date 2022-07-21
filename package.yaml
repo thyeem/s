@@ -1,9 +1,15 @@
 name:                s
 version:             0.1.0.0
-license:             MIT
-author:              "Francis Lim"
-maintainer:          "thyeem@gmail.com"
+synopsis:            parser combinators
+description: |
+  The parser-S is a generalized parser combinator easy-to-read.
+  It is designed to focused on usability, scalability and non-verbosity.
+  .
+category:            Parsing
+author:              "Francis Lim <thyeem@gmail.com>"
 copyright:           "Francis, 2022"
+maintainer:          "Francis Lim <thyeem@gmail.com>"
+license:             MIT
 
 extra-source-files:
 - README.md
@@ -18,11 +24,9 @@ dependencies:
 - text
 - raw-strings-qq
 - pretty-simple
-# - aeson
 # - yaml
+# - aeson
 # - docopt >= 0.7.0.6
-# - regex-tdfa
-# - PyF
 
 default-extensions:
 - DataKinds
@@ -41,7 +45,6 @@ default-extensions:
 # - ExplicitNamespaces
 # - QuantifiedConstraints
 # - DeriveGeneric
-
 
 library:
   source-dirs: src

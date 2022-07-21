@@ -1,3 +1,19 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      : Text.S.Combinator
+-- License     : MIT
+--
+-- Maintainer  : Francis Lim <thyeem@gmail.com>
+-- Stability   : experimental
+--
+-- This module defines a primitive char/string parser to be used for
+-- extensions such as lexers more complex structured parsers.
+
+-- Put simply, combining "sets of parsers" creates a single new large parser
+-- for more complex structures.
+--
+-----------------------------------------------------------------------------
+
 module Text.S.Base
   ( module Text.S.Base
   ) where
@@ -14,7 +30,6 @@ import           Data.Char                      ( isAlpha
                                                 , isUpper
                                                 )
 
-
 import           Text.S.Combinator
 import           Text.S.Internal
 
@@ -22,6 +37,7 @@ import           Text.S.Internal
 -------------------------
 -- primitive parsers
 -------------------------
+
 -- | Parses a given single character
 --
 -- >>> t' (char 'p') "parser"
@@ -118,9 +134,17 @@ special :: Stream s => Parser'S s Char
 special = charParserOf isSpecial <?> "special-character"
   where isSpecial c = or $ ($ c) <$> [isPunctuation, isSymbol]
 
+-- | Parses tab character, \t
+-- >>> t' (string "stop" >> tab) "stop\tCOVID-19"
+-- Right '\t'
+--
 tab :: Stream s => Parser'S s Char
 tab = char '\t' <?> "tab"
 
+-- | Parses tab character, \t
+-- >>> t' (string "stop" >> tab) "stop\tCOVID-19"
+-- Right '\t'
+--
 lf :: Stream s => Parser'S s Char
 lf = char '\n' <?> "linefeed"
 

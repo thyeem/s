@@ -1,3 +1,16 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      : Text.S.Lexer
+-- License     : MIT
+--
+-- Maintainer  : Francis Lim <thyeem@gmail.com>
+-- Stability   : experimental
+--
+-- This module constructs a lexer or a tokenizer parser to parse
+-- lexical units (lexemes) based on parser combinators.
+--
+-----------------------------------------------------------------------------
+
 module Text.S.Lexer
   ( module Text.S.Lexer
   ) where

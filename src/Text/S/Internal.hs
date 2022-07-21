@@ -1,3 +1,17 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      : Text.S.Internal
+-- License     : MIT
+--
+-- Maintainer  : Francis Lim <thyeem@gmail.com>
+-- Stability   : experimental
+--
+-- This module implements internal process the parser really does.
+-- One of core works is to design the parser as a Monad instance
+-- while defining several primitive data types surrounding it.
+--
+-----------------------------------------------------------------------------
+
 module Text.S.Internal
   ( ByteString'
   , LazyByteString'
