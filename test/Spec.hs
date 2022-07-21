@@ -9,6 +9,7 @@ main = doctest
   , "-XTypeSynonymInstances"
   , "-XFlexibleInstances"
   , "src/Text/S.hs"
+  , "src/Text/S/Base.hs"
   , "src/Text/S/Combinator.hs"
   , "src/Text/S/Internal.hs"
   , "src/Text/S/Language.hs"

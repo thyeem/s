@@ -13,10 +13,12 @@ module Text.S
   ( module Text.S.Internal
   , module Text.S.Combinator
   , module Text.S.Lexer
+  , module Text.S.Base
   , module Text.S.Language
   , module Text.S
   ) where
 
+import           Text.S.Base
 import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Language
