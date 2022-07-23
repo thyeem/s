@@ -9,6 +9,7 @@ build:
 	/usr/bin/strip app/$(bin)
 
 clean:
+	git clean -xdf
 	stack clean --full
 	-/bin/rm -f $(bin)
 
