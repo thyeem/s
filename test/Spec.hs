@@ -8,6 +8,8 @@ main = doctest
   , "-XRecordWildCards"
   , "-XTypeSynonymInstances"
   , "-XFlexibleInstances"
+  , "-XDeriveGeneric"
+  , "-XDeriveAnyClass"
   , "src/Text/S.hs"
   , "src/Text/S/Base.hs"
   , "src/Text/S/Combinator.hs"

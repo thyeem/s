@@ -19,16 +19,17 @@ dependencies:
 - base >= 4.7 && < 5
 - containers
 - parallel
+- deepseq
 - bytestring
 - random
 - text
 - raw-strings-qq
-- pretty-simple
 # - yaml
 # - aeson
 # - docopt >= 0.7.0.6
 
 default-extensions:
+- BangPatterns
 - DataKinds
 - RankNTypes
 - RecordWildCards
@@ -36,15 +37,13 @@ default-extensions:
 - FlexibleInstances
 - ExplicitForAll
 - ScopedTypeVariables
-- GeneralizedNewtypeDeriving
 - StandaloneDeriving
 - MultiParamTypeClasses
 - QuasiQuotes
+- GeneralizedNewtypeDeriving
 - TemplateHaskell
-# - TypeOperators
-# - ExplicitNamespaces
-# - QuantifiedConstraints
-# - DeriveGeneric
+- DeriveGeneric
+- DeriveAnyClass
 
 library:
   source-dirs: src

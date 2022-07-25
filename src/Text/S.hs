@@ -50,3 +50,7 @@ tf parser = do
   s <- readStream file
   let state = initState file s
   return . parse parser $ state
+
+
+testString :: String
+testString = "   testJump"

@@ -26,6 +26,7 @@ import           Control.Monad                  ( MonadPlus(..)
                                                 , replicateM
                                                 , replicateM_
                                                 )
+import           Data.Foldable                  ( foldl' )
 import           Data.Functor                   ( ($>)
                                                 , (<&>)
                                                 )
@@ -42,7 +43,7 @@ import           Text.S.Internal
 -- Right '$'
 --
 choice :: MonadPlus m => [m a] -> m a
-choice = foldl (<|>) mzero
+choice = foldl' (<|>) mzero
 
 option :: MonadPlus m => a -> m a -> m a
 option x p = p <|> return x

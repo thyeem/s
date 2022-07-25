@@ -51,6 +51,9 @@ module Text.S.Internal
   ) where
 
 import           Control.Applicative            ( Alternative(..) )
+import           Control.DeepSeq                ( NFData
+                                                , force
+                                                )
 import           Control.Monad                  ( MonadPlus(..) )
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as C'
@@ -61,6 +64,7 @@ import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as TIO
 import qualified Data.Text.Lazy                as T'
 import qualified Data.Text.Lazy.IO             as TIO'
+import           GHC.Generics                   ( Generic )
 import           System.IO                      ( readFile )
 
 
@@ -109,7 +113,7 @@ data Source = Source
   , sourceLine   :: !Int
   , sourceColumn :: !Int
   }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic, NFData)
 
 
 instance Semigroup Source where
@@ -137,7 +141,7 @@ initSource file = Source file 1 1
 data ErrorMessage = Unexpected !String
                   | Expected !String
                   | Message !String
-                  deriving (Eq, Show, Ord)
+                  deriving (Eq, Show, Ord, Generic, NFData)
 
 
 message :: ErrorMessage -> String
@@ -164,7 +168,7 @@ data ParseError = ParseError
   { errorSource   :: !Source
   , errorMessages :: [ErrorMessage]
   }
-  deriving Eq
+  deriving (Eq, Generic, NFData)
 
 
 instance Semigroup ParseError where
@@ -203,7 +207,7 @@ data State s = State
   { stateStream :: s
   , stateSource :: !Source
   }
-  deriving Eq
+  deriving (Eq, Generic, NFData)
 
 
 initState :: FilePath -> s -> State s
@@ -215,11 +219,11 @@ initState file stream = State stream $ initSource file
 -------------------------
 data Result a = Ok a
               | Error ParseError
-              deriving (Show, Eq)
+              deriving (Show, Eq, Generic, NFData)
 
 
 data Return a s = Return (Result a) (State s)
-  deriving Eq
+  deriving (Eq, Generic, NFData)
 
 
 -------------------------
@@ -232,7 +236,7 @@ newtype Parser'S s a = Parser'S {
       (a -> State s -> b) ->          -- call @Ok@ when somthing comsumed
       (ParseError -> State s -> b) -> -- call @Error@ when nothing consumed
       b
-  }
+    }
 
 
 -- | infix operator of label
@@ -345,16 +349,16 @@ try parser = Parser'S $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError
 
 -- | Gets a char parser that satisfies the given predicate
-charParserOf :: Stream s => (Char -> Bool) -> Parser'S s Char
+charParserOf :: (Stream s, NFData s) => (Char -> Bool) -> Parser'S s Char
 charParserOf predicate = Parser'S $ \state@(State stream src) fOk fError ->
   case unCons stream of
     Nothing ->
       fError (unexpectedError src "end-of-stream: nothing to parse") state
-    Just (c, cs) | predicate c -> seq src' $ seq state' $ fOk c state'
-                 | otherwise   -> seq state' $ fError error' state
+    Just (c, cs) | predicate c -> fOk c state'
+                 | otherwise   -> fError error' state
      where
-      src'   = jump src c
-      state' = State cs src'
+      src'   = force $ jump src c
+      state' = force $ State cs src'
       jump (Source n ln col) c = case c of
         '\n' -> Source n (ln + 1) 1
         '\t' -> Source n ln (move col 8)
