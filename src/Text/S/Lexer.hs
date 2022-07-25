@@ -29,20 +29,22 @@ import           Text.S.Internal
 import           Text.S.Language
 
 
--------------------------
--- token parsers: lexer
--------------------------
+
+-- | token parsers: lexer
+type Lexer s a = LanguageDef -> Parser'S s a
+
 
 -------------------------
 -- lang-def-dependent
 -------------------------
 -- | generate a lexical parser for the given parser @p@
-token :: (Stream s, NFData s) => LanguageDef -> Parser'S s a -> Parser'S s a
-token def p = p <* jump def
+token :: (Stream s, NFData s) => Parser'S s a -> (LanguageDef -> Parser'S s a)
+token p def = p <* jump def
 
 -- |
-reserved :: (Stream s, NFData s) => LanguageDef -> String -> Parser'S s String
-reserved def name = token def (string name)
+reserved
+  :: (Stream s, NFData s) => String -> (LanguageDef -> Parser'S s String)
+reserved name = token (string name)
 
 -- | skipping unnecesary part including whitespaces and comments
 -- >>> :{
