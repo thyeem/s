@@ -21,23 +21,23 @@ data LanguageDef = LanguageDef
     defCaseSensitive     :: Bool
   ,
 
-    -- | Letters assigned that a block comment starts with
+    -- | Characters assigned to start a block comment
     defCommentBlockBegin :: [String]
   ,
 
-    -- | Letters assigned that a block comment ends
+    -- | Characters assigned to end a block comment
     defCommentBlockEnd   :: [String]
   ,
 
-    -- | Letters assigned that a single line comment starts with
+    -- | Characters assigned to start a single-line comment
     defCommentLine       :: [String]
   ,
 
-    -- | Letters assigned that an identifier starts with
+    -- | Characters assigned to start the name of identifiers
     defIdentifierBegin   :: [String]
   ,
 
-    -- | Letters assigned for a name of an identifier except for its first letter
+    -- | Characters assigned identifier names except for its first letter
     defIdentifierName    :: [String]
   ,
 
