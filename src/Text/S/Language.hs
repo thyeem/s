@@ -53,13 +53,13 @@ data LanguageDef = LanguageDef
 -- | Default Language definition
 defaultDef :: LanguageDef
 defaultDef = LanguageDef { defCaseSensitive     = True
-                         , defCommentBlockBegin = ["/*"]
-                         , defCommentBlockEnd   = ["*/"]
-                         , defCommentLine       = ["//"]
+                         , defCommentBlockBegin = ["'''"]
+                         , defCommentBlockEnd   = ["'''"]
+                         , defCommentLine       = ["#"]
                          , defIdentifierBegin   = ["_", "alpha"]
                          , defIdentifierName    = ["alphaNum"]
                          , defReservedSpecials  = []
-                         , defReservedNames     = []
+                         , defReservedNames     = ["francis", "sofia"]
                          }
 
 

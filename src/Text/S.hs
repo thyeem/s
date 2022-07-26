@@ -50,3 +50,18 @@ tf parser = do
   s <- readStream file
   let state = initState file s
   return . parse parser $ state
+
+tp :: Parser'S String a -> String -> Return a String
+tp = t
+
+tl :: (LanguageDef -> Parser'S String a) -> String -> Return a String
+tl l = t (l defaultDef)
+
+q = do
+  _   <- token' "(" defaultDef
+  str <- identifier' defaultDef
+  _   <- token' ")" defaultDef
+  return str
+
+m :: Return String String
+m = t q "( /* Hahaha */ francis)"

@@ -7,6 +7,7 @@
 -- Stability   : experimental
 --
 -- This module implements internal process the parser really does.
+--
 -- One of core works is to design the parser as a Monad instance
 -- while defining several primitive data types surrounding it.
 --
@@ -304,8 +305,8 @@ splus p q = Parser'S $ \state fOk fError ->
 
 
 instance MonadFail (Parser'S s) where
-  fail msg =
-    Parser'S $ \state _ fError -> fError (ParseError mempty [Message msg]) state
+  fail msg = Parser'S $ \state@(State _ src) _ fError ->
+    fError (ParseError src [Message msg]) state
 
 
 -- | Takes a given state and parses it. The outermost function of the @Parser'S@
