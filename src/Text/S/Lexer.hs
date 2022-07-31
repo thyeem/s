@@ -132,7 +132,7 @@ selectParser beg x = case x of
 token :: (Stream s, NFData s) => String -> Parser'S s String
 token = string
 
--- |
+-- | lexemizes any lexemes to comsume.
 token' :: (Stream s, NFData s) => String -> Lexer s String
 token' t = lexeme (token t)
 
@@ -144,13 +144,19 @@ decimals = many (char '0') *> numbers 10 (some digit)
 decimals' :: (Stream s, NFData s) => Lexer s Integer
 decimals' = lexeme decimals
 
--- |
+-- | parses hexadecimal digits
+-- >>> t' hexadecimals "0xCOVID-19"
+-- Right 12
+--
 hexadecimals :: (Stream s, NFData s) => Parser'S s Integer
 hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
 
--- |
+-- | lexemizes hexadecimal digits
+-- >>> t' (hexadecimals' defaultDef) "0xCOVID-19"
+-- Right 12
+--
 hexadecimals' :: (Stream s, NFData s) => Lexer s Integer
-hexadecimals' = lexeme decimals
+hexadecimals' = lexeme hexadecimals
 
 -- | parses string between parentheses
 --
