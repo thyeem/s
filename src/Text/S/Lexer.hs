@@ -30,6 +30,9 @@ import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Language
 
+import           Control.Applicative            ( liftA2 )
+import           Control.Monad                  ( mzero )
+
 
 
 -- | Defines lexical-token-parsers: Lexer
@@ -49,6 +52,8 @@ import           Text.S.Language
 -- +----------+--------------------------------------------------------+
 -- | @Lexer@  | `LanguageDef`-dependent and has a name of /funcName'/  |
 -- +----------+--------------------------------------------------------+
+--
+-- @Parser@ = @Lexer@ + @LanguageDef@
 --
 type Lexer s a = LanguageDef -> Parser'S s a
 
@@ -95,7 +100,7 @@ identifier' def = do
   found <- (<>) <$> begin <*> remainder
   if isReserved found def
     then fail $ unwords ["reserved identifier used:", show found]
-    else return found
+    else jump def $> found
 
 -- | Check if a given name is already reserved in the language definition
 isReserved :: String -> LanguageDef -> Bool
@@ -108,7 +113,7 @@ isReserved name def | caseSensitive = S.member name set
   set | caseSensitive = S.fromList reservedNames
       | otherwise     = S.fromList $ lower <$> reservedNames
 
--- | helper function:
+-- | Helper function:
 caseGuard :: (Stream s, NFData s) => Bool -> String -> Parser'S s String
 caseGuard caseSensitive s | caseSensitive = string s
                           | otherwise     = mapM char' s
@@ -116,7 +121,7 @@ caseGuard caseSensitive s | caseSensitive = string s
   char' c | isAlpha c = char (toLower c) <|> char (toUpper c)
           | otherwise = char c
 
--- | helper function:
+-- | Helper function:
 selectParser :: (Stream s, NFData s) => Bool -> String -> Parser'S s String
 selectParser beg x = case x of
   "alpha"    -> f alpha
@@ -132,33 +137,11 @@ selectParser beg x = case x of
 token :: (Stream s, NFData s) => String -> Parser'S s String
 token = string
 
--- | lexemizes any lexemes to comsume.
+-- | Lexemizes any lexemes to comsume.
 token' :: (Stream s, NFData s) => String -> Lexer s String
 token' t = lexeme (token t)
 
--- |
-decimals :: (Stream s, NFData s) => Parser'S s Integer
-decimals = many (char '0') *> numbers 10 (some digit)
-
--- |
-decimals' :: (Stream s, NFData s) => Lexer s Integer
-decimals' = lexeme decimals
-
--- | parses hexadecimal digits
--- >>> t' hexadecimals "0xCOVID-19"
--- Right 12
---
-hexadecimals :: (Stream s, NFData s) => Parser'S s Integer
-hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
-
--- | lexemizes hexadecimal digits
--- >>> t' (hexadecimals' defaultDef) "0xCOVID-19"
--- Right 12
---
-hexadecimals' :: (Stream s, NFData s) => Lexer s Integer
-hexadecimals' = lexeme hexadecimals
-
--- | parses string between parentheses
+-- | Parses string between parentheses
 --
 -- >>> t' (parens (some letter)) "(parser)"
 -- Right "parser"
@@ -166,7 +149,7 @@ hexadecimals' = lexeme hexadecimals
 parens :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 parens = between (token "(") (token ")")
 
--- | lexemizes string between parentheses
+-- | Lexemizes string between parentheses
 --
 -- >>> t' (parens' (some letter) defaultDef) "(lexer)\n\r\n\t  "
 -- Right "lexer"
@@ -174,7 +157,7 @@ parens = between (token "(") (token ")")
 parens' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 parens' p = lexeme (parens p)
 
--- | parses string between curly braces
+-- | Parses string between curly braces
 --
 -- >>> t' (braces (some letter)) "{parser}"
 -- Right "parser"
@@ -182,7 +165,7 @@ parens' p = lexeme (parens p)
 braces :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 braces = between (token "{") (token "}")
 
--- | lexemizes string between curly braces
+-- | Lexemizes string between curly braces
 --
 -- >>> t' (braces' (some letter) defaultDef) "{lexer}\n\r\n\t  "
 -- Right "lexer"
@@ -190,7 +173,7 @@ braces = between (token "{") (token "}")
 braces' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 braces' p = lexeme (braces p)
 
--- | parses string between angle brackets
+-- | Parses string between angle brackets
 --
 -- >>> t' (angles (some letter)) "<parser>"
 -- Right "parser"
@@ -198,7 +181,7 @@ braces' p = lexeme (braces p)
 angles :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 angles = between (token "<") (token ">")
 
--- | lexemizes string between angle brackets
+-- | Lexemizes string between angle brackets
 --
 -- >>> t' (angles' (some letter) defaultDef) "<lexer>\n\r\n\t  "
 -- Right "lexer"
@@ -206,7 +189,7 @@ angles = between (token "<") (token ">")
 angles' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 angles' p = lexeme (angles p)
 
--- | parses string between square brackets
+-- | Parses string between square brackets
 --
 -- >>> t' (squares (some letter)) "[parser]"
 -- Right "parser"
@@ -214,7 +197,7 @@ angles' p = lexeme (angles p)
 squares :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 squares = between (token "[") (token "]")
 
--- | lexemizes string between square brackets
+-- | Lexemizes string between square brackets
 --
 -- >>> t' (squares' (some letter) defaultDef) "[lexer]\n\r\n\t  "
 -- Right "lexer"
@@ -222,28 +205,147 @@ squares = between (token "[") (token "]")
 squares' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 squares' p = lexeme (squares p)
 
--- |
+-- | Parses natural numbers or decimal digits (base-10)
+-- This includes numbers with leading zeros
+--
+-- >>> t' decimals "00123456789"
+-- Right 123456789
+--
+decimals :: (Stream s, NFData s) => Parser'S s Integer
+decimals = numbers 10 (some digit)
 
--- |
+-- | Lexemizes natural numbers or decimal digits (base-10)
+-- This includes numbers with leading zeros
+--
+-- >>> t' (decimals' defaultDef) "00123456789   "
+-- Right 123456789
+--
+decimals' :: (Stream s, NFData s) => Lexer s Integer
+decimals' = lexeme decimals
 
--- |
+-- | Parses hexadecimal digits (base-16)
+--
+-- >>> t' hexadecimals "0xCOVID-19"
+-- Right 12
+--
+hexadecimals :: (Stream s, NFData s) => Parser'S s Integer
+hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
+
+-- | Lexemizes hexadecimal digits (base-16)
+--
+-- >>> t' (hexadecimals' defaultDef) "0xCOVID-19"
+-- Right 12
+--
+hexadecimals' :: (Stream s, NFData s) => Lexer s Integer
+hexadecimals' = lexeme hexadecimals
+
+-- | Parses numbers with leading-zeros
+--
+-- >>> t' zeros "000002022"
+-- Right 2022
+--
+zeros :: (Stream s, NFData s) => Parser'S s Integer
+zeros = char '0' *> decimals
+
+-- | Lexemizes numbers with leading-zeros
+--
+-- >>> t' (zeros' defaultDef) "000002022   "
+-- Right 2022
+--
+zeros' :: (Stream s, NFData s) => Lexer s Integer
+zeros' = lexeme zeros
+
+-- | Parses natural numbers (non-leading zeros and signs)
+--
+-- >>> t' natural "27182818284"
+-- Right 27182818284
+--
+natural :: (Stream s, NFData s) => Parser'S s Integer
+natural = try digit *> try (anycharBut '0') *> decimals
+
+-- | Lexemizes natural numbers (non-leading zeros and signs)
+--
+-- >>> t' (natural' defaultDef) "2718284"
+-- Right 2718284
+--
+natural' :: (Stream s, NFData s) => Lexer s Integer
+natural' = lexeme natural
+
+-- | Parses a `sign` (+ or -) from an integer and lift it.
+--
+-- >>> t' (sign <*> decimals)  "-2022"
+-- Right (-2022)
+--
 sign :: (Stream s, NFData s) => Parser'S s (Integer -> Integer)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 
--- |
+-- | Lexemizes a `sign` (+ or -) from an integer and lift it.
+--
+-- >>> t' (sign' defaultDef <*> decimals' defaultDef) "-  2022  "
+-- Right (-2022)
+--
 sign' :: (Stream s, NFData s) => Lexer s (Integer -> Integer)
 sign' = lexeme sign
 
 -- |
+-- >>> t' integer  "-2022"
+-- Right (-2022)
+--
 integer :: (Stream s, NFData s) => Parser'S s Integer
 integer = sign <*> decimals
 
 -- |
+-- >>> t' (integer' defaultDef) "-  2022  "
+-- Right (-2022)
+--
 integer' :: (Stream s, NFData s) => Lexer s Integer
-integer' def = sign' def <*> decimals
+integer' def = sign' def <*> decimals' def
 
--- | parses consecutive (many) number-strings
+-- | Parses consecutive (many) number-strings
 numbers
   :: (Stream s, NFData s) => Integer -> Parser'S s String -> Parser'S s Integer
 numbers base parser = foldl' f 0 <$> parser
   where f x d = base * x + toInteger (digitToInt d)
+
+-- | Parses general form of floating number (including scientific form)
+--
+-- >>> t' float  "314.15926535e-10"
+-- Right 3.1415926535e-8
+--
+float :: (Stream s, NFData s) => Parser'S s Double
+float = read <$> (scientific <|> floatOnly)
+ where
+  scientific = (<>) <$> floatOnly <*> exponent'
+  floatOnly  = show <$> floating
+  exponent'  = (:) <$> oneOf "eE" <*> (show <$> integer)
+
+-- | Lexemes general form of floating number (including scientific form)
+--
+-- >>> t' (float' defaultDef)  "314.15926535e-10   "
+-- Right 3.1415926535e-8
+--
+float' :: (Stream s, NFData s) => Lexer s Double
+float' = lexeme float
+
+-- | Parses format of @'decimals'.'decimals'@
+-- (decimals + decimal point + decimal fractions)
+--
+-- >>> t' floating  "3.1415926535"
+-- Right 3.1415926535
+--
+floating :: (Stream s, NFData s) => Parser'S s Double
+floating = read <$> foldl1 (liftA2 (<>)) [digits, string ".", digits]
+  where digits = show <$> decimals
+
+-- | Lexemizes format of @'decimals'.'decimals'@
+-- (decimals + decimal point + decimal fractions)
+--
+-- >>> t' (floating' defaultDef) "3.1415926535   "
+-- Right 3.1415926535
+--
+floating' :: (Stream s, NFData s) => Lexer s Double
+floating' = lexeme floating
+
+
+sepByComma :: (Stream s, NFData s) => Parser'S s a -> Parser'S s [a]
+sepByComma p = sepBy p (token ",")

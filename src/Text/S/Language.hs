@@ -59,7 +59,7 @@ defaultDef = LanguageDef { defCaseSensitive     = True
                          , defIdentifierBegin   = ["_", "alpha"]
                          , defIdentifierName    = ["alphaNum"]
                          , defReservedSpecials  = []
-                         , defReservedNames     = ["francis", "sofia"]
+                         , defReservedNames     = ["sofia"]
                          }
 
 

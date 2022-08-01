@@ -316,7 +316,7 @@ parse parser state = runParser parser state fOk fError
   fOk    = Return . Ok
   fError = Return . Error
 
--- | The same to `parse`, but unwrap the @Return@ of parse result
+-- | The same to `parse`, but unwrap the @Return@ of the parse result
 parse' :: Parser'S s a -> State s -> Either ParseError a
 parse' parser = unwrap . parse parser
 
@@ -331,6 +331,7 @@ parseFromFile parser file = do
 t :: Parser'S String a -> String -> Return a String
 t parser s = parse parser (State s mempty)
 
+-- | The same to `t`, but unwrap the @Return@ of the parse result
 t' :: Parser'S String a -> String -> Either ParseError a
 t' parser = unwrap . t parser
 

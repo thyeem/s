@@ -28,9 +28,7 @@ import           Control.Monad                  ( MonadPlus(..)
                                                 , replicateM_
                                                 )
 import           Data.Foldable                  ( foldl' )
-import           Data.Functor                   ( ($>)
-                                                , (<&>)
-                                                )
+import           Data.Functor                   ( ($>) )
 import           Text.S.Internal
 
 
@@ -143,4 +141,4 @@ chainr1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
 chainr1 p op = g
  where
   g = p >>= go
-  go x = op >>= (\f -> g <&> f x)
+  go x = op >>= (\f -> f x <$> g)

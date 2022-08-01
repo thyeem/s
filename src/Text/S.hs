@@ -51,6 +51,8 @@ tf parser = do
   let state = initState file s
   return . parse parser $ state
 
+-----------------------------------------------------
+
 tp :: Parser'S String a -> String -> Return a String
 tp = t
 
@@ -64,4 +66,4 @@ q = do
   return str
 
 m :: Return String String
-m = t q "( /* Hahaha */ francis)"
+m = tp q "( '''Hahaha''' francis    )"
