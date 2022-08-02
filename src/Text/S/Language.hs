@@ -51,16 +51,16 @@ data LanguageDef = LanguageDef
 
 
 -- | Default Language definition
-defaultDef :: LanguageDef
-defaultDef = LanguageDef { defCaseSensitive     = True
-                         , defCommentBlockBegin = ["'''"]
-                         , defCommentBlockEnd   = ["'''"]
-                         , defCommentLine       = ["#"]
-                         , defIdentifierBegin   = ["_", "alpha"]
-                         , defIdentifierName    = ["alphaNum"]
-                         , defReservedSpecials  = []
-                         , defReservedNames     = ["sofia"]
-                         }
+defDef :: LanguageDef
+defDef = LanguageDef { defCaseSensitive     = True
+                     , defCommentBlockBegin = ["'''"]
+                     , defCommentBlockEnd   = ["'''"]
+                     , defCommentLine       = ["#"]
+                     , defIdentifierBegin   = ["_", "alpha"]
+                     , defIdentifierName    = ["alphaNum"]
+                     , defReservedSpecials  = []
+                     , defReservedNames     = ["sofia"]
+                     }
 
 
 -- | Language definition of Haskell 2010

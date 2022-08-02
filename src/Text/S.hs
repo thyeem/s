@@ -51,19 +51,10 @@ tf parser = do
   let state = initState file s
   return . parse parser $ state
 
------------------------------------------------------
+-- | Parser tester
+p :: Parser'S String a -> String -> Return a String
+p = t
 
-tp :: Parser'S String a -> String -> Return a String
-tp = t
-
-tl :: (LanguageDef -> Parser'S String a) -> String -> Return a String
-tl l = t (l defaultDef)
-
-q = do
-  _   <- token' "(" defaultDef
-  str <- identifier' defaultDef
-  _   <- token' ")" defaultDef
-  return str
-
-m :: Return String String
-m = tp q "( '''Hahaha''' francis    )"
+-- | Lexer tester
+l :: (LanguageDef -> Parser'S String a) -> String -> Return a String
+l l = t (l defDef)

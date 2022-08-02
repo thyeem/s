@@ -45,7 +45,7 @@ import           Control.Monad                  ( mzero )
 -- | lexing  | doing parse-job with parsers and /language definitions/        |
 -- +---------+----------------------------------------------------------------+
 --
--- - Main difference between `Lexer` and `Parser`
+-- - Main difference between @Lexer@ and @Parser@
 --
 -- +----------+--------------------------------------------------------+
 -- | @Parser@ | `LanguageDef`-independent and has a name of /funcName/ |
@@ -53,7 +53,12 @@ import           Control.Monad                  ( mzero )
 -- | @Lexer@  | `LanguageDef`-dependent and has a name of /funcName'/  |
 -- +----------+--------------------------------------------------------+
 --
--- @Parser@ = @Lexer@ + @LanguageDef@
+-- @
+-- __lexemeFunc__ /langDef/
+-- = `Lexer` `LanguageDef`
+-- = (`LanguageDef` -> `Parser'S`) `LanguageDef`
+-- = `Parser'S`
+-- @
 --
 type Lexer s a = LanguageDef -> Parser'S s a
 
@@ -61,147 +66,115 @@ type Lexer s a = LanguageDef -> Parser'S s a
 -- | Make a given parser @p@ a lexer or lexical-unit parser
 -- based on the given language definition
 lexeme :: (Stream s, NFData s) => Parser'S s a -> Lexer s a
-lexeme p def = p <* jump def
+lexeme p def = p <* skip def
 
 -- | Skips unnecesary whitespaces and comments
 --
--- >>> input = "# line-comment\n\r\n '''inner block''' end-of-jump"
--- >>> unwrap' $ t (jump defaultDef) input
--- "end-of-jump"
+-- >>> input = "# line-comment\n\r\n '''inner block''' should-be-here"
+-- >>> unwrap' $ t (skip defDef) input
+-- "should-be-here"
 --
-jump :: (Stream s, NFData s) => Lexer s ()
-jump def = skipMany $ jumpSpaces <|> jumpComments def
+skip :: (Stream s, NFData s) => Lexer s ()
+skip def = skipMany $ skipSpaces <|> skipComments' def
 
 -- | Skips whitespaces
-jumpSpaces :: (Stream s, NFData s) => Parser'S s ()
-jumpSpaces = skipSome space
+skipSpaces :: (Stream s, NFData s) => Parser'S s ()
+skipSpaces = skipSome space
 
 -- | Skips line and block comments
-jumpComments :: (Stream s, NFData s) => Lexer s ()
-jumpComments def = skipSome (commentLine def) <|> skipSome (commentBlock def)
+skipComments' :: (Stream s, NFData s) => Lexer s ()
+skipComments' def =
+  skipSome (commentLine' def) <|> skipSome (commentBlock' def)
 
--- | Lexemizes single-line comment
-commentLine :: (Stream s, NFData s) => Lexer s String
-commentLine def = p *> manyTill anychar eol
+-- | Parses single-line comment
+commentLine' :: (Stream s, NFData s) => Lexer s String
+commentLine' def = p *> manyTill anychar eol
   where p = choice $ string <$> defCommentLine def
 
--- | Lexemizes block comment
-commentBlock :: (Stream s, NFData s) => Lexer s String
-commentBlock def = bra *> manyTill anychar ket
+-- | Parses block comment
+commentBlock' :: (Stream s, NFData s) => Lexer s String
+commentBlock' def = bra *> manyTill anychar ket
  where
   bra = choice $ string <$> defCommentBlockBegin def
   ket = choice $ string <$> defCommentBlockEnd def
-
--- | Lexemizes an identifier based on the given `LanguageDef`
-identifier' :: (Stream s, NFData s) => Lexer s String
-identifier' def = do
-  let begin     = choice $ selectParser True <$> defIdentifierBegin def
-  let remainder = choice $ selectParser False <$> defIdentifierName def
-  found <- (<>) <$> begin <*> remainder
-  if isReserved found def
-    then fail $ unwords ["reserved identifier used:", show found]
-    else jump def $> found
-
--- | Check if a given name is already reserved in the language definition
-isReserved :: String -> LanguageDef -> Bool
-isReserved name def | caseSensitive = S.member name set
-                    | otherwise     = S.member (lower name) set
- where
-  lower         = (toLower <$>)
-  caseSensitive = defCaseSensitive def
-  reservedNames = defReservedNames def
-  set | caseSensitive = S.fromList reservedNames
-      | otherwise     = S.fromList $ lower <$> reservedNames
-
--- | Helper function:
-caseGuard :: (Stream s, NFData s) => Bool -> String -> Parser'S s String
-caseGuard caseSensitive s | caseSensitive = string s
-                          | otherwise     = mapM char' s
- where
-  char' c | isAlpha c = char (toLower c) <|> char (toUpper c)
-          | otherwise = char c
-
--- | Helper function:
-selectParser :: (Stream s, NFData s) => Bool -> String -> Parser'S s String
-selectParser beg x = case x of
-  "alpha"    -> f alpha
-  "alphaNum" -> f alphaNum
-  "letter"   -> f letter
-  "digit"    -> f digit
-  "lower"    -> f lower
-  "upper"    -> f upper
-  c          -> string c
-  where f = if beg then some else many
 
 -- | Parses any token to comsume. The same to `string`
 token :: (Stream s, NFData s) => String -> Parser'S s String
 token = string
 
--- | Lexemizes any lexemes to comsume.
+-- | Lexer form of `token`
 token' :: (Stream s, NFData s) => String -> Lexer s String
 token' t = lexeme (token t)
 
+-- |
+letters :: (Stream s, NFData s) => Parser'S s String
+letters = some letter
+
+-- | Lexer form of `letters`
+letters' :: (Stream s, NFData s) => Lexer s String
+letters' = lexeme letters
+
+-- |
+alphaNums :: (Stream s, NFData s) => Parser'S s String
+alphaNums = some alphaNum
+
+-- | Lexer form of `alphaNums`
+alphaNums' :: (Stream s, NFData s) => Lexer s String
+alphaNums' = lexeme alphaNums
+
+-- |
+digits :: (Stream s, NFData s) => Parser'S s String
+digits = some digit
+
+-- | Lexer form of `digits`
+digits' :: (Stream s, NFData s) => Lexer s String
+digits' = lexeme digits
+
 -- | Parses string between parentheses
 --
--- >>> t' (parens (some letter)) "(parser)"
+-- >>> t' (parens letters) "(parser)"
 -- Right "parser"
 --
 parens :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 parens = between (token "(") (token ")")
 
--- | Lexemizes string between parentheses
---
--- >>> t' (parens' (some letter) defaultDef) "(lexer)\n\r\n\t  "
--- Right "lexer"
---
+-- | Lexer form of `parens`
 parens' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 parens' p = lexeme (parens p)
 
 -- | Parses string between curly braces
 --
--- >>> t' (braces (some letter)) "{parser}"
+-- >>> t' (braces letters) "{parser}"
 -- Right "parser"
 --
 braces :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 braces = between (token "{") (token "}")
 
--- | Lexemizes string between curly braces
---
--- >>> t' (braces' (some letter) defaultDef) "{lexer}\n\r\n\t  "
--- Right "lexer"
---
+-- | Lexer form of `braces`
 braces' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 braces' p = lexeme (braces p)
 
 -- | Parses string between angle brackets
 --
--- >>> t' (angles (some letter)) "<parser>"
+-- >>> t' (angles letters) "<parser>"
 -- Right "parser"
 --
 angles :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 angles = between (token "<") (token ">")
 
--- | Lexemizes string between angle brackets
---
--- >>> t' (angles' (some letter) defaultDef) "<lexer>\n\r\n\t  "
--- Right "lexer"
---
+-- | Lexer form of `angles`
 angles' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 angles' p = lexeme (angles p)
 
 -- | Parses string between square brackets
 --
--- >>> t' (squares (some letter)) "[parser]"
+-- >>> t' (squares letters) "[parser]"
 -- Right "parser"
 --
 squares :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 squares = between (token "[") (token "]")
 
--- | Lexemizes string between square brackets
---
--- >>> t' (squares' (some letter) defaultDef) "[lexer]\n\r\n\t  "
--- Right "lexer"
---
+-- | Lexer form of `squares`
 squares' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 squares' p = lexeme (squares p)
 
@@ -212,14 +185,9 @@ squares' p = lexeme (squares p)
 -- Right 123456789
 --
 decimals :: (Stream s, NFData s) => Parser'S s Integer
-decimals = numbers 10 (some digit)
+decimals = numbers 10 digits
 
--- | Lexemizes natural numbers or decimal digits (base-10)
--- This includes numbers with leading zeros
---
--- >>> t' (decimals' defaultDef) "00123456789   "
--- Right 123456789
---
+-- | Lexer form of `decimals`
 decimals' :: (Stream s, NFData s) => Lexer s Integer
 decimals' = lexeme decimals
 
@@ -231,11 +199,7 @@ decimals' = lexeme decimals
 hexadecimals :: (Stream s, NFData s) => Parser'S s Integer
 hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
 
--- | Lexemizes hexadecimal digits (base-16)
---
--- >>> t' (hexadecimals' defaultDef) "0xCOVID-19"
--- Right 12
---
+-- | Lexer form of `hexadecimals`
 hexadecimals' :: (Stream s, NFData s) => Lexer s Integer
 hexadecimals' = lexeme hexadecimals
 
@@ -247,11 +211,7 @@ hexadecimals' = lexeme hexadecimals
 zeros :: (Stream s, NFData s) => Parser'S s Integer
 zeros = char '0' *> decimals
 
--- | Lexemizes numbers with leading-zeros
---
--- >>> t' (zeros' defaultDef) "000002022   "
--- Right 2022
---
+-- | Lexer form of `zeros`
 zeros' :: (Stream s, NFData s) => Lexer s Integer
 zeros' = lexeme zeros
 
@@ -263,15 +223,11 @@ zeros' = lexeme zeros
 natural :: (Stream s, NFData s) => Parser'S s Integer
 natural = try digit *> try (anycharBut '0') *> decimals
 
--- | Lexemizes natural numbers (non-leading zeros and signs)
---
--- >>> t' (natural' defaultDef) "2718284"
--- Right 2718284
---
+-- | Lexer form of `natural`
 natural' :: (Stream s, NFData s) => Lexer s Integer
 natural' = lexeme natural
 
--- | Parses a `sign` (+ or -) from an integer and lift it.
+-- | Parses a sign (@+@ or @-@) from an integer and lift its operation.
 --
 -- >>> t' (sign <*> decimals)  "-2022"
 -- Right (-2022)
@@ -279,29 +235,27 @@ natural' = lexeme natural
 sign :: (Stream s, NFData s) => Parser'S s (Integer -> Integer)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 
--- | Lexemizes a `sign` (+ or -) from an integer and lift it.
+-- | The same to `sign` but strip whitespaces between sign and digits.
 --
--- >>> t' (sign' defaultDef <*> decimals' defaultDef) "-  2022  "
+-- >>> t' (sign' defDef <*> decimals) "-  2022"
 -- Right (-2022)
 --
 sign' :: (Stream s, NFData s) => Lexer s (Integer -> Integer)
 sign' = lexeme sign
 
--- |
+-- | Parses an integer (sign + numbers, sign if any)
+--
 -- >>> t' integer  "-2022"
 -- Right (-2022)
 --
 integer :: (Stream s, NFData s) => Parser'S s Integer
 integer = sign <*> decimals
 
--- |
--- >>> t' (integer' defaultDef) "-  2022  "
--- Right (-2022)
---
+-- | Lexer form of `integer`
 integer' :: (Stream s, NFData s) => Lexer s Integer
-integer' def = sign' def <*> decimals' def
+integer' def = sign <*> decimals' def
 
--- | Parses consecutive (many) number-strings
+-- | Convert a string parser into integer parser by evaluating the parsed with base
 numbers
   :: (Stream s, NFData s) => Integer -> Parser'S s String -> Parser'S s Integer
 numbers base parser = foldl' f 0 <$> parser
@@ -319,11 +273,7 @@ float = read <$> (scientific <|> floatOnly)
   floatOnly  = show <$> floating
   exponent'  = (:) <$> oneOf "eE" <*> (show <$> integer)
 
--- | Lexemes general form of floating number (including scientific form)
---
--- >>> t' (float' defaultDef)  "314.15926535e-10   "
--- Right 3.1415926535e-8
---
+-- | Lexer form of `float`
 float' :: (Stream s, NFData s) => Lexer s Double
 float' = lexeme float
 
@@ -337,15 +287,49 @@ floating :: (Stream s, NFData s) => Parser'S s Double
 floating = read <$> foldl1 (liftA2 (<>)) [digits, string ".", digits]
   where digits = show <$> decimals
 
--- | Lexemizes format of @'decimals'.'decimals'@
--- (decimals + decimal point + decimal fractions)
---
--- >>> t' (floating' defaultDef) "3.1415926535   "
--- Right 3.1415926535
---
+-- | Lexer form of `floating`
 floating' :: (Stream s, NFData s) => Lexer s Double
 floating' = lexeme floating
 
+-- | Parses identifiers based on the given `LanguageDef`
+--
+-- >>> t' (identifier' defDef) "function(arg1, arg2)"
+-- Right "function"
+--
+identifier' :: (Stream s, NFData s) => Lexer s String
+identifier' def = do
+  let begin     = choice $ some . selectp <$> defIdentifierBegin def
+  let remainder = choice $ many . selectp <$> defIdentifierName def
+  found <- (<>) <$> begin <*> remainder
 
+  if isReserved found def
+    then fail $ unwords ["reserved identifier used:", show found]
+    else skip def $> found
+
+ where
+  isReserved name def | caseSensitive = S.member name set
+                      | otherwise     = S.member (lower name) set
+  lower         = (toLower <$>)
+  caseSensitive = defCaseSensitive def
+  reservedNames = defReservedNames def
+  set | caseSensitive = S.fromList reservedNames
+      | otherwise     = S.fromList $ lower <$> reservedNames
+
+-- | Parses operators or special-chars based on the given `LanguageDef`
+--
+-- >>> t' (digit *> skipSpaces *> operator' defDef) "3 + 4"
+-- Right "+"
+--
+operator' :: (Stream s, NFData s) => Lexer s String
+operator' def = do
+  op <- some special
+  if isReserved op def
+    then fail $ unwords ["reserved operator used:", show op]
+    else skip def $> op
+ where
+  isReserved o def = S.member o set
+  set = S.fromList (defReservedSpecials def)
+
+-- |
 sepByComma :: (Stream s, NFData s) => Parser'S s a -> Parser'S s [a]
 sepByComma p = sepBy p (token ",")
