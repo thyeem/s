@@ -200,7 +200,7 @@ noneOf :: (Stream s, NFData s) => [Char] -> Parser'S s Char
 noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
   where label'noneof = unwords ["none of", show ((: []) <$> cs)]
 
--- | Pick up one of prepared char-parsers by a string name
+-- | Picks up one of prepared char-parsers by a string name
 --
 -- >>> t' (many $ selectp "special") "@${select} parsers by strings"
 -- Right "@${"

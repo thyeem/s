@@ -39,25 +39,25 @@ import           Control.Monad                  ( mzero )
 --
 -- - A @Parser@ is a superset of a @Lexer@
 --
--- +---------+----------------------------------------------------------------+
--- | parsing | doing parse-job with primitive parsers and theirs combinations |
--- +---------+----------------------------------------------------------------+
--- | lexing  | doing parse-job with parsers and /language definitions/        |
--- +---------+----------------------------------------------------------------+
+-- +-----------+----------------------------------------------------------------+
+-- | @Parsing@ | Doing parse-job with primitive parsers and theirs combinations |
+-- +-----------+----------------------------------------------------------------+
+-- | @Lexing@  | Doing parse-job with parsers and /language definitions/        |
+-- +-----------+----------------------------------------------------------------+
 --
 -- - Main difference between @Lexer@ and @Parser@
 --
--- +----------+--------------------------------------------------------+
--- | @Parser@ | `LanguageDef`-independent and has a name of /funcName/ |
--- +----------+--------------------------------------------------------+
--- | @Lexer@  | `LanguageDef`-dependent and has a name of /funcName'/  |
--- +----------+--------------------------------------------------------+
+-- +----------+--------------------------------------------------------------------------+
+-- | @Parser@ | Independent of `LanguageDef` and has a name that looks like __funcName__ |
+-- +----------+--------------------------------------------------------------------------+
+-- | @Lexer@  | Dependent on `LanguageDef` and has a name that looks like __funcName'__  |
+-- +----------+--------------------------------------------------------------------------+
 --
 -- @
--- __lexemeFunc__ /langDef/
--- = `Lexer` `LanguageDef`
--- = (`LanguageDef` -> `Parser'S`) `LanguageDef`
--- = `Parser'S`
+-- (/Applying language definitions to the Lexer/)
+-- => `Lexer` `LanguageDef`
+-- => (`LanguageDef` -> `Parser'S` s a) `LanguageDef`
+-- => `Parser'S` s a
 -- @
 --
 type Lexer s a = LanguageDef -> Parser'S s a
@@ -102,7 +102,7 @@ commentBlock' def = bra *> manyTill anychar ket
 token :: (Stream s, NFData s) => String -> Parser'S s String
 token = string
 
--- | Lexer form of `token`
+-- | The `Lexer` form of `token`
 token' :: (Stream s, NFData s) => String -> Lexer s String
 token' t = lexeme (token t)
 
@@ -110,7 +110,7 @@ token' t = lexeme (token t)
 letters :: (Stream s, NFData s) => Parser'S s String
 letters = some letter
 
--- | Lexer form of `letters`
+-- | The `Lexer` form of `letters`
 letters' :: (Stream s, NFData s) => Lexer s String
 letters' = lexeme letters
 
@@ -118,7 +118,7 @@ letters' = lexeme letters
 alphaNums :: (Stream s, NFData s) => Parser'S s String
 alphaNums = some alphaNum
 
--- | Lexer form of `alphaNums`
+-- | The `Lexer` form of `alphaNums`
 alphaNums' :: (Stream s, NFData s) => Lexer s String
 alphaNums' = lexeme alphaNums
 
@@ -126,7 +126,7 @@ alphaNums' = lexeme alphaNums
 digits :: (Stream s, NFData s) => Parser'S s String
 digits = some digit
 
--- | Lexer form of `digits`
+-- | The `Lexer` form of `digits`
 digits' :: (Stream s, NFData s) => Lexer s String
 digits' = lexeme digits
 
@@ -138,7 +138,7 @@ digits' = lexeme digits
 parens :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 parens = between (token "(") (token ")")
 
--- | Lexer form of `parens`
+-- | The `Lexer` form of `parens`
 parens' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 parens' p = lexeme (parens p)
 
@@ -150,7 +150,7 @@ parens' p = lexeme (parens p)
 braces :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 braces = between (token "{") (token "}")
 
--- | Lexer form of `braces`
+-- | The `Lexer` form of `braces`
 braces' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 braces' p = lexeme (braces p)
 
@@ -162,7 +162,7 @@ braces' p = lexeme (braces p)
 angles :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 angles = between (token "<") (token ">")
 
--- | Lexer form of `angles`
+-- | The `Lexer` form of `angles`
 angles' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 angles' p = lexeme (angles p)
 
@@ -174,7 +174,7 @@ angles' p = lexeme (angles p)
 squares :: (Stream s, NFData s) => Parser'S s String -> Parser'S s String
 squares = between (token "[") (token "]")
 
--- | Lexer form of `squares`
+-- | The `Lexer` form of `squares`
 squares' :: (Stream s, NFData s) => Parser'S s String -> Lexer s String
 squares' p = lexeme (squares p)
 
@@ -187,7 +187,7 @@ squares' p = lexeme (squares p)
 decimals :: (Stream s, NFData s) => Parser'S s Integer
 decimals = numbers 10 digits
 
--- | Lexer form of `decimals`
+-- | The `Lexer` form of `decimals`
 decimals' :: (Stream s, NFData s) => Lexer s Integer
 decimals' = lexeme decimals
 
@@ -199,7 +199,7 @@ decimals' = lexeme decimals
 hexadecimals :: (Stream s, NFData s) => Parser'S s Integer
 hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
 
--- | Lexer form of `hexadecimals`
+-- | The `Lexer` form of `hexadecimals`
 hexadecimals' :: (Stream s, NFData s) => Lexer s Integer
 hexadecimals' = lexeme hexadecimals
 
@@ -211,7 +211,7 @@ hexadecimals' = lexeme hexadecimals
 zeros :: (Stream s, NFData s) => Parser'S s Integer
 zeros = char '0' *> decimals
 
--- | Lexer form of `zeros`
+-- | The `Lexer` form of `zeros`
 zeros' :: (Stream s, NFData s) => Lexer s Integer
 zeros' = lexeme zeros
 
@@ -223,7 +223,7 @@ zeros' = lexeme zeros
 natural :: (Stream s, NFData s) => Parser'S s Integer
 natural = try digit *> try (anycharBut '0') *> decimals
 
--- | Lexer form of `natural`
+-- | The `Lexer` form of `natural`
 natural' :: (Stream s, NFData s) => Lexer s Integer
 natural' = lexeme natural
 
@@ -251,7 +251,7 @@ sign' = lexeme sign
 integer :: (Stream s, NFData s) => Parser'S s Integer
 integer = sign <*> decimals
 
--- | Lexer form of `integer`
+-- | The `Lexer` form of `integer`
 integer' :: (Stream s, NFData s) => Lexer s Integer
 integer' def = sign <*> decimals' def
 
@@ -261,9 +261,9 @@ numbers
 numbers base parser = foldl' f 0 <$> parser
   where f x d = base * x + toInteger (digitToInt d)
 
--- | Parses general form of floating number (including scientific form)
+-- | Parses general form of floating numbers (including scientific form)
 --
--- >>> t' float  "314.15926535e-10"
+-- >>> t' float  "3.1415926535e-8"
 -- Right 3.1415926535e-8
 --
 float :: (Stream s, NFData s) => Parser'S s Double
@@ -273,7 +273,7 @@ float = read <$> (scientific <|> floatOnly)
   floatOnly  = show <$> floating
   exponent'  = (:) <$> oneOf "eE" <*> (show <$> integer)
 
--- | Lexer form of `float`
+-- | The `Lexer` form of `float`
 float' :: (Stream s, NFData s) => Lexer s Double
 float' = lexeme float
 
@@ -287,7 +287,7 @@ floating :: (Stream s, NFData s) => Parser'S s Double
 floating = read <$> foldl1 (liftA2 (<>)) [digits, string ".", digits]
   where digits = show <$> decimals
 
--- | Lexer form of `floating`
+-- | The `Lexer` form of `floating`
 floating' :: (Stream s, NFData s) => Lexer s Double
 floating' = lexeme floating
 
@@ -317,7 +317,7 @@ identifier' def = do
 
 -- | Parses operators or special-chars based on the given `LanguageDef`
 --
--- >>> t' (digit *> skipSpaces *> operator' defDef) "3 + 4"
+-- >>> t' (digits *> skipSpaces *> operator' defDef) "3 + 4"
 -- Right "+"
 --
 operator' :: (Stream s, NFData s) => Lexer s String
