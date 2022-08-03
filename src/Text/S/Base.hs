@@ -54,7 +54,7 @@ anychar = charParserOf (const True) <?> "all kinds of character"
 
 -- | Parses every single character except for a given character
 --
--- >>> t' (many $ anycharBut 's') "parser"
+-- >>> t' (some $ anycharBut 's') "parser"
 -- Right "par"
 --
 anycharBut :: (Stream s, NFData s) => Char -> Parser'S s Char
@@ -87,7 +87,7 @@ digit = charParserOf isDigit <?> "digit"
 
 -- | Parses any single hexadecimal number, @[0-9a-f]@
 --
--- >>> t' (many hexDigit) "f8f8f8xyz"
+-- >>> t' (some hexDigit) "f8f8f8xyz"
 -- Right "f8f8f8"
 --
 hexDigit :: (Stream s, NFData s) => Parser'S s Char
@@ -95,7 +95,7 @@ hexDigit = charParserOf isHexDigit <?> "hex-digit"
 
 -- | Parses any single alphabetical character, @[a-zA-Z]@
 --
--- >>> t' (many alpha) "stop COVID-19"
+-- >>> t' (some alpha) "stop COVID-19"
 -- Right "stop"
 --
 alpha :: (Stream s, NFData s) => Parser'S s Char
@@ -103,7 +103,7 @@ alpha = charParserOf isAlpha <?> "letter"
 
 -- | The same to @alpha@
 --
--- >>> t' (many letter) "COVID-19"
+-- >>> t' (some letter) "COVID-19"
 -- Right "COVID"
 --
 letter :: (Stream s, NFData s) => Parser'S s Char
@@ -111,7 +111,7 @@ letter = alpha
 
 -- | Parses any alphabetical or numeric character. @[0-9a-zA-Z]@
 --
--- >>> t' (many alphaNum) "year2022"
+-- >>> t' (some alphaNum) "year2022"
 -- Right "year2022"
 --
 alphaNum :: (Stream s, NFData s) => Parser'S s Char
@@ -119,7 +119,7 @@ alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
 
 -- | Parses any single lowercase letter, @[a-z]@
 --
--- >>> t' (many lower) "covID-19"
+-- >>> t' (some lower) "covID-19"
 -- Right "cov"
 --
 lower :: (Stream s, NFData s) => Parser'S s Char
@@ -127,7 +127,7 @@ lower = charParserOf isLower <?> "lowercase-letter"
 
 -- | Parses any single uppercase letter, @[A-Z]@
 --
--- >>> t' (many upper) "COVID-19"
+-- >>> t' (some upper) "COVID-19"
 -- Right "COVID"
 --
 upper :: (Stream s, NFData s) => Parser'S s Char
@@ -182,9 +182,21 @@ eol = (lf <|> crlf) <?> "end-of-line"
 space :: (Stream s, NFData s) => Parser'S s Char
 space = charParserOf isSpace <?> "space"
 
+-- | Checks if the `State` applied to the parser is reached to @EOF@ or /End-of-Stream/
+--
+-- >>> t' eof ""
+-- Right '\NUL'
+--
+eof :: (Stream s, NFData s) => Parser'S s Char
+eof = label "end-of-stream" $ do
+  s <- assert anystring
+  if null s
+    then return '\NUL'
+    else fail $ unwords ["EOF not found. Found char:", show . head $ s]
+
 -- | Parses if a character on parsing is in the given char-list
 --
--- >>> t' (many $ oneOf "francis") "ansi"
+-- >>> t' (some $ oneOf "francis") "ansi"
 -- Right "ansi"
 --
 oneOf :: (Stream s, NFData s) => [Char] -> Parser'S s Char
@@ -193,7 +205,7 @@ oneOf cs = charParserOf (`elem` cs) <?> label'oneof
 
 -- | Parses if a character on parsing is NOT in the given char-list
 --
--- >>> t' (many $ noneOf "francis") "gold"
+-- >>> t' (some $ noneOf "francis") "gold"
 -- Right "gold"
 --
 noneOf :: (Stream s, NFData s) => [Char] -> Parser'S s Char
@@ -202,7 +214,7 @@ noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
 
 -- | Picks up one of prepared char-parsers by a string name
 --
--- >>> t' (many $ selectp "special") "@${select} parsers by strings"
+-- >>> t' (some $ selectp "special") "@${select} parsers by strings"
 -- Right "@${"
 --
 selectp :: (Stream s, NFData s) => String -> Parser'S s Char
@@ -219,4 +231,4 @@ selectp x = case x of
   "special"     -> special
   "anychar"     -> anychar
   c | length c == 1 -> char . head $ c
-    | otherwise     -> error $ unwords ["not found such parsers: ", c]
+    | otherwise     -> error $ unwords ["not found parser such as: ", c]

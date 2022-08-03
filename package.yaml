@@ -29,6 +29,7 @@ dependencies:
 # - docopt >= 0.7.0.6
 
 default-extensions:
+- Trustworthy
 - BangPatterns
 - DataKinds
 - RankNTypes

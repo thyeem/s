@@ -51,10 +51,6 @@ tf parser = do
   let state = initState file s
   return . parse parser $ state
 
--- | Parser tester
-p :: Parser'S String a -> String -> Return a String
-p = t
-
 -- | Lexer tester
-l :: (LanguageDef -> Parser'S String a) -> String -> Return a String
-l l = t (l defDef)
+tl :: (LanguageDef -> Parser'S String a) -> String -> Return a String
+tl l = t (l defDef)

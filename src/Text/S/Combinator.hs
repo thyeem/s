@@ -36,7 +36,7 @@ import           Text.S.Internal
 -------------------------
 -- parser combinators
 -------------------------
--- | Try to parse with parsers in the list untill one of them succeeds
+-- | Tries to parse with parsers in the list untill one of them succeeds
 --
 -- >>> t' (choice [letter, special, digit]) "$parser"
 -- Right '$'
@@ -44,7 +44,13 @@ import           Text.S.Internal
 choice :: MonadPlus m => [m a] -> m a
 choice = foldl' (<|>) mzero
 
--- |
+-- | Firstly tries to parse with parser @p@. If failed, it returns @x@.
+--
+-- This is useful to set default value of parser @p@.
+--
+-- >>> t' (option "Mars" spaces) "nuclear-bomb-explosion -> Earth"
+-- Right "Mars"
+--
 option :: MonadPlus m => a -> m a -> m a
 option x p = p <|> return x
 
@@ -57,14 +63,27 @@ optionMaybe :: MonadPlus m => m a -> m (Maybe a)
 optionMaybe p = option Nothing (Just <$> p)
 
 -- |
-between :: MonadPlus m => m b -> m b -> m a -> m a
+between :: MonadPlus m => m o -> m c -> m a -> m a
 between bra ket p = bra *> p <* ket
 
 -- |
+--
+-- See also `sepBy1`.
+--
+-- >>> t' (sepBy decimals (token ",")) "1,2,3,4,5"
+-- Right [1,2,3,4,5]
+--
+-- >>> t' (sepBy decimals (token ".")) "1,2,3,4,5"
+-- Right []
+--
 sepBy :: MonadPlus m => m a -> m b -> m [a]
 sepBy p sep = sepBy1 p sep <|> pure []
 
 -- |
+--
+-- >>> t' (sepBy1 (some $ anycharBut 'a') (token "a")) "parser combinator"
+-- Right ["p","rser combin","tor"]
+--
 sepBy1 :: MonadPlus m => m a -> m b -> m [a]
 sepBy1 p sep = liftA2 (:) p (some (sep *> p))
 

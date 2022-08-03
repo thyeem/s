@@ -47,11 +47,13 @@ module Text.S.Internal
   , t'
   , unwrap
   , unwrap'
-  , try
+  , assert
   , charParserOf
   ) where
 
-import           Control.Applicative            ( Alternative(..) )
+import           Control.Applicative            ( Alternative(..)
+                                                , liftA2
+                                                )
 import           Control.DeepSeq                ( NFData
                                                 , force
                                                 )
@@ -240,12 +242,14 @@ newtype Parser'S s a = Parser'S {
     }
 
 
--- | infix operator of label
+-- | infix operator of flipped `label`
 (<?>) :: Parser'S s a -> String -> Parser'S s a
-(<?>) = label
+(<?>) = flip label
 
-label :: Parser'S s a -> String -> Parser'S s a
-label parser msg = Parser'S $ \state@(State _ src) fOk fError ->
+
+-- |
+label :: String -> Parser'S s a -> Parser'S s a
+label msg parser = Parser'S $ \state@(State _ src) fOk fError ->
   let fError' err = fError (err <> expected)
       expected = expectedError src $ unwords ["->", "expected:", msg]
   in  runParser parser state fOk fError'
@@ -345,12 +349,17 @@ unwrap (Return r _) = case r of
 unwrap' :: Stream s => Return a s -> s
 unwrap' (Return _ (State s _)) = s
 
--- | Attempts a parse without comsuming any input
-try :: Parser'S s a -> Parser'S s a
-try parser = Parser'S $ \state fOk fError ->
+-- | Tries to parse without comsuming any input
+assert :: Parser'S s a -> Parser'S s a
+assert parser = Parser'S $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError
 
--- | Gets a char parser that satisfies the given predicate
+-- | Gets a char parser that satisfies the given predicate.
+--
+-- This function describes parsing works at the fundamental level.
+--
+-- Here is where every parsing jobs begin.
+--
 charParserOf :: (Stream s, NFData s) => (Char -> Bool) -> Parser'S s Char
 charParserOf predicate = Parser'S $ \state@(State stream src) fOk fError ->
   case unCons stream of

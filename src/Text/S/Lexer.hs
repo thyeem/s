@@ -20,6 +20,7 @@ import           Control.DeepSeq                ( NFData
                                                 )
 import           Data.Char                      ( digitToInt
                                                 , isAlpha
+                                                , readLitChar
                                                 , toLower
                                                 , toUpper
                                                 )
@@ -130,6 +131,22 @@ digits = some digit
 digits' :: (Stream s, NFData s) => Lexer s String
 digits' = lexeme digits
 
+-- |
+specials :: (Stream s, NFData s) => Parser'S s String
+specials = some special
+
+-- | The `Lexer` form of `specials`
+specials' :: (Stream s, NFData s) => Lexer s String
+specials' = lexeme specials
+
+-- |
+spaces :: (Stream s, NFData s) => Parser'S s String
+spaces = some space
+
+-- | The `Lexer` form of `spaces``
+spaces' :: (Stream s, NFData s) => Lexer s String
+spaces' = lexeme spaces
+
 -- | Parses string between parentheses
 --
 -- >>> t' (parens letters) "(parser)"
@@ -221,32 +238,32 @@ zeros' = lexeme zeros
 -- Right 27182818284
 --
 natural :: (Stream s, NFData s) => Parser'S s Integer
-natural = try digit *> try (anycharBut '0') *> decimals
+natural = assert digit *> assert (anycharBut '0') *> decimals
 
 -- | The `Lexer` form of `natural`
 natural' :: (Stream s, NFData s) => Lexer s Integer
 natural' = lexeme natural
 
--- | Parses a sign (@+@ or @-@) from an integer and lift its operation.
+-- | Parses a sign (@+@ or @-@) and lift the corresponding function.
 --
--- >>> t' (sign <*> decimals)  "-2022"
--- Right (-2022)
+-- >>> t' (sign <*> floating)  "-273.15 in Celsius"
+-- Right (-273.15)
 --
-sign :: (Stream s, NFData s) => Parser'S s (Integer -> Integer)
+sign :: (Stream s, NFData s, Num a) => Parser'S s (a -> a)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 
--- | The same to `sign` but strip whitespaces between sign and digits.
+-- | The same to `sign` but strip whitespaces between sign and numbers.
 --
--- >>> t' (sign' defDef <*> decimals) "-  2022"
--- Right (-2022)
+-- >>> t' (sign' defDef <*> floating)  "-  273.15 in Celsius"
+-- Right (-273.15)
 --
-sign' :: (Stream s, NFData s) => Lexer s (Integer -> Integer)
+sign' :: (Stream s, NFData s, Num a) => Lexer s (a -> a)
 sign' = lexeme sign
 
 -- | Parses an integer (sign + numbers, sign if any)
 --
--- >>> t' integer  "-2022"
--- Right (-2022)
+-- >>> t' (sign <*> integer)  "-273.15 in Celsius"
+-- Right (-273)
 --
 integer :: (Stream s, NFData s) => Parser'S s Integer
 integer = sign <*> decimals
@@ -322,7 +339,7 @@ identifier' def = do
 --
 operator' :: (Stream s, NFData s) => Lexer s String
 operator' def = do
-  op <- some special
+  op <- specials
   if isReserved op def
     then fail $ unwords ["reserved operator used:", show op]
     else skip def $> op
@@ -331,5 +348,34 @@ operator' def = do
   set = S.fromList (defReservedSpecials def)
 
 -- |
-sepByComma :: (Stream s, NFData s) => Parser'S s a -> Parser'S s [a]
-sepByComma p = sepBy p (token ",")
+--
+-- split-by-comma = splitBy (token ",")
+-- split-by-semi  = splitBy (token ";")
+-- split-by-space = splitBy spaces
+--
+-- >>> parserArgs = splitBy (token ",") alphaNums
+-- >>> t' (token "(" *> parserArgs <* token ")") "(arg1,arg2,arg3)"
+-- Right ["arg1","arg2","arg3"]
+--
+splitBy
+  :: (Stream s, NFData s) => Parser'S s String -> Parser'S s a -> Parser'S s [a]
+splitBy = flip sepBy1
+
+-- |
+charLit' :: (Stream s, NFData s) => Lexer s Char
+charLit' = lexeme (char '\'' *> undefined <* char '\'')
+
+-- |
+stringLit' :: (Stream s, NFData s) => Lexer s String
+stringLit' def = char '"' *> manyTill (charLit' def) (char '"')
+
+-- |
+-- charLit :: (Stream s, NFData s) => Parser'S s Char
+-- charLit = do
+  -- _ <- char '\''
+  -- readLitChar
+  -- _ <- char '\''
+
+-- |
+-- stringLit :: (Stream s, NFData s) => Parser'S s String
+-- stringLit def = char '"' *> manyTill charLit (char '"')
