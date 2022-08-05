@@ -77,7 +77,7 @@ string = mapM char
 anystring :: (Stream s, NFData s) => Parser'S s String
 anystring = many anychar
 
--- | Parses any single digit, @[0-9]@
+-- | Parses any single digit, the same as @[0-9]@
 --
 -- >>> t' digit "3.1415926535"
 -- Right '3'
@@ -85,7 +85,7 @@ anystring = many anychar
 digit :: (Stream s, NFData s) => Parser'S s Char
 digit = charParserOf isDigit <?> "digit"
 
--- | Parses any single hexadecimal number, @[0-9a-f]@
+-- | Parses any single hexadecimal number, the same as @[0-9a-f]@
 --
 -- >>> t' (some hexDigit) "f8f8f8xyz"
 -- Right "f8f8f8"
@@ -93,7 +93,7 @@ digit = charParserOf isDigit <?> "digit"
 hexDigit :: (Stream s, NFData s) => Parser'S s Char
 hexDigit = charParserOf isHexDigit <?> "hex-digit"
 
--- | Parses any single alphabetical character, @[a-zA-Z]@
+-- | Parses any single alphabetical character, the same as @[a-zA-Z]@
 --
 -- >>> t' (some alpha) "stop COVID-19"
 -- Right "stop"
@@ -109,7 +109,7 @@ alpha = charParserOf isAlpha <?> "letter"
 letter :: (Stream s, NFData s) => Parser'S s Char
 letter = alpha
 
--- | Parses any alphabetical or numeric character. @[0-9a-zA-Z]@
+-- | Parses any alphabetical or numeric character, the same as @[0-9a-zA-Z]@
 --
 -- >>> t' (some alphaNum) "year2022"
 -- Right "year2022"
@@ -117,7 +117,7 @@ letter = alpha
 alphaNum :: (Stream s, NFData s) => Parser'S s Char
 alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
 
--- | Parses any single lowercase letter, @[a-z]@
+-- | Parses any single lowercase letter, the same as @[a-z]@
 --
 -- >>> t' (some lower) "covID-19"
 -- Right "cov"
@@ -125,7 +125,7 @@ alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
 lower :: (Stream s, NFData s) => Parser'S s Char
 lower = charParserOf isLower <?> "lowercase-letter"
 
--- | Parses any single uppercase letter, @[A-Z]@
+-- | Parses any single uppercase letter, the same as @[A-Z]@
 --
 -- >>> t' (some upper) "COVID-19"
 -- Right "COVID"
@@ -166,7 +166,7 @@ lf = char '\n' <?> "linefeed"
 crlf :: (Stream s, NFData s) => Parser'S s Char
 crlf = (char '\r' *> char '\n') <?> "carriage-return + linefeed"
 
--- | Parses end-of-line character, @[LF | CRLF]@
+-- | Parses end-of-line character, the same as @[LF | CRLF]@
 --
 -- >>> t' (string "stop" >> some eol) "stop\n\r\nCOVID-19"
 -- Right "\n\n"
@@ -196,8 +196,8 @@ eof = label "end-of-stream" $ do
 
 -- | Parses if a character on parsing is in the given char-list
 --
--- >>> t' (some $ oneOf "francis") "ansi"
--- Right "ansi"
+-- >>> t' (some $ oneOf "francis") "ascii-character-table"
+-- Right "ascii"
 --
 oneOf :: (Stream s, NFData s) => [Char] -> Parser'S s Char
 oneOf cs = charParserOf (`elem` cs) <?> label'oneof
@@ -205,8 +205,8 @@ oneOf cs = charParserOf (`elem` cs) <?> label'oneof
 
 -- | Parses if a character on parsing is NOT in the given char-list
 --
--- >>> t' (some $ noneOf "francis") "gold"
--- Right "gold"
+-- >>> t' (some $ noneOf "francis") "goldberg-variation"
+-- Right "goldbe"
 --
 noneOf :: (Stream s, NFData s) => [Char] -> Parser'S s Char
 noneOf cs = charParserOf (`notElem` cs) <?> label'noneof

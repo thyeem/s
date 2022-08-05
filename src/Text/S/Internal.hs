@@ -356,9 +356,9 @@ assert parser = Parser'S $ \state fOk fError ->
 
 -- | Gets a char parser that satisfies the given predicate.
 --
--- This function describes parsing works at the fundamental level.
+-- This function describes every parsing work at a fundamental level.
 --
--- Here is where every parsing jobs begin.
+-- Here is where each parsing job starts.
 --
 charParserOf :: (Stream s, NFData s) => (Char -> Bool) -> Parser'S s Char
 charParserOf predicate = Parser'S $ \state@(State stream src) fOk fError ->
