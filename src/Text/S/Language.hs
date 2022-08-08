@@ -21,6 +21,14 @@ data LanguageDef = LanguageDef
     defCaseSensitive     :: Bool
   ,
 
+    -- | Characters assigned to indicate char literal region
+    defCharLiteralMark   :: String
+  ,
+
+    -- | Characters assigned to indicate string literal region
+    defStringLiteralMark :: String
+  ,
+
     -- | Characters assigned to start a block comment
     defCommentBlockBegin :: [String]
   ,
@@ -53,6 +61,8 @@ data LanguageDef = LanguageDef
 -- | Default Language definition
 defDef :: LanguageDef
 defDef = LanguageDef { defCaseSensitive     = True
+                     , defCharLiteralMark   = "'"
+                     , defStringLiteralMark = "\""
                      , defCommentBlockBegin = ["'''"]
                      , defCommentBlockEnd   = ["'''"]
                      , defCommentLine       = ["#"]
@@ -67,6 +77,8 @@ defDef = LanguageDef { defCaseSensitive     = True
 haskellDef :: LanguageDef
 haskellDef = LanguageDef
   { defCaseSensitive     = True
+  , defCharLiteralMark   = "'"
+  , defStringLiteralMark = "\""
   , defCommentBlockBegin = ["{-"]
   , defCommentBlockEnd   = ["-}"]
   , defCommentLine       = ["--"]
@@ -140,6 +152,8 @@ haskellDef = LanguageDef
 javaDef :: LanguageDef
 javaDef = LanguageDef
   { defCaseSensitive     = True
+  , defCharLiteralMark   = "'"
+  , defStringLiteralMark = "\""
   , defCommentBlockBegin = ["/*"]
   , defCommentBlockEnd   = ["*/"]
   , defCommentLine       = ["//"]

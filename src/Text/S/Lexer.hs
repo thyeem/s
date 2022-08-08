@@ -361,21 +361,38 @@ splitBy
   :: (Stream s, NFData s) => Parser'S s String -> Parser'S s a -> Parser'S s [a]
 splitBy = flip sepBy1
 
--- |
+-- | Parses a single @char literal@
+--
+-- >>> stream = "'\CR', a carriage-return or '\LF', a line-feed?"
+-- >>> t' charLit stream
+-- Right '\r'
+--
+charLit :: (Stream s, NFData s) => Parser'S s Char
+charLit = string "'" *> readChar <* string "'"
+
+-- | The same as `charLit`, but this reads /char-literal mark/ from `LanguageDef`
 charLit' :: (Stream s, NFData s) => Lexer s Char
-charLit' = lexeme (char '\'' *> undefined <* char '\'')
+charLit' def = lexeme (string mark *> readChar <* string mark) def
+  where mark = defCharLiteralMark def
 
--- |
+-- | Parses a single @string literal@
+--
+-- >>> stream = "\"'\CR', a carriage-return or '\LF', a line-feed?\""
+-- >>> t' stringLit stream
+-- Right "'\r', a carriage-return or '\n', a line-feed?"
+--
+stringLit :: (Stream s, NFData s) => Parser'S s String
+stringLit = string "\"" *> manyTill readChar (string "\"")
+
+-- | The same as `stringLit`, but this reads /string-literal mark/ from `LanguageDef`
 stringLit' :: (Stream s, NFData s) => Lexer s String
-stringLit' def = char '"' *> manyTill (charLit' def) (char '"')
+stringLit' def = lexeme (string mark *> manyTill readChar (string mark)) def
+  where mark = defStringLiteralMark def
 
 -- |
--- charLit :: (Stream s, NFData s) => Parser'S s Char
--- charLit = do
-  -- _ <- char '\''
-  -- readLitChar
-  -- _ <- char '\''
-
--- |
--- stringLit :: (Stream s, NFData s) => Parser'S s String
--- stringLit def = char '"' *> manyTill charLit (char '"')
+readChar :: (Stream s, NFData s) => Parser'S s Char
+readChar = do
+  s <- assert $ count 5 (eof <|> anychar)
+  case readLitChar s of
+    [(a, s')] -> a <$ skipCount (length s - length s') anychar
+    _         -> fail "failed to read any char literal"
