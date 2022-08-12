@@ -54,7 +54,11 @@ choice = foldl' (<|>) mzero
 option :: MonadPlus m => a -> m a -> m a
 option x p = p <|> return x
 
--- |
+-- | Tries to parse @n@-times with the given parser. The same as `replicateM`
+--
+-- >>> t' (count 6 letter) "parser-combinator"
+-- Right "parser"
+--
 count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
 
