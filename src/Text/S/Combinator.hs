@@ -62,7 +62,15 @@ option x p = p <|> return x
 count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
 
--- |
+-- | Tries to parse with parser @p@. If failed, it returns `Nothing`
+-- otherwise, it returns `Just`-wrapped parser @p@
+--
+-- >>> t' (optionMaybe digits) "COVID-19"
+-- Right Nothing
+--
+-- >>> t' (optionMaybe letters) "COVID-19"
+-- Right (Just "COVID")
+--
 optionMaybe :: MonadPlus m => m a -> m (Maybe a)
 optionMaybe p = option Nothing (Just <$> p)
 
