@@ -74,8 +74,14 @@ count = replicateM
 optionMaybe :: MonadPlus m => m a -> m (Maybe a)
 optionMaybe p = option Nothing (Just <$> p)
 
--- |
-between :: MonadPlus m => m o -> m c -> m a -> m a
+-- | Tries to parse with parser @p@, which is between the given two parsers,
+-- /opener/ @bra@ and /closer/ @ket@.
+--
+-- >>> p = some $ digit <|> char ','
+-- >>> t' (between (token "[") (token "]") p) "[1,2,3,4]"
+-- Right "1,2,3,4"
+--
+between :: MonadPlus m => m bra -> m ket -> m a -> m a
 between bra ket p = bra *> p <* ket
 
 -- |
