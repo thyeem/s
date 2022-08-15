@@ -84,7 +84,7 @@ optionMaybe p = option Nothing (Just <$> p)
 between :: MonadPlus m => m bra -> m ket -> m a -> m a
 between bra ket p = bra *> p <* ket
 
--- |
+-- | Parses 0+ occurrences of parser @p@, separated by separator @sep@.
 --
 -- See also `sepBy1`.
 --
@@ -97,7 +97,9 @@ between bra ket p = bra *> p <* ket
 sepBy :: MonadPlus m => m a -> m b -> m [a]
 sepBy p sep = sepBy1 p sep <|> pure []
 
--- |
+-- | Parses 1+ occurrences of parser @p@, separated by separator @sep@
+--
+-- See the difference with `endBy1`
 --
 -- >>> t' (sepBy1 (some $ anycharBut 'a') (token "a")) "parser combinator"
 -- Right ["p","rser combin","tor"]
@@ -105,17 +107,26 @@ sepBy p sep = sepBy1 p sep <|> pure []
 sepBy1 :: MonadPlus m => m a -> m b -> m [a]
 sepBy1 p sep = liftA2 (:) p (some (sep *> p))
 
--- | Parses 0+ occurrences of parser @p@, ended by separator @sep@
+-- | Parses 0+ occurrences of parser @p@, ended by separator @sep@.
 --
--- >>> :{
---   t' (endBy (many alphaNum) (char ';'))
---      "statement1;statement2;statement3;"
--- :}
+-- See also `endBy1`.
+--
+-- >>> t' (endBy alphaNums (char ';')) "statement1;statement2;statement3;"
 -- Right ["statement1","statement2","statement3"]
+--
+-- >>> t' (endBy alphaNums (char ':')) "statement1;statement2;statement3;"
+-- Right []
 --
 endBy :: MonadPlus m => m a -> m b -> m [a]
 endBy p sep = many (p <* sep)
 
+-- | Parses 1+ occurrences of parser @p@, ended by separator @sep@
+--
+-- See the difference with `sepBy1`
+--
+-- >>> t' (endBy1 (some $ anycharBut 'a') (token "a")) "parser combinator"
+-- Right ["p","rser combin"]
+--
 endBy1 :: MonadPlus m => m a -> m b -> m [a]
 endBy1 p sep = some (p <* sep)
 
