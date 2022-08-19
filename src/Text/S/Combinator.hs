@@ -28,7 +28,9 @@ import           Control.Monad                  ( MonadPlus(..)
                                                 , replicateM_
                                                 )
 import           Data.Foldable                  ( foldl' )
-import           Data.Functor                   ( ($>) )
+import           Data.Functor                   ( ($>)
+                                                , void
+                                                )
 import           Text.S.Internal
 
 
@@ -78,7 +80,7 @@ optionMaybe p = option Nothing (Just <$> p)
 -- /opener/ @bra@ and /closer/ @ket@.
 --
 -- >>> p = some $ digit <|> char ','
--- >>> t' (between (token "[") (token "]") p) "[1,2,3,4]"
+-- >>> t' (between (symbol "[") (symbol "]") p) "[1,2,3,4]"
 -- Right "1,2,3,4"
 --
 between :: MonadPlus m => m bra -> m ket -> m a -> m a
@@ -88,10 +90,10 @@ between bra ket p = bra *> p <* ket
 --
 -- See also `sepBy1`.
 --
--- >>> t' (sepBy decimals (token ",")) "1,2,3,4,5"
+-- >>> t' (sepBy decimals (symbol ",")) "1,2,3,4,5"
 -- Right [1,2,3,4,5]
 --
--- >>> t' (sepBy decimals (token ".")) "1,2,3,4,5"
+-- >>> t' (sepBy decimals (symbol ".")) "1,2,3,4,5"
 -- Right []
 --
 sepBy :: MonadPlus m => m a -> m b -> m [a]
@@ -101,7 +103,7 @@ sepBy p sep = sepBy1 p sep <|> pure []
 --
 -- See the difference with `endBy1`
 --
--- >>> t' (sepBy1 (some $ anycharBut 'a') (token "a")) "parser combinator"
+-- >>> t' (sepBy1 (some $ anycharBut 'a') (symbol "a")) "parser combinator"
 -- Right ["p","rser combin","tor"]
 --
 sepBy1 :: MonadPlus m => m a -> m b -> m [a]
@@ -124,40 +126,55 @@ endBy p sep = many (p <* sep)
 --
 -- See the difference with `sepBy1`
 --
--- >>> t' (endBy1 (some $ anycharBut 'a') (token "a")) "parser combinator"
+-- >>> t' (endBy1 (some $ anycharBut 'a') (symbol "a")) "parser combinator"
 -- Right ["p","rser combin"]
 --
 endBy1 :: MonadPlus m => m a -> m b -> m [a]
 endBy1 p sep = some (p <* sep)
 
--- | Apply parser @p@ 0+ times until parser @end@ succeeds
+-- | Applies parser @p@ 0+ times until parser @end@ succeeds
 --
--- >>> :{
---   t' (string "{-" >> manyTill anychar (string "-}"))
---      "{- haskell block comment here -}"
--- :}
+-- See also `someTill`.
+--
+-- >>> p = string "{-" *> manyTill anychar (string "-}")
+-- >>> t' p "{- haskell block comment here -}"
 -- Right " haskell block comment here "
+--
+-- >>> q = string "{-" *> manyTill special (string "-}")
+-- >>> t' q "{--}"
+-- Right ""
 --
 manyTill :: MonadPlus m => m a -> m b -> m [a]
 manyTill p end = go where go = (end $> []) <|> liftA2 (:) p go
 
--- |
+-- | Applies parser @p@ 1+ times until parser @end@ succeeds
+--
+-- >>> p = someTill (letter <|> space) (string ":")
+-- >>> t' p "for x in xs: f(x)"
+-- Right "for x in xs"
+--
 someTill :: MonadPlus m => m a -> m b -> m [a]
 someTill p end = liftA2 (:) p (manyTill p end)
 
--- |
+-- | Tries to parse with parser @p@. If exists, consume it. Otherwise ignore it.
+--
 skipOptional :: MonadPlus m => m a -> m ()
-skipOptional p = () <$ p <|> pure ()
+skipOptional p = void p <|> pure ()
 
--- |
+-- | Applies parser @p@ 0+ times, then skips the results.
+--
 skipMany :: MonadPlus m => m a -> m ()
-skipMany p = () <$ many p
+skipMany = void . many
 
--- |
+-- | Applies parser @p@ 1+ times, then skips the results.
+--
 skipSome :: MonadPlus m => m a -> m ()
 skipSome p = p *> skipMany p
 
--- |
+-- | Tries to parse @n@-times with the given parser.
+--
+-- The same as `count`, but this skips the results.
+--
 skipCount :: MonadPlus m => Int -> m a -> m ()
 skipCount = replicateM_
 
@@ -176,8 +193,11 @@ chainl p op x = option x (chainl1 p op)
 
 -- |
 chainl1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
-chainl1 p op = p >>= go
-  where go x = (op >>= (\f -> p >>= go . f x)) <|> pure x
+-- chainl1 p op = p >>= go
+  -- where go x = (op >>= (\f -> p >>= go . f x)) <|> pure x
+
+chainl1 p op = p >>= chainl p op
+  -- where go x = (op >>= (\f -> p >>= go . f x)) <|> pure x
 
 -- | Parses 0+ occurrences of @p@
 -- chainr p op x = chainlr p op <|> return x

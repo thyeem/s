@@ -28,19 +28,19 @@ import           Text.S.Lexer
 
 
 -- | Parser using String or [Char]
-type Parser = Parser'S String
+type Parser = ParserS String
 
 -- | Parser using ByteString in Data.ByteString.Char8
-type ParserB = Parser'S ByteString'
+type Parser'B = ParserS ByteString
 
 -- | Parser using Lazy ByteString in Data.ByteString.Lazy.Char8
-type ParserB' = Parser'S LazyByteString'
+type Parser'BL = ParserS LazyByteString
 
 -- | Parser using Text in Data.Text
-type ParserT = Parser'S Text'
+type Parser'T = ParserS Text
 
 -- | Parser using Text in Data.Text.Lazy
-type ParserT' = Parser'S LazyText'
+type Parser'TL = ParserS LazyText
 
 
 -- | test function (will be erased)
@@ -52,5 +52,5 @@ tf parser = do
   return . parse parser $ state
 
 -- | Lexer tester
-tl :: (LanguageDef -> Parser'S String a) -> String -> Return a String
+tl :: (LanguageDef -> ParserS String a) -> String -> Return a String
 tl l = t (l defDef)

@@ -74,8 +74,8 @@ defDef = LanguageDef { defCaseSensitive     = True
 
 
 -- | Language definition of Haskell 2010
-haskellDef :: LanguageDef
-haskellDef = LanguageDef
+haskelldef :: LanguageDef
+haskelldef = LanguageDef
   { defCaseSensitive     = True
   , defCharLiteralMark   = "'"
   , defStringLiteralMark = "\""

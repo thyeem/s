@@ -14,10 +14,10 @@
 -----------------------------------------------------------------------------
 
 module Text.S.Internal
-  ( ByteString'
-  , LazyByteString'
-  , Text'
-  , LazyText'
+  ( ByteString
+  , LazyByteString
+  , Text
+  , LazyText
   , Stream(..)
   , reduceStream
   , Source(..)
@@ -35,7 +35,7 @@ module Text.S.Internal
   , Return(..)
   , State(..)
   , initState
-  , Parser'S(..)
+  , ParserS(..)
   , (<|>)
   , empty
   , (<?>)
@@ -59,25 +59,25 @@ import           Control.DeepSeq                ( NFData
                                                 )
 import           Control.Monad                  ( MonadPlus(..) )
 import qualified Data.ByteString.Char8         as C
-import qualified Data.ByteString.Lazy.Char8    as C'
+import qualified Data.ByteString.Lazy.Char8    as CL
 import           Data.List                      ( intercalate
                                                 , uncons
                                                 )
 import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as TIO
-import qualified Data.Text.Lazy                as T'
-import qualified Data.Text.Lazy.IO             as TIO'
+import qualified Data.Text.Lazy                as TL
+import qualified Data.Text.Lazy.IO             as TLIO
 import           GHC.Generics                   ( Generic )
 import           System.IO                      ( readFile )
 
 
-type ByteString' = C.ByteString
+type ByteString = C.ByteString
 
-type LazyByteString' = C'.ByteString
+type LazyByteString = CL.ByteString
 
-type Text' = T.Text
+type Text = T.Text
 
-type LazyText' = T'.Text
+type LazyText = TL.Text
 
 
 -------------------------
@@ -87,21 +87,21 @@ class Stream s where
   unCons :: s -> Maybe (Char, s)
   readStream :: FilePath -> IO s
 
-instance Stream ByteString' where
+instance Stream ByteString where
   unCons     = C.uncons
   readStream = C.readFile
 
-instance Stream LazyByteString' where
-  unCons     = C'.uncons
-  readStream = C'.readFile
+instance Stream LazyByteString where
+  unCons     = CL.uncons
+  readStream = CL.readFile
 
-instance Stream Text' where
+instance Stream Text where
   unCons     = T.uncons
   readStream = TIO.readFile
 
-instance Stream LazyText' where
-  unCons     = T'.uncons
-  readStream = TIO'.readFile
+instance Stream LazyText where
+  unCons     = TL.uncons
+  readStream = TLIO.readFile
 
 instance Stream String where
   unCons     = uncons
@@ -233,7 +233,7 @@ data Return a s = Return (Result a) (State s)
 -- Parser S
 -------------------------
 -- Parser-S data type that self-describing the process of parsing work
-newtype Parser'S s a = Parser'S {
+newtype ParserS s a = ParserS {
     runParser :: forall b.
       State s ->                      -- state including stream input
       (a -> State s -> b) ->          -- call @Ok@ when somthing comsumed
@@ -243,100 +243,100 @@ newtype Parser'S s a = Parser'S {
 
 
 -- | infix operator of flipped `label`
-(<?>) :: Parser'S s a -> String -> Parser'S s a
+(<?>) :: ParserS s a -> String -> ParserS s a
 (<?>) = flip label
 
 
 -- |
-label :: String -> Parser'S s a -> Parser'S s a
-label msg parser = Parser'S $ \state@(State _ src) fOk fError ->
+label :: String -> ParserS s a -> ParserS s a
+label msg parser = ParserS $ \state@(State _ src) fOk fError ->
   let fError' err = fError (err <> expected)
       expected = expectedError src $ unwords ["->", "expected:", msg]
   in  runParser parser state fOk fError'
 
 
-instance Functor (Parser'S s) where
+instance Functor (ParserS s) where
   fmap = smap
 
 
-smap :: (a -> b) -> Parser'S s a -> Parser'S s b
+smap :: (a -> b) -> ParserS s a -> ParserS s b
 smap f parser =
-  Parser'S $ \state fOk fError -> runParser parser state (fOk . f) fError
+  ParserS $ \state fOk fError -> runParser parser state (fOk . f) fError
 
 
-instance Applicative (Parser'S s) where
-  pure x = Parser'S $ \state ok _ -> ok x state
+instance Applicative (ParserS s) where
+  pure x = ParserS $ \state ok _ -> ok x state
   (<*>) = sap
 
 
-sap :: Parser'S s (a -> b) -> Parser'S s a -> Parser'S s b
-sap f parser = Parser'S $ \state fOk fError ->
+sap :: ParserS s (a -> b) -> ParserS s a -> ParserS s b
+sap f parser = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser parser state' (fOk . x) fError
   in  runParser f state fOk' fError
 
 
-instance Monad (Parser'S s) where
+instance Monad (ParserS s) where
   return = pure
   (>>=)  = sbind
   (>>)   = (*>)
 
 
-sbind :: Parser'S s a -> (a -> Parser'S s b) -> Parser'S s b
-sbind parser f = Parser'S $ \state fOk fError ->
+sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
+sbind parser f = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser (f x) state' fOk fError
   in  runParser parser state fOk' fError
 
 
-instance Alternative (Parser'S s) where
+instance Alternative (ParserS s) where
   empty = mzero
   (<|>) = mplus
 
 
-instance MonadPlus (Parser'S s) where
+instance MonadPlus (ParserS s) where
   mzero = szero
   mplus = splus
 
 
-szero :: Parser'S s a
+szero :: ParserS s a
 szero = fail mempty
 
-splus :: Parser'S s a -> Parser'S s a -> Parser'S s a
-splus p q = Parser'S $ \state fOk fError ->
-  let fError' err' state' =
-        let fError'' err'' state' = fError (err' <> err'') state'
+splus :: ParserS s a -> ParserS s a -> ParserS s a
+splus p q = ParserS $ \state fOk fError ->
+  let fError' err' _ =
+        let fError'' err'' = fError (err' <> err'')
         in  runParser q state fOk fError''
   in  runParser p state fOk fError'
 
 
-instance MonadFail (Parser'S s) where
-  fail msg = Parser'S $ \state@(State _ src) _ fError ->
+instance MonadFail (ParserS s) where
+  fail msg = ParserS $ \state@(State _ src) _ fError ->
     fError (ParseError src [Message msg]) state
 
 
--- | Takes a given state and parses it. The outermost function of the @Parser'S@
-parse :: Parser'S s a -> State s -> Return a s
+-- | Takes state and parser, then parses it.
+parse :: ParserS s a -> State s -> Return a s
 parse parser state = runParser parser state fOk fError
  where
   fOk    = Return . Ok
   fError = Return . Error
 
 -- | The same to `parse`, but unwrap the @Return@ of the parse result
-parse' :: Parser'S s a -> State s -> Either ParseError a
+parse' :: ParserS s a -> State s -> Either ParseError a
 parse' parser = unwrap . parse parser
 
 -- | The same to `parse`, but takes the stream from a given file
-parseFromFile :: Stream s => Parser'S s a -> FilePath -> IO (Return a s)
+parseFromFile :: Stream s => ParserS s a -> FilePath -> IO (Return a s)
 parseFromFile parser file = do
   stream <- readStream file
   let state = initState file stream
   return . parse parser $ state
 
 -- | Tests parsers and its combinators with given strings
-t :: Parser'S String a -> String -> Return a String
+t :: ParserS String a -> String -> Return a String
 t parser s = parse parser (State s mempty)
 
 -- | The same to `t`, but unwrap the @Return@ of the parse result
-t' :: Parser'S String a -> String -> Either ParseError a
+t' :: ParserS String a -> String -> Either ParseError a
 t' parser = unwrap . t parser
 
 -- | Unwraps @Return a s@, then return the result @a@ only
@@ -350,8 +350,8 @@ unwrap' :: Stream s => Return a s -> s
 unwrap' (Return _ (State s _)) = s
 
 -- | Tries to parse without comsuming any input
-assert :: Parser'S s a -> Parser'S s a
-assert parser = Parser'S $ \state fOk fError ->
+assert :: ParserS s a -> ParserS s a
+assert parser = ParserS $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError
 
 -- | Gets a char parser that satisfies the given predicate.
@@ -360,11 +360,11 @@ assert parser = Parser'S $ \state fOk fError ->
 --
 -- Here is where each parsing job starts.
 --
-charParserOf :: (Stream s, NFData s) => (Char -> Bool) -> Parser'S s Char
-charParserOf predicate = Parser'S $ \state@(State stream src) fOk fError ->
+charParserOf :: (Stream s, NFData s) => (Char -> Bool) -> ParserS s Char
+charParserOf predicate = ParserS $ \state@(State stream src) fOk fError ->
   case unCons stream of
     Nothing ->
-      fError (unexpectedError src "end-of-stream: nothing to parse") state
+      fError (unexpectedError src "EOF: reached to end-of-stream") state
     Just (c, cs) | predicate c -> fOk c state'
                  | otherwise   -> fError error' state
      where
