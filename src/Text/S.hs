@@ -15,7 +15,7 @@ module Text.S
   ( module Text.S.Base
   , module Text.S.Combinator
   , module Text.S.Internal
-  , module Text.S.Lexer
+  , module Text.S.Lexeme
   , module Text.S.Language
   , module Text.S
   ) where
@@ -24,7 +24,7 @@ import           Text.S.Base
 import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Language
-import           Text.S.Lexer
+import           Text.S.Lexeme
 
 
 -- | Parser using String or [Char]
@@ -43,7 +43,7 @@ type Parser'T = ParserS Text
 type Parser'TL = ParserS LazyText
 
 
--- | test function (will be erased)
+-- | tests parsers from files (will be erased)
 tf :: Parser a -> IO (Return a String)
 tf parser = do
   let file = "simple.java"
@@ -51,6 +51,6 @@ tf parser = do
   let state = initState file s
   return . parse parser $ state
 
--- | Lexer tester
+-- | tests lexeme parsers
 tl :: (LanguageDef -> ParserS String a) -> String -> Return a String
 tl l = t (l defDef)

@@ -7,7 +7,7 @@
 -- Stability   : experimental
 --
 -- This module defines a primitive char/string parser to be used for
--- extensions such as lexers more complex structured parsers.
+-- extensions such as lexeme parsers and more complex structured parsers.
 --
 -----------------------------------------------------------------------------
 
@@ -113,7 +113,7 @@ hexDigit = charParserOf isHexDigit <?> "hex-digit"
 alpha :: (Stream s, NFData s) => ParserS s Char
 alpha = charParserOf isAlpha <?> "letter"
 
--- | The same to @alpha@
+-- | The same as @alpha@
 --
 -- >>> t' (some letter) "COVID-19"
 -- Right "COVID"

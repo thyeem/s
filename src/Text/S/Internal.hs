@@ -320,11 +320,11 @@ parse parser state = runParser parser state fOk fError
   fOk    = Return . Ok
   fError = Return . Error
 
--- | The same to `parse`, but unwrap the @Return@ of the parse result
+-- | The same as `parse`, but unwrap the @Return@ of the parse result
 parse' :: ParserS s a -> State s -> Either ParseError a
 parse' parser = unwrap . parse parser
 
--- | The same to `parse`, but takes the stream from a given file
+-- | The same as `parse`, but takes the stream from a given file
 parseFromFile :: Stream s => ParserS s a -> FilePath -> IO (Return a s)
 parseFromFile parser file = do
   stream <- readStream file
@@ -335,7 +335,7 @@ parseFromFile parser file = do
 t :: ParserS String a -> String -> Return a String
 t parser s = parse parser (State s mempty)
 
--- | The same to `t`, but unwrap the @Return@ of the parse result
+-- | The same as `t`, but unwrap the @Return@ of the parse result
 t' :: ParserS String a -> String -> Either ParseError a
 t' parser = unwrap . t parser
 

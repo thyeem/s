@@ -15,5 +15,5 @@ main = doctest
   , "src/Text/S/Combinator.hs"
   , "src/Text/S/Internal.hs"
   , "src/Text/S/Language.hs"
-  , "src/Text/S/Lexer.hs"
+  , "src/Text/S/Lexeme.hs"
   ]

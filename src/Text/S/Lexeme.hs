@@ -1,18 +1,18 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      : Text.S.Lexer
+-- Module      : Text.S.Lexeme
 -- License     : MIT
 --
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
 --
--- This module constructs a lexer or a tokenizer parser to parse
--- __lexical units__ (or /lexemes/) based on parser combinators.
+-- This module constructs a __lexeme parser__ to parse a lexical unit
+-- combinating char-parsers and parser-combinators.
 --
 -----------------------------------------------------------------------------
 
-module Text.S.Lexer
-  ( module Text.S.Lexer
+module Text.S.Lexeme
+  ( module Text.S.Lexeme
   ) where
 
 import           Control.DeepSeq                ( NFData
@@ -36,7 +36,7 @@ import           Control.Monad                  ( mzero )
 
 
 
--- | Defines lexical-token-parsers: Lexer
+-- | Defines a type of lexeme parser
 --
 -- - A @Parser@ is a superset of a @Lexer@
 --
@@ -64,7 +64,7 @@ import           Control.Monad                  ( mzero )
 type ParserS' s a = LanguageDef -> ParserS s a
 
 
--- | Make a given parser @p@ a lexer or lexical-unit parser
+-- | Make a given parser @p@ a lexeme parser
 -- based on the given language definition
 lexeme' :: (Stream s, NFData s) => ParserS s a -> ParserS' s a
 lexeme' p def = p <* skip' def
@@ -99,11 +99,11 @@ commentBlock' def = bra *> manyTill anychar ket
   bra = choice $ string <$> defCommentBlockBegin def
   ket = choice $ string <$> defCommentBlockEnd def
 
--- | Parses any string symbol to comsume. The same to `string`
+-- | Parses any string symbol to comsume. The same as `string`
 symbol :: (Stream s, NFData s) => String -> ParserS s String
 symbol = string
 
--- | The t'ParserS'' form of `symbol`
+-- | The same as `symbol`, but in the form of  t'ParserS''.
 symbol' :: (Stream s, NFData s) => String -> ParserS' s String
 symbol' t = lexeme' (symbol t)
 
@@ -111,7 +111,7 @@ symbol' t = lexeme' (symbol t)
 letters :: (Stream s, NFData s) => ParserS s String
 letters = some letter
 
--- | The t'ParserS'' form of `letters`
+-- | The same as `letters`, but int the form of t'ParserS''.
 letters' :: (Stream s, NFData s) => ParserS' s String
 letters' = lexeme' letters
 
@@ -252,7 +252,7 @@ natural' = lexeme' natural
 sign :: (Stream s, NFData s, Num a) => ParserS s (a -> a)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 
--- | The same to `sign` but strip whitespaces between sign and numbers.
+-- | The same as `sign` but strip whitespaces between sign and numbers.
 --
 -- >>> t' (sign' defDef <*> floating)  "-  273.15 in Celsius"
 -- Right (-273.15)
