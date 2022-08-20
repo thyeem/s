@@ -36,7 +36,7 @@ import           Control.Monad                  ( mzero )
 
 
 
--- | Defines a type of lexeme parser
+-- | Defines a data type of lexeme parser
 --
 -- - A @Parser@ is a superset of a @Lexer@
 --

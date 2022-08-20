@@ -87,7 +87,10 @@ anystring = some anychar
 --
 anystringBut :: (Stream s, NFData s) => String -> ParserS s String
 anystringBut s = go
-  where go = ((string s <|> eof') $> []) <|> liftA2 (:) anychar go
+  where go = ((assert (string s) <|> eof') $> []) <|> liftA2 (:) anychar go
+
+
+  -- where go = liftA2 (:) anychar go <|> ((assert (string s) <|> eof') $> [])
 
 -- | Parses any single digit, the same as @[0-9]@
 --

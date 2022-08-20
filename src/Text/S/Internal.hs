@@ -349,7 +349,8 @@ unwrap (Return r _) = case r of
 unwrap' :: Stream s => Return a s -> s
 unwrap' (Return _ (State s _)) = s
 
--- | Tries to parse without comsuming any input
+-- | Looking ahead, tries to parse with @parser@ without comsuming any input
+--
 assert :: ParserS s a -> ParserS s a
 assert parser = ParserS $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError

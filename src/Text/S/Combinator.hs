@@ -120,7 +120,7 @@ sepBy1 p sep = liftA2 (:) p (some (sep *> p))
 -- Right []
 --
 endBy :: MonadPlus m => m a -> m b -> m [a]
-endBy p sep = many (p <* sep)
+endBy p end = many (p <* end)
 
 -- | Parses 1+ occurrences of parser @p@, ended by separator @sep@
 --
@@ -130,7 +130,21 @@ endBy p sep = many (p <* sep)
 -- Right ["p","rser combin"]
 --
 endBy1 :: MonadPlus m => m a -> m b -> m [a]
-endBy1 p sep = some (p <* sep)
+endBy1 p end = some (p <* end)
+
+
+manyTill' :: MonadPlus m => m a -> m b -> m [a]
+manyTill' p end = someTill p end <|> (end' $> [])
+ where
+  end' = do
+    e <- end >>= pure
+    case e of
+      mzero -> empty
+    return e
+
+someTill' :: MonadPlus m => m a -> m b -> m [a]
+someTill' p end = liftA2 (:) p (manyTill' p end)
+
 
 -- | Applies parser @p@ 0+ times until parser @end@ succeeds
 --
@@ -145,7 +159,7 @@ endBy1 p sep = some (p <* sep)
 -- Right ""
 --
 manyTill :: MonadPlus m => m a -> m b -> m [a]
-manyTill p end = go where go = (end $> []) <|> liftA2 (:) p go
+manyTill p end = someTill p end <|> (end $> [])
 
 -- | Applies parser @p@ 1+ times until parser @end@ succeeds
 --
