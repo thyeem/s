@@ -133,17 +133,11 @@ endBy1 :: MonadPlus m => m a -> m b -> m [a]
 endBy1 p end = some (p <* end)
 
 
-manyTill' :: MonadPlus m => m a -> m b -> m [a]
-manyTill' p end = someTill p end <|> (end' $> [])
- where
-  end' = do
-    e <- end >>= pure
-    case e of
-      mzero -> empty
-    return e
+-- manyTill' :: MonadPlus m => m a -> m b -> m [a]
+-- manyTill' p end = someTill' p end <|> (assert end $> [])
 
-someTill' :: MonadPlus m => m a -> m b -> m [a]
-someTill' p end = liftA2 (:) p (manyTill' p end)
+-- someTill' :: MonadPlus m => m a -> m b -> m [a]
+-- someTill' p end = liftA2 (:) p (manyTill' p end)
 
 
 -- | Applies parser @p@ 0+ times until parser @end@ succeeds
