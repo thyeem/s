@@ -246,6 +246,8 @@ newtype ParserS s a = ParserS {
 (<?>) :: ParserS s a -> String -> ParserS s a
 (<?>) = flip label
 
+infixr 0 <?>
+
 
 -- |
 label :: String -> ParserS s a -> ParserS s a
@@ -378,7 +380,7 @@ charParserOf predicate = ParserS $ \state@(State stream src) fOk fError ->
         where move col size = col + size - ((col - 1) `mod` size)
 
       error' = unexpectedError src
-        $ unwords ["failed to match unexpected character:", show c]
+        $ unwords ["failed. got unexpected character:", show c]
 
 
 -------------------------

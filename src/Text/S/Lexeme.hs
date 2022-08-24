@@ -25,6 +25,7 @@ import           Data.Char                      ( digitToInt
                                                 , toUpper
                                                 )
 import           Data.Foldable                  ( foldl' )
+import           Data.Functor                   ( void )
 import qualified Data.Set                      as S
 import           Text.S.Base
 import           Text.S.Combinator
@@ -76,16 +77,15 @@ lexeme' p def = p <* skip' def
 -- "should-be-here"
 --
 skip' :: (Stream s, NFData s) => ParserS' s ()
-skip' def = skipMany $ skipSpaces <|> skipComments' def
+skip' def = skipMany $ spaces <|> commentLine' def <|> commentBlock' def
 
 -- | Skips whitespaces
 skipSpaces :: (Stream s, NFData s) => ParserS s ()
-skipSpaces = skipSome space
+skipSpaces = skipMany space
 
 -- | Skips line and block comments
 skipComments' :: (Stream s, NFData s) => ParserS' s ()
-skipComments' def =
-  skipSome (commentLine' def) <|> skipSome (commentBlock' def)
+skipComments' def = skipMany $ commentLine' def <|> commentBlock' def
 
 -- | Parses single-line comment
 commentLine' :: (Stream s, NFData s) => ParserS' s String
@@ -98,6 +98,28 @@ commentBlock' def = bra *> manyTill anychar ket
  where
   bra = choice $ string <$> defCommentBlockBegin def
   ket = choice $ string <$> defCommentBlockEnd def
+
+-- | Remove any leading and trailing whitespaces when parsing with @p@
+--
+-- Peeling whitespaces off is independent of any language syntax.
+-- Use this when you just want to strip whitespaces around targets
+--
+-- >>> t' (strip float) "  3.1415926535"
+-- Right 3.1415926535
+--
+strip :: (Stream s, NFData s) => ParserS s a -> ParserS s a
+strip = rstrip . lstrip
+-- strip p = skipSpaces *> p <* (skipSpaces <|> void eof)
+
+-- | Remove any leading whitespaces when parsing with @p@
+--
+lstrip :: (Stream s, NFData s) => ParserS s a -> ParserS s a
+lstrip p = skipSpaces *> p
+
+-- | Remove any trailing whitespaces when parsing with @p@
+--
+rstrip :: (Stream s, NFData s) => ParserS s a -> ParserS s a
+rstrip p = p <* (skipSpaces <|> void eof)
 
 -- | Parses any string symbol to comsume. The same as `string`
 symbol :: (Stream s, NFData s) => String -> ParserS s String

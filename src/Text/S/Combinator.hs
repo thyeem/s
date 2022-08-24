@@ -46,9 +46,9 @@ import           Text.S.Internal
 choice :: MonadPlus m => [m a] -> m a
 choice = foldl' (<|>) mzero
 
--- | Firstly tries to parse with parser @p@. If failed, it returns @x@.
+-- | Firstly tries to parse with parser @__p__@. If failed, it returns @__x__@.
 --
--- This is useful to set default value of parser @p@.
+-- This is useful to set default value of parser @__p__@.
 --
 -- >>> t' (option "Mars" spaces) "nuclear-bomb-explosion -> Earth"
 -- Right "Mars"
@@ -56,7 +56,7 @@ choice = foldl' (<|>) mzero
 option :: MonadPlus m => a -> m a -> m a
 option x p = p <|> return x
 
--- | Tries to parse @n@-times with the given parser. The same as `replicateM`
+-- | Tries to parse @__n__@-times with the given parser. The same as `replicateM`
 --
 -- >>> t' (count 6 letter) "parser-combinator"
 -- Right "parser"
@@ -64,8 +64,8 @@ option x p = p <|> return x
 count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
 
--- | Tries to parse with parser @p@. If failed, it returns `Nothing`
--- otherwise, it returns `Just`-wrapped parser @p@
+-- | Tries to parse with parser @__p__@. If failed, it returns `Nothing`
+-- otherwise, it returns `Just`-wrapped parser @__p__@
 --
 -- >>> t' (optionMaybe digits) "COVID-19"
 -- Right Nothing
@@ -76,8 +76,8 @@ count = replicateM
 optionMaybe :: MonadPlus m => m a -> m (Maybe a)
 optionMaybe p = option Nothing (Just <$> p)
 
--- | Tries to parse with parser @p@, which is between the given two parsers,
--- /opener/ @bra@ and /closer/ @ket@.
+-- | Tries to parse with parser @__p__@, which is between the given two parsers,
+-- /opener/ @__bra__@ and /closer/ @__ket__@.
 --
 -- >>> p = some $ digit <|> char ','
 -- >>> t' (between (symbol "[") (symbol "]") p) "[1,2,3,4]"
@@ -86,7 +86,7 @@ optionMaybe p = option Nothing (Just <$> p)
 between :: MonadPlus m => m bra -> m ket -> m a -> m a
 between bra ket p = bra *> p <* ket
 
--- | Parses 0+ occurrences of parser @p@, separated by separator @sep@.
+-- | Parses 0+ occurrences of parser @__p__@, separated by separator @__sep__@.
 --
 -- See also `sepBy1`.
 --
@@ -99,17 +99,17 @@ between bra ket p = bra *> p <* ket
 sepBy :: MonadPlus m => m a -> m b -> m [a]
 sepBy p sep = sepBy1 p sep <|> pure []
 
--- | Parses 1+ occurrences of parser @p@, separated by separator @sep@
+-- | Parses 1+ occurrences of parser @__p__@, separated by separator @__sep__@
 --
 -- See the difference with `endBy1`
 --
--- >>> t' (sepBy1 (some $ anycharBut 'a') (symbol "a")) "parser combinator"
+-- >>> t' (sepBy1 (anystringBut "a") (symbol "a")) "parser combinator"
 -- Right ["p","rser combin","tor"]
 --
 sepBy1 :: MonadPlus m => m a -> m b -> m [a]
 sepBy1 p sep = liftA2 (:) p (some (sep *> p))
 
--- | Parses 0+ occurrences of parser @p@, ended by separator @sep@.
+-- | Parses 0+ occurrences of parser @__p__@, ended by separator @__sep__@.
 --
 -- See also `endBy1`.
 --
@@ -122,11 +122,11 @@ sepBy1 p sep = liftA2 (:) p (some (sep *> p))
 endBy :: MonadPlus m => m a -> m b -> m [a]
 endBy p end = many (p <* end)
 
--- | Parses 1+ occurrences of parser @p@, ended by separator @sep@
+-- | Parses 1+ occurrences of parser @__p__@, ended by separator @__sep__@
 --
 -- See the difference with `sepBy1`
 --
--- >>> t' (endBy1 (some $ anycharBut 'a') (symbol "a")) "parser combinator"
+-- >>> t' (endBy1 (anystringBut "a") (symbol "a")) "parser combinator"
 -- Right ["p","rser combin"]
 --
 endBy1 :: MonadPlus m => m a -> m b -> m [a]
@@ -140,7 +140,7 @@ endBy1 p end = some (p <* end)
 -- someTill' p end = liftA2 (:) p (manyTill' p end)
 
 
--- | Applies parser @p@ 0+ times until parser @end@ succeeds
+-- | Applies parser @__p__@ 0+ times until parser @__end__@ succeeds
 --
 -- See also `someTill`.
 --
@@ -155,7 +155,7 @@ endBy1 p end = some (p <* end)
 manyTill :: MonadPlus m => m a -> m b -> m [a]
 manyTill p end = someTill p end <|> (end $> [])
 
--- | Applies parser @p@ 1+ times until parser @end@ succeeds
+-- | Applies parser @__p__@ 1+ times until parser @__end__@ succeeds
 --
 -- >>> p = someTill (letter <|> space) (string ":")
 -- >>> t' p "for x in xs: f(x)"
@@ -164,22 +164,22 @@ manyTill p end = someTill p end <|> (end $> [])
 someTill :: MonadPlus m => m a -> m b -> m [a]
 someTill p end = liftA2 (:) p (manyTill p end)
 
--- | Tries to parse with parser @p@. If exists, consume it. Otherwise ignore it.
+-- | Tries to parse with parser @__p__@. If exists, consume it. Otherwise ignore it.
 --
 skipOptional :: MonadPlus m => m a -> m ()
 skipOptional p = void p <|> pure ()
 
--- | Applies parser @p@ 0+ times, then skips the results.
+-- | Applies parser @__p__@ 0+ times, then skips the results.
 --
 skipMany :: MonadPlus m => m a -> m ()
 skipMany = void . many
 
--- | Applies parser @p@ 1+ times, then skips the results.
+-- | Applies parser @__p__@ 1+ times, then skips the results.
 --
 skipSome :: MonadPlus m => m a -> m ()
 skipSome p = p *> skipMany p
 
--- | Tries to parse @n@-times with the given parser.
+-- | Tries to parse @__n__@-times with the given parser.
 --
 -- The same as `count`, but this skips the results.
 --
@@ -194,27 +194,38 @@ skipManyTill p end = go where go = end <|> (p *> go)
 skipSomeTill :: MonadPlus m => m a -> m b -> m b
 skipSomeTill p end = p *> skipManyTill p end
 
--- | Parses 0+ occurrences of @p@
--- chainl p op x = chainl1 p op <|> return x
-chainl :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
-chainl p op x = option x (chainl1 p op)
+-- | Tries to parse @__p__@ with left-associative operator @__op__@ repeatedly.
+--
+-- This also tries to fold (evaluate) them by the given operator @__op__@.
+--
+-- See also `foldro`.
+--
+-- >>> op = symbol "^" *> pure (^)
+-- >>> t' (foldlo op (strip integer)) "2 ^ 3 ^ 4"
+-- Right 4096
+--
+-- >>> op = (symbol "+" *> pure (+)) <|> (symbol "-" *> pure (-))
+-- >>> t' (foldlo op (strip integer)) "7 - 4 + 2"
+-- Right 5
+--
+foldlo :: MonadPlus m => m (a -> a -> a) -> m a -> m a
+foldlo op p = p >>= rest
+  where rest x = (op >>= \f -> p >>= rest . f x) <|> pure x
 
--- |
-chainl1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
--- chainl1 p op = p >>= go
-  -- where go x = (op >>= (\f -> p >>= go . f x)) <|> pure x
-
-chainl1 p op = p >>= chainl p op
-  -- where go x = (op >>= (\f -> p >>= go . f x)) <|> pure x
-
--- | Parses 0+ occurrences of @p@
--- chainr p op x = chainlr p op <|> return x
-chainr :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
-chainr p op x = option x (chainr1 p op)
-
--- |
-chainr1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
-chainr1 p op = g
- where
-  g = p >>= go
-  go x = op >>= (\f -> f x <$> g)
+-- | Tries to parse @__p__@ with right-associative operator @__op__@ repeatedly.
+--
+-- This also tries to fold (evaluate) them by the given operator @__op__@.
+--
+-- See also `foldlo`.
+--
+-- >>> op = symbol "^" *> pure (^)
+-- >>> t' (foldro op (strip integer)) "2 ^ 3 ^ 4"
+-- Right 2417851639229258349412352
+--
+-- >>> op = (symbol "+" *> pure (+)) <|> (symbol "-" *> pure (-))
+-- >>> t' (foldro op (strip integer)) "7 - 4 + 2"
+-- Right 1
+--
+foldro :: MonadPlus m => m (a -> a -> a) -> m a -> m a
+foldro op p = p >>= rest
+  where rest x = (op >>= (\f -> f x <$> (p >>= rest))) <|> pure x

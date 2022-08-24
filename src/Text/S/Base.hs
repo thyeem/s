@@ -45,7 +45,7 @@ import           Text.S.Internal
 char :: (Stream s, NFData s) => Char -> ParserS s Char
 char c = charParserOf (== c) <?> show [c]
 
--- | Parses any single character buf @EOF@
+-- | Parses any single character
 --
 -- >>> t' anychar "$parser"
 -- Right '$'
@@ -68,15 +68,15 @@ anycharBut c =
 -- Right "par"
 --
 string :: (Stream s, NFData s) => String -> ParserS s String
-string = mapM char
+string s = mapM char s <?> show s
 
--- | Parses any string and consumes everything but @EOF@
+-- | Parses any string and consumes everything
 --
 -- >>> t' anystring "stop COVID-19"
 -- Right "stop COVID-19"
 --
 anystring :: (Stream s, NFData s) => ParserS s String
-anystring = some anychar
+anystring = some anychar <?> "any string"
 
 -- | Parses any string except for a given string.
 --
@@ -88,11 +88,9 @@ anystring = some anychar
 anystringBut :: (Stream s, NFData s) => String -> ParserS s String
 anystringBut s = go
   where go = ((assert (string s) <|> eof') $> []) <|> liftA2 (:) anychar go
+  -- where go = (assert (string s) $> []) <|> liftA2 (:) anychar go
 
-
-  -- where go = liftA2 (:) anychar go <|> ((assert (string s) <|> eof') $> [])
-
--- | Parses any single digit, the same as @[0-9]@
+-- | Parses any single digit, the same as @__[0-9]__@
 --
 -- >>> t' digit "3.1415926535"
 -- Right '3'
@@ -100,7 +98,7 @@ anystringBut s = go
 digit :: (Stream s, NFData s) => ParserS s Char
 digit = charParserOf isDigit <?> "digit"
 
--- | Parses any single hexadecimal number, the same as @[0-9a-f]@
+-- | Parses any single hexadecimal number, the same as @__[0-9a-f]__@
 --
 -- >>> t' (some hexDigit) "f8f8f8xyz"
 -- Right "f8f8f8"
@@ -108,7 +106,7 @@ digit = charParserOf isDigit <?> "digit"
 hexDigit :: (Stream s, NFData s) => ParserS s Char
 hexDigit = charParserOf isHexDigit <?> "hex-digit"
 
--- | Parses any single alphabetical character, the same as @[a-zA-Z]@
+-- | Parses any single alphabetical character, the same as @__[a-zA-Z]__@
 --
 -- >>> t' (some alpha) "stop COVID-19"
 -- Right "stop"
@@ -116,7 +114,7 @@ hexDigit = charParserOf isHexDigit <?> "hex-digit"
 alpha :: (Stream s, NFData s) => ParserS s Char
 alpha = charParserOf isAlpha <?> "letter"
 
--- | The same as @alpha@
+-- | The same as @__alpha__@
 --
 -- >>> t' (some letter) "COVID-19"
 -- Right "COVID"
@@ -124,7 +122,7 @@ alpha = charParserOf isAlpha <?> "letter"
 letter :: (Stream s, NFData s) => ParserS s Char
 letter = alpha
 
--- | Parses any alphabetical or numeric character, the same as @[0-9a-zA-Z]@
+-- | Parses any alphabetical or numeric character, the same as @__[0-9a-zA-Z]__@
 --
 -- >>> t' (some alphaNum) "year2022"
 -- Right "year2022"
@@ -132,7 +130,7 @@ letter = alpha
 alphaNum :: (Stream s, NFData s) => ParserS s Char
 alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
 
--- | Parses any single lowercase letter, the same as @[a-z]@
+-- | Parses any single lowercase letter, the same as @__[a-z]__@
 --
 -- >>> t' (some lower) "covID-19"
 -- Right "cov"
@@ -140,7 +138,7 @@ alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
 lower :: (Stream s, NFData s) => ParserS s Char
 lower = charParserOf isLower <?> "lowercase-letter"
 
--- | Parses any single uppercase letter, the same as @[A-Z]@
+-- | Parses any single uppercase letter, the same as @__[A-Z]__@
 --
 -- >>> t' (some upper) "COVID-19"
 -- Right "COVID"
@@ -148,7 +146,7 @@ lower = charParserOf isLower <?> "lowercase-letter"
 upper :: (Stream s, NFData s) => ParserS s Char
 upper = charParserOf isUpper <?> "uppercase-letter"
 
--- | Parses a single special character, anychar = alphaNum <|> special
+-- | Parses a single special character, @__anychar := alphaNum <|> special__@
 --
 -- >>> t' special "# stop COVID-19 -->"
 -- Right '#'
@@ -181,7 +179,7 @@ lf = char '\n' <?> "linefeed"
 crlf :: (Stream s, NFData s) => ParserS s Char
 crlf = (char '\r' *> char '\n') <?> "carriage-return + linefeed"
 
--- | Parses end-of-line character, the same as @[LF | CRLF]@
+-- | Parses end-of-line character, the same as @__[LF | CRLF]__@
 --
 -- >>> t' (string "stop" >> some eol) "stop\n\r\nCOVID-19"
 -- Right "\n\n"
@@ -197,9 +195,12 @@ eol = (lf <|> crlf) <?> "end-of-line"
 space :: (Stream s, NFData s) => ParserS s Char
 space = charParserOf isSpace <?> "space"
 
--- | Checks if the `State` applied to the parser is reached to @EOF@ or /End-of-Stream/
+-- | Checks if the `State` applied to the parser is reached to
+-- @__EOF__@ or /End-of-Stream/
 --
--- When reached to @EOF@, it returns @\\NUL@, as @(minBound::Char) == '\\NUL'@.
+-- When reached to @__EOF__@, it returns @\\__NUL__@.
+--
+-- It simply originated from @__(minBound::Char) == '\\NUL'__@.
 --
 -- >>> t' (anychar <|> eof) ""
 -- Right '\NUL'
@@ -256,4 +257,4 @@ selectp x = case x of
   "special"     -> special
   "anychar"     -> anychar
   c | length c == 1 -> char . head $ c
-    | otherwise     -> error $ unwords ["not found parser such as: ", c]
+    | otherwise     -> fail $ unwords ["not found parser such as: ", c]
