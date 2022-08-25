@@ -12,39 +12,40 @@ maintainer:          "Francis Lim <thyeem@gmail.com>"
 license:             MIT
 
 extra-source-files:
-- README.md
 - ChangeLog.md
+- README.md
 
 dependencies:
 - base >= 4.7 && < 5
-- containers
-- parallel
-- deepseq
 - bytestring
+- containers
+- deepseq
+- parallel
 - random
-- text
 - raw-strings-qq
+- text
 # - yaml
 # - aeson
 # - docopt >= 0.7.0.6
 
 default-extensions:
-- Trustworthy
 - BangPatterns
 - DataKinds
-- RankNTypes
-- RecordWildCards
-- TypeSynonymInstances
-- FlexibleInstances
+- DeriveAnyClass
+- DeriveGeneric
 - ExplicitForAll
-- ScopedTypeVariables
-- StandaloneDeriving
+- FlexibleInstances
+- GeneralizedNewtypeDeriving
 - MultiParamTypeClasses
 - QuasiQuotes
-- GeneralizedNewtypeDeriving
+- RankNTypes
+- RecordWildCards
+- ScopedTypeVariables
+- StandaloneDeriving
 - TemplateHaskell
-- DeriveGeneric
-- DeriveAnyClass
+- Trustworthy
+- TupleSections
+- TypeSynonymInstances
 
 library:
   source-dirs: src

@@ -44,22 +44,22 @@ import           Control.Monad                  ( mzero )
 -- +-----------+----------------------------------------------------------------+
 -- | @Parsing@ | Doing parse-job with primitive parsers and theirs combinations |
 -- +-----------+----------------------------------------------------------------+
--- | @Lexing@  | Doing parse-job with parsers and /language definitions/        |
+-- | @Lexing@  | Doing parse-job with parsers and language definitions          |
 -- +-----------+----------------------------------------------------------------+
 --
 -- - Main difference between @Lexer@ and @Parser@
 --
 -- +----------+--------------------------------------------------------------------------+
--- | @Parser@ | Independent of `LanguageDef` and has a name that looks like __funcName__ |
+-- | @Parser@ | Independent of 'LanguageDef' and has a name that looks like __funcName__ |
 -- +----------+--------------------------------------------------------------------------+
--- | @Lexer@  | Dependent on `LanguageDef` and has a name that looks like __funcName'__  |
+-- | @Lexer@  | Dependent on 'LanguageDef' and has a name that looks like __funcName'__  |
 -- +----------+--------------------------------------------------------------------------+
 --
 -- @
--- (/Applying language definitions to the Lexer/)
--- => `Lexer` `LanguageDef`
--- => (`LanguageDef` -> `ParserS` s a) `LanguageDef`
--- => `ParserS` s a
+-- (Applying language definitions to the Lexer)
+-- => 'Lexer' 'LanguageDef'
+-- => ('LanguageDef' -> 'ParserS' s a) 'LanguageDef'
+-- => 'ParserS' s a
 -- @
 --
 type ParserS' s a = LanguageDef -> ParserS s a
@@ -121,11 +121,11 @@ lstrip p = skipSpaces *> p
 rstrip :: (Stream s, NFData s) => ParserS s a -> ParserS s a
 rstrip p = p <* (skipSpaces <|> void eof)
 
--- | Parses any string symbol to comsume. The same as `string`
+-- | Parses any string symbol to comsume. The same as 'string'
 symbol :: (Stream s, NFData s) => String -> ParserS s String
 symbol = string
 
--- | The same as `symbol`, but in the form of  t'ParserS''.
+-- | The same as 'symbol', but in the form of  t'ParserS''.
 symbol' :: (Stream s, NFData s) => String -> ParserS' s String
 symbol' t = lexeme' (symbol t)
 
@@ -133,7 +133,7 @@ symbol' t = lexeme' (symbol t)
 letters :: (Stream s, NFData s) => ParserS s String
 letters = some letter
 
--- | The same as `letters`, but int the form of t'ParserS''.
+-- | The same as 'letters', but int the form of t'ParserS''.
 letters' :: (Stream s, NFData s) => ParserS' s String
 letters' = lexeme' letters
 
@@ -141,7 +141,7 @@ letters' = lexeme' letters
 alphaNums :: (Stream s, NFData s) => ParserS s String
 alphaNums = some alphaNum
 
--- | The t'ParserS'' form of `alphaNums`
+-- | The t'ParserS'' form of 'alphaNums'
 alphaNums' :: (Stream s, NFData s) => ParserS' s String
 alphaNums' = lexeme' alphaNums
 
@@ -149,7 +149,7 @@ alphaNums' = lexeme' alphaNums
 digits :: (Stream s, NFData s) => ParserS s String
 digits = some digit
 
--- | The t'ParserS'' form of `digits`
+-- | The t'ParserS'' form of 'digits'
 digits' :: (Stream s, NFData s) => ParserS' s String
 digits' = lexeme' digits
 
@@ -157,7 +157,7 @@ digits' = lexeme' digits
 specials :: (Stream s, NFData s) => ParserS s String
 specials = some special
 
--- | The t'ParserS'' form of `specials`
+-- | The t'ParserS'' form of 'specials'
 specials' :: (Stream s, NFData s) => ParserS' s String
 specials' = lexeme' specials
 
@@ -165,7 +165,7 @@ specials' = lexeme' specials
 spaces :: (Stream s, NFData s) => ParserS s String
 spaces = some space
 
--- | The t'ParserS'' form of `spaces`
+-- | The t'ParserS'' form of 'spaces'
 spaces' :: (Stream s, NFData s) => ParserS' s String
 spaces' = lexeme' spaces
 
@@ -177,7 +177,7 @@ spaces' = lexeme' spaces
 parens :: (Stream s, NFData s) => ParserS s String -> ParserS s String
 parens = between (symbol "(") (symbol ")")
 
--- | The t'ParserS'' form of `parens`
+-- | The t'ParserS'' form of 'parens'
 parens' :: (Stream s, NFData s) => ParserS s String -> ParserS' s String
 parens' p = lexeme' (parens p)
 
@@ -189,7 +189,7 @@ parens' p = lexeme' (parens p)
 braces :: (Stream s, NFData s) => ParserS s String -> ParserS s String
 braces = between (symbol "{") (symbol "}")
 
--- | The t'ParserS'' form of `braces`
+-- | The t'ParserS'' form of 'braces'
 braces' :: (Stream s, NFData s) => ParserS s String -> ParserS' s String
 braces' p = lexeme' (braces p)
 
@@ -201,7 +201,7 @@ braces' p = lexeme' (braces p)
 angles :: (Stream s, NFData s) => ParserS s String -> ParserS s String
 angles = between (symbol "<") (symbol ">")
 
--- | The t'ParserS'' form of `angles`
+-- | The t'ParserS'' form of 'angles'
 angles' :: (Stream s, NFData s) => ParserS s String -> ParserS' s String
 angles' p = lexeme' (angles p)
 
@@ -213,7 +213,7 @@ angles' p = lexeme' (angles p)
 squares :: (Stream s, NFData s) => ParserS s String -> ParserS s String
 squares = between (symbol "[") (symbol "]")
 
--- | The t'ParserS'' form of `squares`
+-- | The t'ParserS'' form of 'squares'
 squares' :: (Stream s, NFData s) => ParserS s String -> ParserS' s String
 squares' p = lexeme' (squares p)
 
@@ -226,7 +226,7 @@ squares' p = lexeme' (squares p)
 decimals :: (Stream s, NFData s) => ParserS s Integer
 decimals = numbers 10 digits
 
--- | The t'ParserS'' form of `decimals`
+-- | The t'ParserS'' form of 'decimals'
 decimals' :: (Stream s, NFData s) => ParserS' s Integer
 decimals' = lexeme' decimals
 
@@ -238,7 +238,7 @@ decimals' = lexeme' decimals
 hexadecimals :: (Stream s, NFData s) => ParserS s Integer
 hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
 
--- | The t'ParserS'' form of `hexadecimals`
+-- | The t'ParserS'' form of 'hexadecimals'
 hexadecimals' :: (Stream s, NFData s) => ParserS' s Integer
 hexadecimals' = lexeme' hexadecimals
 
@@ -250,7 +250,7 @@ hexadecimals' = lexeme' hexadecimals
 zeros :: (Stream s, NFData s) => ParserS s Integer
 zeros = char '0' *> decimals
 
--- | The t'ParserS'' form of `zeros`
+-- | The t'ParserS'' form of 'zeros'
 zeros' :: (Stream s, NFData s) => ParserS' s Integer
 zeros' = lexeme' zeros
 
@@ -262,7 +262,7 @@ zeros' = lexeme' zeros
 natural :: (Stream s, NFData s) => ParserS s Integer
 natural = assert digit *> assert (anycharBut '0') *> decimals
 
--- | The t'ParserS'' form of `natural`
+-- | The t'ParserS'' form of 'natural'
 natural' :: (Stream s, NFData s) => ParserS' s Integer
 natural' = lexeme' natural
 
@@ -274,7 +274,7 @@ natural' = lexeme' natural
 sign :: (Stream s, NFData s, Num a) => ParserS s (a -> a)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 
--- | The same as `sign` but strip whitespaces between sign and numbers.
+-- | The same as 'sign' but strip whitespaces between sign and numbers.
 --
 -- >>> t' (sign' defDef <*> floating)  "-  273.15 in Celsius"
 -- Right (-273.15)
@@ -290,7 +290,7 @@ sign' = lexeme' sign
 integer :: (Stream s, NFData s) => ParserS s Integer
 integer = sign <*> decimals
 
--- | The t'ParserS'' form of `integer`
+-- | The t'ParserS'' form of 'integer'
 integer' :: (Stream s, NFData s) => ParserS' s Integer
 integer' def = sign <*> decimals' def
 
@@ -312,7 +312,7 @@ float = read <$> (scientific <|> floatOnly)
   floatOnly  = show <$> floating
   exponent'  = (:) <$> oneOf "eE" <*> (show <$> integer)
 
--- | The t'ParserS'' form of `float`
+-- | The t'ParserS'' form of 'float'
 float' :: (Stream s, NFData s) => ParserS' s Double
 float' = lexeme' float
 
@@ -326,11 +326,11 @@ floating :: (Stream s, NFData s) => ParserS s Double
 floating = read <$> foldl1 (liftA2 (<>)) [digits, string ".", digits]
   where digits = show <$> decimals
 
--- | The t'ParserS'' form of `floating`
+-- | The t'ParserS'' form of 'floating'
 floating' :: (Stream s, NFData s) => ParserS' s Double
 floating' = lexeme' floating
 
--- | Parses identifiers based on the given `LanguageDef`
+-- | Parses identifiers based on the given 'LanguageDef'
 --
 -- >>> t' (identifier' defDef) "function(arg1, arg2)"
 -- Right "function"
@@ -354,7 +354,7 @@ identifier' def = do
   set | caseSensitive = S.fromList reservedNames
       | otherwise     = S.fromList $ lower <$> reservedNames
 
--- | Parses operators or special-chars based on the given `LanguageDef`
+-- | Parses operators or special-chars based on the given 'LanguageDef'
 --
 -- >>> t' (digits *> skipSpaces *> operator' defDef) "3 + 4"
 -- Right "+"
@@ -371,13 +371,15 @@ operator' def = do
 
 -- |
 --
--- split-by-comma = splitBy (symbol ",")
--- split-by-semi  = splitBy (symbol ";")
--- split-by-space = splitBy spaces
+-- @splitByComma = splitBy (symbol ",")@
 --
--- >>> parserArgs = splitBy (symbol ",") alphaNums
--- >>> t' (symbol "(" *> parserArgs <* symbol ")") "(arg1,arg2,arg3)"
--- Right ["arg1","arg2","arg3"]
+-- @splitBySemi  = splitBy (symbol ";")@
+--
+-- @splitBySpace = splitBy spaces@
+--
+-- >>> p = splitBy (symbol ",") alphaNums
+-- >>> t' (symbol "(" *> p <* symbol ")") "(alpha,beta,gamma)"
+-- Right ["alpha","beta","gamma"]
 --
 splitBy
   :: (Stream s, NFData s) => ParserS s String -> ParserS s a -> ParserS s [a]
@@ -392,7 +394,7 @@ splitBy = flip sepBy1
 charLit :: (Stream s, NFData s) => ParserS s Char
 charLit = string "'" *> readChar <* string "'"
 
--- | The same as `charLit`, but this reads /char-literal mark/ from `LanguageDef`
+-- | The same as 'charLit', but this reads 'defCharLiteralMark' from 'LanguageDef'
 charLit' :: (Stream s, NFData s) => ParserS' s Char
 charLit' def = lexeme' (string mark *> readChar <* string mark) def
   where mark = defCharLiteralMark def
@@ -406,7 +408,7 @@ charLit' def = lexeme' (string mark *> readChar <* string mark) def
 stringLit :: (Stream s, NFData s) => ParserS s String
 stringLit = string "\"" *> manyTill readChar (string "\"")
 
--- | The same as `stringLit`, but this reads /string-literal mark/ from `LanguageDef`
+-- | The same as 'stringLit', but this reads 'defStringLiteralMark' from 'LanguageDef'
 stringLit' :: (Stream s, NFData s) => ParserS' s String
 stringLit' def = lexeme' (string mark *> manyTill readChar (string mark)) def
   where mark = defStringLiteralMark def
