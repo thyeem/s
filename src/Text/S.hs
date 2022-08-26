@@ -20,6 +20,7 @@ module Text.S
   , module Text.S
   ) where
 
+import           Control.DeepSeq                ( NFData )
 import           Text.S.Base
 import           Text.S.Combinator
 import           Text.S.Internal
@@ -54,3 +55,7 @@ tf parser = do
 -- | tests lexeme parsers
 tl :: (LanguageDef -> ParserS String a) -> String -> Return a String
 tl l = t (l defDef)
+
+-- op :: ParserS s Integer
+op :: (Stream s, NFData s) => ParserS s (Integer -> Integer -> Integer)
+op = (symbol "*" $> (*)) <|> (symbol "+" $> (+)) <|> (symbol "-" $> (-))

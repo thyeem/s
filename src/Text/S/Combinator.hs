@@ -249,38 +249,53 @@ skipManyTill p end = go where go = end <|> (p *> go)
 skipSomeTill :: MonadPlus m => m a -> m b -> m b
 skipSomeTill p end = p *> skipManyTill p end
 
--- | Tries to parse @__p__@ with left-associative operator @__op__@ repeatedly.
+-- | Tries to repeatedly parse two @__p__@ operands
+-- with left-associative binary infix operator @__op__@.
 --
--- This also tries to fold (evaluate) them by the given operator @__op__@.
+-- This performs monadic transform by repeatedly binding operands
+-- with the given operator @__op__@.
+-- The result will be folded if the operation is evaluable.
 --
--- See also 'foldro'.
+-- See also 'bindr'.
 --
--- >>> op = symbol "^" *> pure (^)
--- >>> t' (foldlo op (strip integer)) "2 ^ 3 ^ 4"
+-- >>> op = symbol "^" $> (^)
+-- >>> t' (bindl op (strip integer)) "2 ^ 3 ^ 4"
 -- Right 4096
 --
--- >>> op = (symbol "+" *> pure (+)) <|> (symbol "-" *> pure (-))
--- >>> t' (foldlo op (strip integer)) "7 - 4 + 2"
+-- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
+-- >>> t' (bindl op (strip integer)) "7 - 4 + 2"
 -- Right 5
 --
-foldlo :: MonadPlus m => m (a -> a -> a) -> m a -> m a
-foldlo op p = p >>= rest
+bindl :: MonadPlus m => m (a -> a -> a) -> m a -> m a
+bindl op p = p >>= rest
   where rest x = (op >>= \f -> p >>= rest . f x) <|> pure x
 
--- | Tries to parse @__p__@ with right-associative operator @__op__@ repeatedly.
+-- | Tries to repeatedly parse two @__p__@ operands
+-- with right-associative binary infix operator @__op__@.
 --
--- This also tries to fold (evaluate) them by the given operator @__op__@.
+-- This performs monadic transform by repeatedly binding operands
+-- with the given operator @__op__@.
+-- The result will be folded if the operation is evaluable.
 --
--- See also 'foldlo'.
+-- See also 'bindl'.
 --
--- >>> op = symbol "^" *> pure (^)
--- >>> t' (foldro op (strip integer)) "2 ^ 3 ^ 4"
+-- >>> op = symbol "^" $> (^)
+-- >>> t' (bindr op (strip integer)) "2 ^ 3 ^ 4"
 -- Right 2417851639229258349412352
 --
--- >>> op = (symbol "+" *> pure (+)) <|> (symbol "-" *> pure (-))
--- >>> t' (foldro op (strip integer)) "7 - 4 + 2"
+-- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
+-- >>> t' (bindr op (strip integer)) "7 - 4 + 2"
 -- Right 1
 --
-foldro :: MonadPlus m => m (a -> a -> a) -> m a -> m a
-foldro op p = p >>= rest
+bindr :: MonadPlus m => m (a -> a -> a) -> m a -> m a
+bindr op p = p >>= rest
   where rest x = (op >>= (\f -> f x <$> (p >>= rest))) <|> pure x
+
+-- |
+bindp :: MonadPlus m => m (a -> a -> a) -> m a -> m a
+bindp op p = op >>= (\f -> liftA2 f x x) where x = bindp op p <|> p
+
+
+-- |
+bindq :: MonadPlus m => m (a -> a -> a) -> m a -> m a
+bindq op p = undefined
