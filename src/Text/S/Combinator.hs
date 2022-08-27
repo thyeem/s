@@ -291,11 +291,18 @@ bindr :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindr op p = p >>= rest
   where rest x = (op >>= (\f -> f x <$> (p >>= rest))) <|> pure x
 
--- |
+-- | Parser for prefix binary operator (polish notation)
 bindp :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindp op p = op >>= (\f -> liftA2 f x x) where x = bindp op p <|> p
 
 
--- |
+-- | Parser for postfix binary operator (reverse-polish notation)
 bindq :: MonadPlus m => m (a -> a -> a) -> m a -> m a
-bindq op p = undefined
+bindq op p = p >>= rest
+ where
+  rest x = found x <|> pure x
+  found x = bindq op p >>= bind x
+  bind x y = op >>= rest . flip uncurry (x, y)
+
+
+  -- rest x = (bindq op p >>= (\y -> op >>= (\f -> rest $ f x y))) <|> pure x
