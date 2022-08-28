@@ -60,8 +60,10 @@ option x p = p <|> return x
 
 -- | Tries to parse @__n-times__@ with the given parser. The same as 'replicateM'.
 --
--- >>> t' (count 6 letter) "parser-combinator"
--- "parser"
+-- See also 'count'
+--
+-- >>> t' (count 6 letter) "Parser-Combinator"
+-- "Parser"
 --
 count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
@@ -231,19 +233,35 @@ someTill' p end = liftA2 f p (manyTill' p end) where f a b = first (a :) b
 skipOptional :: MonadPlus m => m a -> m ()
 skipOptional p = void p <|> pure ()
 
--- | Applies parser @__p__@ 0+ times, then skips the results.
+-- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@,
+-- then discards the result.
+--
+-- >>> ts' (skipMany (anycharBut '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- "#-G-Ab-A-Bb-B"
+--
+-- >>> ts' (skipMany digit) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 --
 skipMany :: MonadPlus m => m a -> m ()
 skipMany = void . many
 
--- | Applies parser @__p__@ 1+ times, then skips the results.
+-- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
+-- then discards the result.
+--
+-- >>> ts' (skipSome (letter <|> char '-')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- "#-G-Ab-A-Bb-B"
 --
 skipSome :: MonadPlus m => m a -> m ()
 skipSome p = p *> skipMany p
 
--- | Tries to parse @__n__@-times with the given parser.
+-- | Tries to parse @__n-times__@ with the given parser.
 --
--- The same as 'count', but this skips the results.
+-- The same as 'count', but this discards the result.
+-- This is equivalent to 'replicateM_'.
+--
+-- See also 'count'
+--
+-- >>>
 --
 skipCount :: MonadPlus m => Int -> m a -> m ()
 skipCount = replicateM_
