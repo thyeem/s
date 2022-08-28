@@ -119,7 +119,7 @@ sepBy p sep = sepBy1 p sep <|> pure []
 -- ["p","rser combin","tor"]
 --
 sepBy1 :: MonadPlus m => m a -> m b -> m [a]
-sepBy1 p sep = liftA2 (:) p (many (sep *> p))
+sepBy1 p sep = liftA2 (:) p (some (sep *> p))
 
 -- | Parses @__0+(zero or more)__@ occurrences of parser @__p__@,
 -- which is ended by parser @__end__@.
@@ -267,11 +267,42 @@ skipSome p = p *> skipMany p
 skipCount :: MonadPlus m => Int -> m a -> m ()
 skipCount = replicateM_
 
--- |
+-- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@,
+-- until parser @__end__@ succeeds.
+--
+-- That is, it okay for parser @__p__@ to fail as long as @__end__@ succeeds.
+--
+-- The result of parser @__end__@ is returned
+-- while the result of parser @__p__@ is discarded.
+--
+-- See also 'skipSomeTill'.
+--
+-- >>> t' (skipManyTill digit (char '.')) "3.14159265358979"
+-- '.'
+--
+-- >>> ts' (skipManyTill digit (char '.')) "3.14159265358979"
+-- "14159265358979"
+--
+-- >>> ts' (skipManyTill digit (char '.')) ".14159265358979"
+-- "14159265358979"
+--
 skipManyTill :: MonadPlus m => m a -> m b -> m b
 skipManyTill p end = go where go = end <|> (p *> go)
 
--- |
+-- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
+-- until parser @__end__@ succeeds.
+--
+-- The result of parser @__end__@ is returned
+-- while the result of parser @__p__@ is discarded.
+--
+-- See also 'skipManyTill'.
+--
+-- >>> t' (skipSomeTill anychar (char '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- '#'
+--
+-- >>> ts' (skipSomeTill anychar (char '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- "-G-Ab-A-Bb-B"
+--
 skipSomeTill :: MonadPlus m => m a -> m b -> m b
 skipSomeTill p end = p *> skipManyTill p end
 
