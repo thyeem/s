@@ -60,7 +60,7 @@ option x p = p <|> return x
 
 -- | Tries to parse @__n-times__@ with the given parser. The same as 'replicateM'.
 --
--- See also 'count'
+-- See also 'skipCount'
 --
 -- >>> t' (count 6 letter) "Parser-Combinator"
 -- "Parser"
@@ -119,7 +119,7 @@ sepBy p sep = sepBy1 p sep <|> pure []
 -- ["p","rser combin","tor"]
 --
 sepBy1 :: MonadPlus m => m a -> m b -> m [a]
-sepBy1 p sep = liftA2 (:) p (some (sep *> p))
+sepBy1 p sep = liftA2 (:) p (many (sep *> p))
 
 -- | Parses @__0+(zero or more)__@ occurrences of parser @__p__@,
 -- which is ended by parser @__end__@.
@@ -261,7 +261,8 @@ skipSome p = p *> skipMany p
 --
 -- See also 'count'
 --
--- >>>
+-- >>> ts' (skipCount 5 (digit *> char ':')) "1:2:3:4:5:6:7:8"
+-- "6:7:8"
 --
 skipCount :: MonadPlus m => Int -> m a -> m ()
 skipCount = replicateM_
