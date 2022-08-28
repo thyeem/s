@@ -18,6 +18,7 @@ module Text.S.Combinator
   , many
   , some
   , ($>)
+  , void
   ) where
 
 import           Control.Applicative            ( Alternative(..)
@@ -250,10 +251,10 @@ skipSomeTill :: MonadPlus m => m a -> m b -> m b
 skipSomeTill p end = p *> skipManyTill p end
 
 -- | Tries to repeatedly parse two @__p__@ operands
--- with left-associative binary infix operator @__op__@.
+-- with @__infix left-associative__@ binary operator @__op__@.
 --
--- This performs monadic transform by repeatedly binding operands
--- with the given operator @__op__@.
+-- In other words, this can parse any expression consisting of
+-- binary operator that is between its operands and is left-associative.
 -- The result will be folded if the operation is evaluable.
 --
 -- See also 'bindr'.
@@ -262,19 +263,27 @@ skipSomeTill p end = p *> skipManyTill p end
 -- >>> t' (bindl op (strip integer)) "2 ^ 3 ^ 4"
 -- Right 4096
 --
+-- the @__op__@ in the example above is equivalent to \(\to\)
+-- 'Text.S.Lexeme.powOp''.
+--
 -- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
 -- >>> t' (bindl op (strip integer)) "7 - 4 + 2"
 -- Right 5
 --
+-- the @__op__@ in the example above is equivalent to \(\to\)
+-- @'Text.S.Lexeme.addOp' '<|>' 'Text.S.Lexeme.subOp'@.
+--
 bindl :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindl op p = p >>= rest
-  where rest x = (op >>= \f -> p >>= rest . f x) <|> pure x
+ where
+  rest x = bind x <|> pure x
+  bind x = op >>= \f -> p >>= rest . f x
 
 -- | Tries to repeatedly parse two @__p__@ operands
--- with right-associative binary infix operator @__op__@.
+-- with @__infix right-associative__@ binary operator @__op__@.
 --
--- This performs monadic transform by repeatedly binding operands
--- with the given operator @__op__@.
+-- In other words, this can parse any expression consisting of
+-- binary operator that is between its operands and is right-associative.
 -- The result will be folded if the operation is evaluable.
 --
 -- See also 'bindl'.
@@ -283,26 +292,81 @@ bindl op p = p >>= rest
 -- >>> t' (bindr op (strip integer)) "2 ^ 3 ^ 4"
 -- Right 2417851639229258349412352
 --
+-- the @__op__@ in the example above is equivalent to \(\to\)
+-- 'Text.S.Lexeme.powOp''.
+--
 -- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
 -- >>> t' (bindr op (strip integer)) "7 - 4 + 2"
 -- Right 1
 --
+-- the @__op__@ in the example above is equivalent to \(\to\)
+-- @'Text.S.Lexeme.addOp' '<|>' 'Text.S.Lexeme.subOp'@.
+--
 bindr :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindr op p = p >>= rest
-  where rest x = (op >>= (\f -> f x <$> (p >>= rest))) <|> pure x
+ where
+  rest x = bind x <|> pure x
+  bind x = op >>= (\f -> f x <$> (p >>= rest))
 
--- | Parser for prefix binary operator (polish notation)
+-- | Tries to repeatedly parse two @__p__@ operands
+-- with @__prefix or polish prefix__@ binary operator @__op__@.
+--
+-- In other words, this can parse any expression consisting of
+-- binary operator that precedes its operands.
+-- The result will be folded if the operation is evaluable.
+--
+-- See also 'bindq'.
+--
+-- >>> op = strip (symbol "^") $> (^)
+-- >>> t' (bindp op (strip integer)) "^ ^ 2 3 4"
+-- Right 4096
+--
+-- >>> t' (bindp op (strip integer)) "^ 2 ^ 3 4"
+-- Right 2417851639229258349412352
+--
+-- the @__op__@ in the example above is equivalent to \(\to\)
+-- 'Text.S.Lexeme.powOp''.
+--
+-- >>> op = addOp <|> subOp <|> mulOp
+-- >>> t' (bindp op (strip integer)) "- 20 * + 2 3 4"
+-- Right 0
+--
+-- For more information about the @__op__@ in the example above,
+-- See @'Text.S.Lexeme.addOp', 'Text.S.Lexeme.subOp', and 'Text.S.Lexeme.mulOp'@.
+--
 bindp :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindp op p = op >>= (\f -> liftA2 f x x) where x = bindp op p <|> p
 
 
--- | Parser for postfix binary operator (reverse-polish notation)
+-- | Tries to repeatedly parse two @__p__@ operands
+-- with @__postfix or reverse-polish prefix__@ binary operator @__op__@.
+--
+-- In other words, this can parse any expression consisting of
+-- binary operator that follows its operands.
+-- The result will be folded if the operation is evaluable.
+--
+-- See also 'bindp'.
+--
+-- >>> op = strip (symbol "^") $> (^)
+-- >>> t' (bindq op (strip integer)) "2 3 ^ 4 ^"
+-- Right 4096
+--
+-- >>> t' (bindq op (strip integer)) "2 3 4 ^ ^"
+-- Right 2417851639229258349412352
+--
+-- the @__op__@ in the example above is equivalent to \(\to\)
+-- 'Text.S.Lexeme.powOp''.
+--
+-- >>> op = addOp <|> subOp <|> mulOp
+-- >>> t' (bindq op (strip integer)) "2 3 + 4 * 20 -"
+-- Right 0
+--
+-- For more information about the @__op__@ in the example above,
+-- See @'Text.S.Lexeme.addOp', 'Text.S.Lexeme.subOp', and 'Text.S.Lexeme.mulOp'@.
+--
 bindq :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindq op p = p >>= rest
  where
-  rest x = found x <|> pure x
-  found x = bindq op p >>= bind x
+  rest x = find x <|> pure x
+  find x = bindq op p >>= bind x
   bind x y = op >>= rest . flip uncurry (x, y)
-
-
-  -- rest x = (bindq op p >>= (\y -> op >>= (\f -> rest $ f x y))) <|> pure x

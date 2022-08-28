@@ -57,5 +57,7 @@ tl :: (LanguageDef -> ParserS String a) -> String -> Return a String
 tl l = t (l defDef)
 
 -- op :: ParserS s Integer
-op :: (Stream s, NFData s) => ParserS s (Integer -> Integer -> Integer)
-op = (symbol "*" $> (*)) <|> (symbol "+" $> (+)) <|> (symbol "-" $> (-))
+op
+  :: (Stream s, NFData s, Num a, Integral a, Fractional a, Floating a)
+  => ParserS s (a -> a -> a)
+op = addOp <|> subOp <|> mulOp <|> divOp <|> powOp <|> powOp'

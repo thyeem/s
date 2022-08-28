@@ -33,7 +33,9 @@ import           Text.S.Internal
 import           Text.S.Language
 
 import           Control.Applicative            ( liftA2 )
-import           Control.Monad                  ( mzero )
+import           Control.Monad                  ( MonadPlus(..)
+                                                , mzero
+                                                )
 
 
 
@@ -109,7 +111,6 @@ commentBlock' def = bra *> manyTill anychar ket
 --
 strip :: (Stream s, NFData s) => ParserS s a -> ParserS s a
 strip = rstrip . lstrip
--- strip p = skipSpaces *> p <* (skipSpaces <|> void eof)
 
 -- | Remove any leading whitespaces when parsing with @p@
 --
@@ -384,6 +385,36 @@ operator' def = do
 splitBy
   :: (Stream s, NFData s) => ParserS s String -> ParserS s a -> ParserS s [a]
 splitBy = flip sepBy1
+
+-- |
+--
+addOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a -> a)
+addOp = strip (symbol "+") $> (+)
+
+-- |
+--
+subOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a -> a)
+subOp = strip (symbol "-") $> (-)
+
+-- |
+--
+mulOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a -> a)
+mulOp = strip (symbol "*") $> (*)
+
+-- |
+--
+divOp :: (Stream s, NFData s, Num a, Fractional a) => ParserS s (a -> a -> a)
+divOp = strip (symbol "/") $> (/)
+
+-- |
+--
+powOp' :: (Stream s, NFData s, Num a, Integral a) => ParserS s (a -> a -> a)
+powOp' = strip (symbol "^") $> (^)
+
+-- |
+--
+powOp :: (Stream s, NFData s, Num a, Floating a) => ParserS s (a -> a -> a)
+powOp = strip (symbol "**") $> (**)
 
 -- | Parses a single @char literal@
 --
