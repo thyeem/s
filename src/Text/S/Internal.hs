@@ -379,7 +379,10 @@ t' parser = unwrap . t parser
 
 -- | The same as 't', but unwraps @Return a s@ to get the state @s@ only.
 ts' :: ParserS String a -> String -> String
-ts' parser = stateOnly . t parser where stateOnly (Return _ (State s _)) = s
+ts' parser = sOnly . t parser
+ where
+  sOnly (Return (Ok    _) (State s _)) = s
+  sOnly (Return (Error e) _          ) = errorWithoutStackTrace . show $ e
 
 -- | Unwraps @Return a s@, then return the result @a@ only
 unwrap :: Return a s -> a
@@ -402,20 +405,20 @@ instance Show Source where
 
 
 instance (Stream s, Show a, Show s) => Show (Return a s) where
-  show (Return result state) = join'nl [show result, show state]
+  show (Return result state) = join'n [show result, show state]
 
 
 instance Show ParseError where
   show err =
-    join'indent
+    join'nt
       $ show (errorSource err)
       : (message <$> (mergeMessages . errorMessages $ err))
 
 
 instance (Stream s, Show s) => Show (State s) where
-  show state@State {..} = join'nl
-    [ join'indent ["source from:", sourceName stateSource]
-    , join'indent ["stream:", showStream]
+  show state@State {..} = join'n
+    [ join'nt ["source from:", sourceName stateSource]
+    , join'nt ["stream:", showStream]
     ]
    where
     stream = show stateStream
@@ -423,13 +426,13 @@ instance (Stream s, Show s) => Show (State s) where
                | otherwise           = reduceStream stateStream 60
 
 
-join'indent :: [String] -> String
-join'indent = intercalate "\n\t"
+join'nt :: [String] -> String
+join'nt = intercalate "\n\t"
 
-join'nl :: [String] -> String
-join'nl = intercalate "\n"
+join'n :: [String] -> String
+join'n = intercalate "\n"
 
 reduceStream :: (Stream s, Show s) => s -> Int -> String
-reduceStream stream n = join'indent
+reduceStream stream n = join'nt
   [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
   where s = show stream

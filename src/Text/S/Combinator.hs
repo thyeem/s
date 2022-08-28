@@ -222,6 +222,12 @@ someTill' p end = liftA2 f p (manyTill' p end) where f a b = first (a :) b
 -- | Tries to parse with parser @__p__@.
 -- If succeeds, then consume the result and throws it away. Otherwise ignore it.
 --
+-- >>> ts' (skipOptional special) "$PARSER_COMBINATOR"
+-- "PARSER_COMBINATOR"
+--
+-- >>> ts' (skipOptional letter) "$PARSER_COMBINATOR"
+-- "$PARSER_COMBINATOR"
+--
 skipOptional :: MonadPlus m => m a -> m ()
 skipOptional p = void p <|> pure ()
 
