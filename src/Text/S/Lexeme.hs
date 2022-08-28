@@ -75,7 +75,7 @@ lexeme' p def = p <* skip' def
 -- | Skips unnecesary whitespaces and comments
 --
 -- >>> input = "# line-comment\n\r\n '''inner block''' should-be-here"
--- >>> unwrap' $ t (skip' defDef) input
+-- >>> ts' (skip' defDef) input
 -- "should-be-here"
 --
 skip' :: (Stream s, NFData s) => ParserS' s ()
@@ -107,7 +107,7 @@ commentBlock' def = bra *> manyTill anychar ket
 -- Use this when you just want to strip whitespaces around targets
 --
 -- >>> t' (strip float) "  3.1415926535"
--- Right 3.1415926535
+-- 3.1415926535
 --
 strip :: (Stream s, NFData s) => ParserS s a -> ParserS s a
 strip = rstrip . lstrip
@@ -173,7 +173,7 @@ spaces' = lexeme' spaces
 -- | Parses string between parentheses
 --
 -- >>> t' (parens letters) "(parser)"
--- Right "parser"
+-- "parser"
 --
 parens :: (Stream s, NFData s) => ParserS s String -> ParserS s String
 parens = between (symbol "(") (symbol ")")
@@ -185,7 +185,7 @@ parens' p = lexeme' (parens p)
 -- | Parses string between curly braces
 --
 -- >>> t' (braces letters) "{parser}"
--- Right "parser"
+-- "parser"
 --
 braces :: (Stream s, NFData s) => ParserS s String -> ParserS s String
 braces = between (symbol "{") (symbol "}")
@@ -197,7 +197,7 @@ braces' p = lexeme' (braces p)
 -- | Parses string between angle brackets
 --
 -- >>> t' (angles letters) "<parser>"
--- Right "parser"
+-- "parser"
 --
 angles :: (Stream s, NFData s) => ParserS s String -> ParserS s String
 angles = between (symbol "<") (symbol ">")
@@ -209,7 +209,7 @@ angles' p = lexeme' (angles p)
 -- | Parses string between square brackets
 --
 -- >>> t' (squares letters) "[parser]"
--- Right "parser"
+-- "parser"
 --
 squares :: (Stream s, NFData s) => ParserS s String -> ParserS s String
 squares = between (symbol "[") (symbol "]")
@@ -222,7 +222,7 @@ squares' p = lexeme' (squares p)
 -- This includes numbers with leading zeros
 --
 -- >>> t' decimals "00123456789"
--- Right 123456789
+-- 123456789
 --
 decimals :: (Stream s, NFData s) => ParserS s Integer
 decimals = numbers 10 digits
@@ -234,7 +234,7 @@ decimals' = lexeme' decimals
 -- | Parses hexadecimal digits (base-16)
 --
 -- >>> t' hexadecimals "0xCOVID-19"
--- Right 12
+-- 12
 --
 hexadecimals :: (Stream s, NFData s) => ParserS s Integer
 hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
@@ -246,7 +246,7 @@ hexadecimals' = lexeme' hexadecimals
 -- | Parses numbers with leading-zeros
 --
 -- >>> t' zeros "000002022"
--- Right 2022
+-- 2022
 --
 zeros :: (Stream s, NFData s) => ParserS s Integer
 zeros = char '0' *> decimals
@@ -258,7 +258,7 @@ zeros' = lexeme' zeros
 -- | Parses natural numbers (non-leading zeros and signs)
 --
 -- >>> t' natural "27182818284"
--- Right 27182818284
+-- 27182818284
 --
 natural :: (Stream s, NFData s) => ParserS s Integer
 natural = assert digit *> assert (anycharBut '0') *> decimals
@@ -270,7 +270,7 @@ natural' = lexeme' natural
 -- | Parses a sign (@+@ or @-@) and lift the corresponding function.
 --
 -- >>> t' (sign <*> floating)  "-273.15 in Celsius"
--- Right (-273.15)
+-- -273.15
 --
 sign :: (Stream s, NFData s, Num a) => ParserS s (a -> a)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
@@ -278,7 +278,7 @@ sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 -- | The same as 'sign' but strip whitespaces between sign and numbers.
 --
 -- >>> t' (sign' defDef <*> floating)  "-  273.15 in Celsius"
--- Right (-273.15)
+-- -273.15
 --
 sign' :: (Stream s, NFData s, Num a) => ParserS' s (a -> a)
 sign' = lexeme' sign
@@ -286,7 +286,7 @@ sign' = lexeme' sign
 -- | Parses an integer (sign + numbers, sign if any)
 --
 -- >>> t' (sign <*> integer)  "-273.15 in Celsius"
--- Right (-273)
+-- -273
 --
 integer :: (Stream s, NFData s) => ParserS s Integer
 integer = sign <*> decimals
@@ -304,7 +304,7 @@ numbers base parser = foldl' f 0 <$> parser
 -- | Parses general form of floating numbers (including scientific form)
 --
 -- >>> t' float  "3.1415926535e-8"
--- Right 3.1415926535e-8
+-- 3.1415926535e-8
 --
 float :: (Stream s, NFData s) => ParserS s Double
 float = read <$> (scientific <|> floatOnly)
@@ -321,7 +321,7 @@ float' = lexeme' float
 -- (decimals + decimal point + decimal fractions)
 --
 -- >>> t' floating  "3.1415926535"
--- Right 3.1415926535
+-- 3.1415926535
 --
 floating :: (Stream s, NFData s) => ParserS s Double
 floating = read <$> foldl1 (liftA2 (<>)) [digits, string ".", digits]
@@ -334,7 +334,7 @@ floating' = lexeme' floating
 -- | Parses identifiers based on the given 'LanguageDef'
 --
 -- >>> t' (identifier' defDef) "function(arg1, arg2)"
--- Right "function"
+-- "function"
 --
 identifier' :: (Stream s, NFData s) => ParserS' s String
 identifier' def = do
@@ -358,7 +358,7 @@ identifier' def = do
 -- | Parses operators or special-chars based on the given 'LanguageDef'
 --
 -- >>> t' (digits *> skipSpaces *> operator' defDef) "3 + 4"
--- Right "+"
+-- "+"
 --
 operator' :: (Stream s, NFData s) => ParserS' s String
 operator' def = do
@@ -380,7 +380,7 @@ operator' def = do
 --
 -- >>> p = splitBy (symbol ",") alphaNums
 -- >>> t' (symbol "(" *> p <* symbol ")") "(alpha,beta,gamma)"
--- Right ["alpha","beta","gamma"]
+-- ["alpha","beta","gamma"]
 --
 splitBy
   :: (Stream s, NFData s) => ParserS s String -> ParserS s a -> ParserS s [a]
@@ -420,7 +420,7 @@ powOp = strip (symbol "**") $> (**)
 --
 -- >>> stream = "'\CR', a carriage-return or '\LF', a line-feed?"
 -- >>> t' charLit stream
--- Right '\r'
+-- '\r'
 --
 charLit :: (Stream s, NFData s) => ParserS s Char
 charLit = string "'" *> readChar <* string "'"
@@ -434,7 +434,7 @@ charLit' def = lexeme' (string mark *> readChar <* string mark) def
 --
 -- >>> stream = "\"'\CR', a carriage-return or '\LF', a line-feed?\""
 -- >>> t' stringLit stream
--- Right "'\r', a carriage-return or '\n', a line-feed?"
+-- "'\r', a carriage-return or '\n', a line-feed?"
 --
 stringLit :: (Stream s, NFData s) => ParserS s String
 stringLit = string "\"" *> manyTill readChar (string "\"")

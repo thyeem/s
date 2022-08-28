@@ -43,12 +43,12 @@ module Text.S.Internal
   , parse
   , parse'
   , parseFromFile
+  , charParserOf
+  , assert
   , t
   , t'
+  , ts'
   , unwrap
-  , unwrap'
-  , assert
-  , charParserOf
   ) where
 
 import           Control.Applicative            ( Alternative(..)
@@ -167,10 +167,9 @@ mergeMessages = foldr merge []
 -------------------------
 -- ParseError
 -------------------------
-data ParseError = ParseError
-  { errorSource   :: !Source
-  , errorMessages :: [ErrorMessage]
-  }
+data ParseError = FakeError
+                | ParseError { errorSource   :: !Source
+                             , errorMessages :: [ErrorMessage]}
   deriving (Eq, Generic, NFData)
 
 
@@ -179,6 +178,8 @@ instance Semigroup ParseError where
 
 
 appendError :: ParseError -> ParseError -> ParseError
+appendError FakeError e         = e
+appendError e         FakeError = e
 appendError e1@(ParseError src1 msgs1) e2@(ParseError src2 msgs2) =
   case src1 `compare` src2 of
     LT -> e2
@@ -323,7 +324,7 @@ parse parser state = runParser parser state fOk fError
   fError = Return . Error
 
 -- | The same as 'parse', but unwrap the @Return@ of the parse result
-parse' :: ParserS s a -> State s -> Either ParseError a
+parse' :: ParserS s a -> State s -> a
 parse' parser = unwrap . parse parser
 
 -- | The same as 'parse', but takes the stream from a given file
@@ -332,30 +333,6 @@ parseFromFile parser file = do
   stream <- readStream file
   let state = initState file stream
   return . parse parser $ state
-
--- | Tests parsers and its combinators with given strings
-t :: ParserS String a -> String -> Return a String
-t parser s = parse parser (State s mempty)
-
--- | The same as 't', but unwrap the @Return@ of the parse result
-t' :: ParserS String a -> String -> Either ParseError a
-t' parser = unwrap . t parser
-
--- | Unwraps @Return a s@, then return the result @a@ only
-unwrap :: Return a s -> Either ParseError a
-unwrap (Return r _) = case r of
-  Ok    ok  -> Right ok
-  Error err -> Left err
-
--- | Unwraps @Return a s@, then return stream from the state @s@
-unwrap' :: Stream s => Return a s -> s
-unwrap' (Return _ (State s _)) = s
-
--- | Looking ahead, tries to parse with @parser@ without comsuming any input
---
-assert :: ParserS s a -> ParserS s a
-assert parser = ParserS $ \state fOk fError ->
-  let fOk' x _ = fOk x state in runParser parser state fOk' fError
 
 -- | Gets a char parser that satisfies the given predicate.
 --
@@ -381,6 +358,34 @@ charParserOf predicate = ParserS $ \state@(State stream src) fOk fError ->
 
       error' = unexpectedError src
         $ unwords ["failed. got unexpected character:", show c]
+
+-- | Tries to parse with @__parser__@ looking ahead without consuming any input.
+--
+-- Not consuming any intut does not mean it does not fail at all.
+--
+-- Attempts to parse with the given parser, throwing an error if parsing fails.
+--
+assert :: ParserS s a -> ParserS s a
+assert parser = ParserS $ \state fOk fError ->
+  let fOk' x _ = fOk x state in runParser parser state fOk' fError
+
+-- | Tests parsers and its combinators with given strings
+t :: ParserS String a -> String -> Return a String
+t parser s = parse parser (State s mempty)
+
+-- | The same as 't', but unwrap the @Return@ of the parse result
+t' :: ParserS String a -> String -> a
+t' parser = unwrap . t parser
+
+-- | The same as 't', but unwraps @Return a s@ to get the state @s@ only.
+ts' :: ParserS String a -> String -> String
+ts' parser = stateOnly . t parser where stateOnly (Return _ (State s _)) = s
+
+-- | Unwraps @Return a s@, then return the result @a@ only
+unwrap :: Return a s -> a
+unwrap (Return r _) = case r of
+  Ok    ok  -> ok
+  Error err -> errorWithoutStackTrace . show $ err
 
 
 -------------------------

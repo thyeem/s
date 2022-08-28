@@ -43,7 +43,7 @@ import           Text.S.Internal
 -- | Tries to parse with parsers in the list untill one of them succeeds.
 --
 -- >>> t' (choice [letter, special, digit]) "$parser"
--- Right '$'
+-- '$'
 --
 choice :: MonadPlus m => [m a] -> m a
 choice = foldl' (<|>) mzero
@@ -53,7 +53,7 @@ choice = foldl' (<|>) mzero
 -- If failed, it returns @__x__@. This is useful to set default value of parser @__p__@.
 --
 -- >>> t' (option "Mars" spaces) "nuclear-bomb-explosion -> Earth"
--- Right "Mars"
+-- "Mars"
 --
 option :: MonadPlus m => a -> m a -> m a
 option x p = p <|> return x
@@ -61,7 +61,7 @@ option x p = p <|> return x
 -- | Tries to parse @__n-times__@ with the given parser. The same as 'replicateM'.
 --
 -- >>> t' (count 6 letter) "parser-combinator"
--- Right "parser"
+-- "parser"
 --
 count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
@@ -70,10 +70,10 @@ count = replicateM
 -- Otherwise, it returns the result of parser @__p__@ wrapped by 'Just'.
 --
 -- >>> t' (optionMaybe digits) "COVID-19"
--- Right Nothing
+-- Nothing
 --
 -- >>> t' (optionMaybe letters) "COVID-19"
--- Right (Just "COVID")
+-- Just "COVID"
 --
 optionMaybe :: MonadPlus m => m a -> m (Maybe a)
 optionMaybe p = option Nothing (Just <$> p)
@@ -85,7 +85,7 @@ optionMaybe p = option Nothing (Just <$> p)
 --
 -- >>> p = some $ digit <|> char ','
 -- >>> t' (between (symbol "[") (symbol "]") p) "[1,2,3,4]"
--- Right "1,2,3,4"
+-- "1,2,3,4"
 --
 between :: MonadPlus m => m bra -> m ket -> m a -> m a
 between bra ket p = bra *> p <* ket
@@ -98,10 +98,10 @@ between bra ket p = bra *> p <* ket
 -- See also 'endBy'.
 --
 -- >>> t' (sepBy decimals (symbol ",")) "1,2,3,4,5"
--- Right [1,2,3,4,5]
+-- [1,2,3,4,5]
 --
 -- >>> t' (sepBy decimals (symbol ".")) "1,2,3,4,5"
--- Right []
+-- []
 --
 sepBy :: MonadPlus m => m a -> m b -> m [a]
 sepBy p sep = sepBy1 p sep <|> pure []
@@ -114,7 +114,7 @@ sepBy p sep = sepBy1 p sep <|> pure []
 -- See also 'endBy1'
 --
 -- >>> t' (sepBy1 (anystringBut "a") (symbol "a")) "parser combinator"
--- Right ["p","rser combin","tor"]
+-- ["p","rser combin","tor"]
 --
 sepBy1 :: MonadPlus m => m a -> m b -> m [a]
 sepBy1 p sep = liftA2 (:) p (some (sep *> p))
@@ -128,10 +128,10 @@ sepBy1 p sep = liftA2 (:) p (some (sep *> p))
 --
 -- >>> p = some $ alphaNum <|> char '=' <|> space
 -- >>> t' (endBy p (char ';')) "int a=1;int b=2;"
--- Right ["int a=1","int b=2"]
+-- ["int a=1","int b=2"]
 --
 -- >>> t' (endBy digits (char ';')) "10:20:30:"
--- Right []
+-- []
 --
 endBy :: MonadPlus m => m a -> m b -> m [a]
 endBy p end = many (p <* end)
@@ -144,7 +144,7 @@ endBy p end = many (p <* end)
 -- See also 'sepBy1'
 --
 -- >>> t' (endBy1 (anystringBut "a") (symbol "a")) "parser combinator"
--- Right ["p","rser combin"]
+-- ["p","rser combin"]
 --
 endBy1 :: MonadPlus m => m a -> m b -> m [a]
 endBy1 p end = some (p <* end)
@@ -158,11 +158,11 @@ endBy1 p end = some (p <* end)
 --
 -- >>> p = string "{-" *> manyTill anychar (string "-}")
 -- >>> t' p "{- haskell block comment here -}"
--- Right " haskell block comment here "
+-- " haskell block comment here "
 --
 -- >>> q = string "{-" *> manyTill special (string "-}")
 -- >>> t' q "{--}"
--- Right ""
+-- ""
 --
 manyTill :: MonadPlus m => m a -> m b -> m [a]
 manyTill p end = someTill p end <|> (end $> [])
@@ -174,7 +174,7 @@ manyTill p end = someTill p end <|> (end $> [])
 --
 -- >>> p = someTill (letter <|> space) (string ":")
 -- >>> t' p "for x in xs: f(x)"
--- Right "for x in xs"
+-- "for x in xs"
 --
 someTill :: MonadPlus m => m a -> m b -> m [a]
 someTill p end = liftA2 (:) p (manyTill p end)
@@ -191,10 +191,10 @@ someTill p end = liftA2 (:) p (manyTill p end)
 --
 -- >>> p = alphaNum <|> space
 -- >>> t' (manyTill' p special) "stop COVID-19"
--- Right ("stop COVID",'-')
+-- ("stop COVID",'-')
 --
 -- >>> t' (manyTill' digit letters) "stop COVID-19"
--- Right ("","stop")
+-- ("","stop")
 --
 manyTill' :: MonadPlus m => m a -> m b -> m ([a], b)
 manyTill' p end = someTill' p end <|> (([], ) <$> end)
@@ -214,7 +214,7 @@ manyTill' p end = someTill' p end <|> (([], ) <$> end)
 -- >>> geneticSequence = "AUGAUCUCGUCAUCUCGUUAACUCGUA"
 -- >>> p = startCodon *> someTill' upper stopCodon
 -- >>> t' p geneticSequence
--- Right ("AUCUCGUCAUCUCGU","UAA")
+-- ("AUCUCGUCAUCUCGU","UAA")
 --
 someTill' :: MonadPlus m => m a -> m b -> m ([a], b)
 someTill' p end = liftA2 f p (manyTill' p end) where f a b = first (a :) b
@@ -261,14 +261,14 @@ skipSomeTill p end = p *> skipManyTill p end
 --
 -- >>> op = symbol "^" $> (^)
 -- >>> t' (bindl op (strip integer)) "2 ^ 3 ^ 4"
--- Right 4096
+-- 4096
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- 'Text.S.Lexeme.powOp''.
 --
 -- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
 -- >>> t' (bindl op (strip integer)) "7 - 4 + 2"
--- Right 5
+-- 5
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- @'Text.S.Lexeme.addOp' '<|>' 'Text.S.Lexeme.subOp'@.
@@ -290,14 +290,14 @@ bindl op p = p >>= rest
 --
 -- >>> op = symbol "^" $> (^)
 -- >>> t' (bindr op (strip integer)) "2 ^ 3 ^ 4"
--- Right 2417851639229258349412352
+-- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- 'Text.S.Lexeme.powOp''.
 --
 -- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
 -- >>> t' (bindr op (strip integer)) "7 - 4 + 2"
--- Right 1
+-- 1
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- @'Text.S.Lexeme.addOp' '<|>' 'Text.S.Lexeme.subOp'@.
@@ -319,24 +319,23 @@ bindr op p = p >>= rest
 --
 -- >>> op = strip (symbol "^") $> (^)
 -- >>> t' (bindp op (strip integer)) "^ ^ 2 3 4"
--- Right 4096
+-- 4096
 --
 -- >>> t' (bindp op (strip integer)) "^ 2 ^ 3 4"
--- Right 2417851639229258349412352
+-- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- 'Text.S.Lexeme.powOp''.
 --
 -- >>> op = addOp <|> subOp <|> mulOp
 -- >>> t' (bindp op (strip integer)) "- 20 * + 2 3 4"
--- Right 0
+-- 0
 --
 -- For more information about the @__op__@ in the example above,
 -- See @'Text.S.Lexeme.addOp', 'Text.S.Lexeme.subOp', and 'Text.S.Lexeme.mulOp'@.
 --
 bindp :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindp op p = op >>= (\f -> liftA2 f x x) where x = bindp op p <|> p
-
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__postfix or reverse-polish prefix__@ binary operator @__op__@.
@@ -349,17 +348,17 @@ bindp op p = op >>= (\f -> liftA2 f x x) where x = bindp op p <|> p
 --
 -- >>> op = strip (symbol "^") $> (^)
 -- >>> t' (bindq op (strip integer)) "2 3 ^ 4 ^"
--- Right 4096
+-- 4096
 --
 -- >>> t' (bindq op (strip integer)) "2 3 4 ^ ^"
--- Right 2417851639229258349412352
+-- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- 'Text.S.Lexeme.powOp''.
 --
 -- >>> op = addOp <|> subOp <|> mulOp
 -- >>> t' (bindq op (strip integer)) "2 3 + 4 * 20 -"
--- Right 0
+-- 0
 --
 -- For more information about the @__op__@ in the example above,
 -- See @'Text.S.Lexeme.addOp', 'Text.S.Lexeme.subOp', and 'Text.S.Lexeme.mulOp'@.
