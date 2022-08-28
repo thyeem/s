@@ -211,11 +211,9 @@ manyTill' p end = someTill' p end <|> (([], ) <$> end)
 --
 -- See also 'someTill'
 --
--- >>> startCodon = symbol "AUG"
 -- >>> stopCodon = symbol "UAA"
--- >>> geneticSequence = "AUGAUCUCGUCAUCUCGUUAACUCGUA"
--- >>> p = startCodon *> someTill' upper stopCodon
--- >>> t' p geneticSequence
+-- >>> geneticSequence = "AUCUCGUCAUCUCGUUAACUCGUA"
+-- >>> t' (someTill' upper stopCodon) geneticSequence
 -- ("AUCUCGUCAUCUCGU","UAA")
 --
 someTill' :: MonadPlus m => m a -> m b -> m ([a], b)
@@ -277,14 +275,16 @@ skipCount = replicateM_
 --
 -- See also 'skipSomeTill'.
 --
--- >>> t' (skipManyTill digit (char '.')) "3.14159265358979"
--- '.'
+-- >>> stopCodon = symbol "UAA"
+-- >>> geneticSequence = "AUCUCGUCAUCUCGUUAACUCGUA"
+-- >>> t' (skipManyTill upper stopCodon) geneticSequence
+-- "UAA"
 --
--- >>> ts' (skipManyTill digit (char '.')) "3.14159265358979"
--- "14159265358979"
+-- >>> ts' (skipManyTill upper stopCodon) geneticSequence
+-- "CUCGUA"
 --
--- >>> ts' (skipManyTill digit (char '.')) ".14159265358979"
--- "14159265358979"
+-- >>> ts' (skipManyTill upper stopCodon) "UAACUCGUA"
+-- "CUCGUA"
 --
 skipManyTill :: MonadPlus m => m a -> m b -> m b
 skipManyTill p end = go where go = end <|> (p *> go)
