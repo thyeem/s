@@ -263,10 +263,7 @@ instance MonadFail (ParserS s) where
 
 -- | Takes state and parser, then parses it.
 parse :: ParserS s a -> State s -> Result a s
-parse parser state = runParser parser state fOk fError
- where
-  fOk    = Ok
-  fError = Error
+parse parser state = runParser parser state Ok Error
 
 -- | The same as 'parse', but unwrap the @Result@ of the parse result
 parse' :: (Stream s, Show s) => ParserS s a -> State s -> a
