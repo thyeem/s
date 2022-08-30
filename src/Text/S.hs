@@ -45,7 +45,7 @@ type Parser'TL = ParserS LazyText
 
 
 -- | tests parsers from files (will be erased)
-tf :: Parser a -> IO (Return a String)
+tf :: Parser a -> IO (Result a String)
 tf parser = do
   let file = "simple.java"
   s <- readStream file
@@ -53,7 +53,7 @@ tf parser = do
   return . parse parser $ state
 
 -- | tests lexeme parsers
-tl :: (LanguageDef -> ParserS String a) -> String -> Return a String
+tl :: (LanguageDef -> ParserS String a) -> String -> Result a String
 tl l = t (l defDef)
 
 -- op :: ParserS s Integer

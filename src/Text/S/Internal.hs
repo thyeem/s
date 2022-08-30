@@ -19,31 +19,21 @@ module Text.S.Internal
   , Text
   , LazyText
   , Stream(..)
-  , reduceStream
   , Source(..)
   , initSource
-  , ErrorMessage(..)
-  , message
-  , mergeMessages
-  , ParseError(..)
-  , appendError
-  , newError
-  , unexpectedError
-  , expectedError
-  , msgError
+  , Message(..)
   , Result(..)
-  , Return(..)
   , State(..)
   , initState
   , ParserS(..)
   , (<|>)
-  , empty
   , (<?>)
   , label
   , parse
   , parse'
   , parseFromFile
   , charParserOf
+  , ahead
   , assert
   , t
   , t'
@@ -124,126 +114,79 @@ instance Semigroup Source where
 
 
 instance Monoid Source where
-  mempty = Source mempty 1 1
+  mempty = Source "-" 1 1
 
 
 appendSource :: Source -> Source -> Source
-appendSource src1@(Source f1 _ _) src2@(Source f2 _ _)
-  | f1 /= f2 = error $ unwords ["files don't match:", f1, "and", f2]
-  | otherwise = case src1 `compare` src2 of
-    LT -> src2
-    _  -> src1
+appendSource s1@Source{} s2@Source{}
+  | sourceName s1 /= sourceName s2 = error' "two source names do not match"
+  | s1 < s2                        = s2
+  | otherwise                      = s1
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
 
 
 -------------------------
--- ErrorMessage
+-- Message
 -------------------------
-data ErrorMessage = Unexpected !String
-                  | Expected !String
-                  | Message !String
-                  deriving (Eq, Show, Ord, Generic, NFData)
+data Message = Unexpected !String
+             | Expected !String
+             | Normal !String
+             deriving (Eq, Show, Ord, Generic, NFData)
 
+type Messages = [Message]
 
-message :: ErrorMessage -> String
+message :: Message -> String
 message msg = case msg of
   Unexpected msg -> msg
   Expected   msg -> msg
-  Message    msg -> msg
-
--- | merge ErrorMessages by folding consecutive expected errors
-mergeMessages :: [ErrorMessage] -> [ErrorMessage]
-mergeMessages = foldr merge []
- where
-  merge msg msgs = case msgs of
-    msg' : msgs' -> case (msg, msg') of
-      (e1@Expected{}, e2@Expected{}) -> e2 : msgs'
-      (e1           , e2           ) -> e1 : msgs
-    _ -> [msg]
-
-
--------------------------
--- ParseError
--------------------------
-data ParseError = FakeError
-                | ParseError { errorSource   :: !Source
-                             , errorMessages :: [ErrorMessage]}
-  deriving (Eq, Generic, NFData)
-
-
-instance Semigroup ParseError where
-  (<>) = appendError
-
-
-appendError :: ParseError -> ParseError -> ParseError
-appendError FakeError e         = e
-appendError e         FakeError = e
-appendError e1@(ParseError src1 msgs1) e2@(ParseError src2 msgs2) =
-  case src1 `compare` src2 of
-    LT -> e2
-    GT -> e1
-    EQ -> ParseError src1 $ msgs1 <> msgs2
-
-
-instance Monoid ParseError where
-  mempty = ParseError mempty empty
-
-
-newError :: Source -> (String -> ErrorMessage) -> String -> ParseError
-newError src e msg = ParseError src [e msg]
-
-unexpectedError :: Source -> String -> ParseError
-unexpectedError src = newError src Unexpected
-
-expectedError :: Source -> String -> ParseError
-expectedError src = newError src Expected
-
-msgError :: Source -> String -> ParseError
-msgError src = newError src Message
+  Normal     msg -> msg
 
 
 -------------------------
 -- State
 -------------------------
 data State s = State
-  { stateStream :: s
-  , stateSource :: !Source
+  { stateStream    :: s
+  , stateSource    :: !Source
+  , stateMesssages :: !Messages
   }
   deriving (Eq, Generic, NFData)
 
-
 initState :: FilePath -> s -> State s
-initState file stream = State stream $ initSource file
+initState file stream = State stream (initSource file) mempty
+
+addMessage :: Message -> State s -> State s
+addMessage msg state@State {..} =
+  state { stateMesssages = stateMesssages <> [msg] }
 
 
 -------------------------
--- Result / Return
+-- Result
 -------------------------
-data Result a = Ok a
-              | Error ParseError
-              deriving (Show, Eq, Generic, NFData)
-
-
-data Return a s = Return (Result a) (State s)
-  deriving (Eq, Generic, NFData)
+data Result a s = Ok a (State s)
+                | Error (State s)
+                deriving (Eq, Generic, NFData)
 
 
 -------------------------
 -- Parser S
 -------------------------
--- Parser-S data type that self-describing the process of parsing work
+-- Defines a monad transformer 'ParserS' and its accessor 'runParser'.
+--
+-- It self-describes the outline of the parsing process this parser does.
+--
 newtype ParserS s a = ParserS {
     runParser :: forall b.
-      State s ->                      -- state including stream input
-      (a -> State s -> b) ->          -- call @Ok@ when somthing comsumed
-      (ParseError -> State s -> b) -> -- call @Error@ when nothing consumed
+      State s ->                   -- state including stream input
+      (a -> State s -> b) ->       -- call @Ok@ when somthing comsumed
+      (State s -> b) ->            -- call @Error@ when nothing consumed
       b
     }
 
 
--- | infix operator of flipped 'label'
+-- | Infix operator of flipped 'label'
 (<?>) :: ParserS s a -> String -> ParserS s a
 (<?>) = flip label
 
@@ -252,9 +195,9 @@ infixr 0 <?>
 
 -- |
 label :: String -> ParserS s a -> ParserS s a
-label msg parser = ParserS $ \state@(State _ src) fOk fError ->
-  let fError' err = fError (err <> expected)
-      expected = expectedError src $ unwords ["->", "expected:", msg]
+label msg parser = ParserS $ \state@State{} fOk fError ->
+  let fError' s@State {..} = fError $ addMessage expected s
+      expected = Expected . unwords $ ["->", "expected:", msg]
   in  runParser parser state fOk fError'
 
 
@@ -305,30 +248,32 @@ szero = fail mempty
 
 splus :: ParserS s a -> ParserS s a -> ParserS s a
 splus p q = ParserS $ \state fOk fError ->
-  let fError' err' _ =
-        let fError'' err'' = fError (err' <> err'')
+  let fError' s'@State{} =
+        let fError'' s''@State{} = fError s''
+              { stateMesssages = stateMesssages s' <> stateMesssages s''
+              }
         in  runParser q state fOk fError''
   in  runParser p state fOk fError'
 
 
 instance MonadFail (ParserS s) where
-  fail msg = ParserS $ \state@(State _ src) _ fError ->
-    fError (ParseError src [Message msg]) state
+  fail msg =
+    ParserS $ \s@State{} _ fError -> fError $ addMessage (Normal msg) s
 
 
 -- | Takes state and parser, then parses it.
-parse :: ParserS s a -> State s -> Return a s
+parse :: ParserS s a -> State s -> Result a s
 parse parser state = runParser parser state fOk fError
  where
-  fOk    = Return . Ok
-  fError = Return . Error
+  fOk    = Ok
+  fError = Error
 
--- | The same as 'parse', but unwrap the @Return@ of the parse result
-parse' :: ParserS s a -> State s -> a
+-- | The same as 'parse', but unwrap the @Result@ of the parse result
+parse' :: (Stream s, Show s) => ParserS s a -> State s -> a
 parse' parser = unwrap . parse parser
 
 -- | The same as 'parse', but takes the stream from a given file
-parseFromFile :: Stream s => ParserS s a -> FilePath -> IO (Return a s)
+parseFromFile :: Stream s => ParserS s a -> FilePath -> IO (Result a s)
 parseFromFile parser file = do
   stream <- readStream file
   let state = initState file stream
@@ -341,54 +286,70 @@ parseFromFile parser file = do
 -- Here is where each parsing job starts.
 --
 charParserOf :: (Stream s, NFData s) => (Char -> Bool) -> ParserS s Char
-charParserOf predicate = ParserS $ \state@(State stream src) fOk fError ->
-  case unCons stream of
+charParserOf predicate =
+  ParserS $ \state@(State stream src msgs) fOk fError -> case unCons stream of
     Nothing ->
-      fError (unexpectedError src "EOF: reached to end-of-stream") state
-    Just (c, cs) | predicate c -> fOk c state'
-                 | otherwise   -> fError error' state
+      fError $ addMessage (Unexpected "EOF: reached to end-of-stream") state
+    Just (c, cs)
+      | predicate c -> fOk c state'
+      | otherwise -> fError $ addMessage
+        (Unexpected $ unwords ["failed. got unexpected character:", show c])
+        state
+
      where
+      state' = force $ State cs src' msgs
       src'   = force $ jump src c
-      state' = force $ State cs src'
       jump (Source n ln col) c = case c of
         '\n' -> Source n (ln + 1) 1
         '\t' -> Source n ln (move col 8)
         _    -> Source n ln (col + 1)
         where move col size = col + size - ((col - 1) `mod` size)
 
-      error' = unexpectedError src
-        $ unwords ["failed. got unexpected character:", show c]
+
+-- | Tries to parse with @__parser__@ looking ahead without consuming any input.
+-- This returns if the next parsing is successful instead of the parse result.
+--
+-- If succeeds then returns @__True__@, otherwise returns @__False__@.
+--
+-- See also 'assert'
+--
+ahead :: ParserS s a -> ParserS s Bool
+ahead parser = ParserS $ \state fOk fError ->
+  let fOk' x _ = fOk True state
+      fError' _ = fOk False state
+  in  runParser parser state fOk' fError'
 
 -- | Tries to parse with @__parser__@ looking ahead without consuming any input.
 --
--- Not consuming any intut does not mean it does not fail at all.
---
+-- In this case, not consuming any intut does not mean it does not fail at all.
 -- Attempts to parse with the given parser, throwing an error if parsing fails.
+--
+-- See also 'ahead'
 --
 assert :: ParserS s a -> ParserS s a
 assert parser = ParserS $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError
 
 -- | Tests parsers and its combinators with given strings
-t :: ParserS String a -> String -> Return a String
-t parser s = parse parser (State s mempty)
+t :: ParserS String a -> String -> Result a String
+t parser s = parse parser (State s mempty [])
 
--- | The same as 't', but unwrap the @Return@ of the parse result
+-- | The same as 't', but unwrap the @Result@ of the parse result
 t' :: ParserS String a -> String -> a
 t' parser = unwrap . t parser
 
--- | The same as 't', but unwraps @Return a s@ to get the state @s@ only.
+-- | The same as 't', but unwraps @Result a s@ to get the state @s@ only.
 ts' :: ParserS String a -> String -> String
 ts' parser = sOnly . t parser
  where
-  sOnly (Return (Ok    _) (State s _)) = s
-  sOnly (Return (Error e) _          ) = errorWithoutStackTrace . show $ e
+  sOnly (Ok _ (State s _ _)) = s
+  sOnly (Error state       ) = error' . show . stateMesssages $ state
 
--- | Unwraps @Return a s@, then return the result @a@ only
-unwrap :: Return a s -> a
-unwrap (Return r _) = case r of
-  Ok    ok  -> ok
-  Error err -> errorWithoutStackTrace . show $ err
+-- | Unwraps @Result a s@, then return the result @a@ only
+unwrap :: (Stream s, Show s) => Result a s -> a
+unwrap r = case r of
+  Ok ok _     -> ok
+  Error state -> error' . show $ state
 
 
 -------------------------
@@ -404,21 +365,10 @@ instance Show Source where
     ]
 
 
-instance (Stream s, Show a, Show s) => Show (Return a s) where
-  show (Return result state) = join'n [show result, show state]
-
-
-instance Show ParseError where
-  show err =
-    join'nt
-      $ show (errorSource err)
-      : (message <$> (mergeMessages . errorMessages $ err))
-
-
 instance (Stream s, Show s) => Show (State s) where
-  show state@State {..} = join'n
-    [ join'nt ["source from:", sourceName stateSource]
-    , join'nt ["stream:", showStream]
+  show state@State {..} = join'nn
+    [ join'nt $ show stateSource : (message <$> mergeMessages stateMesssages)
+    , join'nt ["remains:", showStream]
     ]
    where
     stream = show stateStream
@@ -426,13 +376,36 @@ instance (Stream s, Show s) => Show (State s) where
                | otherwise           = reduceStream stateStream 60
 
 
+instance (Stream s, Show s, Show a) => Show (Result a s) where
+  show r = case r of
+    Ok ok s -> join'nn ["Ok " <> show ok, show s]
+    Error s -> join'nn ["Error", show s]
+
+
+-- | merge ErrorMessages by folding consecutive expected errors
+mergeMessages :: Messages -> Messages
+mergeMessages = foldr merge []
+ where
+  merge msg msgs = case msgs of
+    msg' : msgs' -> case (msg, msg') of
+      (e1@Expected{}, e2@Expected{}) -> e2 : msgs'
+      (e1           , e2           ) -> e1 : msgs
+    _ -> [msg]
+
+-- |
+join'nn :: [String] -> String
+join'nn = intercalate "\n\n"
+
+-- |
 join'nt :: [String] -> String
 join'nt = intercalate "\n\t"
 
-join'n :: [String] -> String
-join'n = intercalate "\n"
-
+-- |
 reduceStream :: (Stream s, Show s) => s -> Int -> String
 reduceStream stream n = join'nt
   [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
   where s = show stream
+
+-- |
+error' :: String -> a
+error' = errorWithoutStackTrace
