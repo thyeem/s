@@ -17,12 +17,14 @@ module Text.S
   , module Text.S.Internal
   , module Text.S.Lexeme
   , module Text.S.Language
+  , module Text.S.Expr
   , module Text.S
   ) where
 
 import           Control.DeepSeq                ( NFData )
 import           Text.S.Base
 import           Text.S.Combinator
+import           Text.S.Expr
 import           Text.S.Internal
 import           Text.S.Language
 import           Text.S.Lexeme
@@ -55,9 +57,3 @@ tf parser = do
 -- | tests lexeme parsers
 tl :: (LanguageDef -> ParserS String a) -> String -> Result a String
 tl l = t (l defDef)
-
--- op :: ParserS s Integer
-op
-  :: (Stream s, NFData s, Num a, Integral a, Fractional a, Floating a)
-  => ParserS s (a -> a -> a)
-op = addOp <|> subOp <|> mulOp <|> divOp <|> powOp <|> powOp'

@@ -291,8 +291,7 @@ charParserOf predicate =
       | predicate c -> fOk c state'
       | otherwise -> fError $ addMessage
         (Unexpected $ unwords ["failed. got unexpected character:", show c])
-        state
-
+        state'
      where
       state' = force $ State cs src' msgs
       src'   = force $ jump src c
@@ -354,7 +353,8 @@ unwrap r = case r of
 -------------------------
 instance Show Source where
   show src@Source {..} = unwords
-    [ sourceName
+    [ "\n"
+    , sourceName
     , "(line"
     , show sourceLine <> ","
     , "column"
@@ -375,8 +375,8 @@ instance (Stream s, Show s) => Show (State s) where
 
 instance (Stream s, Show s, Show a) => Show (Result a s) where
   show r = case r of
-    Ok ok s -> join'nn ["Ok " <> show ok, show s]
-    Error s -> join'nn ["Error", show s]
+    Ok ok s -> join'n ["Ok " <> show ok, show s]
+    Error s -> join'n ["Error", show s]
 
 
 -- | merge ErrorMessages by folding consecutive expected errors
@@ -388,6 +388,10 @@ mergeMessages = foldr merge []
       (e1@Expected{}, e2@Expected{}) -> e2 : msgs'
       (e1           , e2           ) -> e1 : msgs
     _ -> [msg]
+
+-- |
+join'n :: [String] -> String
+join'n = intercalate "\n"
 
 -- |
 join'nn :: [String] -> String

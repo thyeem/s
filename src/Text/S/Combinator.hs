@@ -320,14 +320,14 @@ skipSomeTill p end = p *> skipManyTill p end
 -- 4096
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
--- 'Text.S.Lexeme.powOp''.
+-- 'Text.S.Expr.powOp''.
 --
 -- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
 -- >>> t' (bindl op (strip integer)) "7 - 4 + 2"
 -- 5
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
--- @'Text.S.Lexeme.addOp' '<|>' 'Text.S.Lexeme.subOp'@.
+-- @'Text.S.Expr.addOp' '<|>' 'Text.S.Expr.subOp'@.
 --
 bindl :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindl op p = p >>= rest
@@ -349,14 +349,14 @@ bindl op p = p >>= rest
 -- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
--- 'Text.S.Lexeme.powOp''.
+-- 'Text.S.Expr.powOp''.
 --
 -- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
 -- >>> t' (bindr op (strip integer)) "7 - 4 + 2"
 -- 1
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
--- @'Text.S.Lexeme.addOp' '<|>' 'Text.S.Lexeme.subOp'@.
+-- @'Text.S.Expr.addOp' '<|>' 'Text.S.Expr.subOp'@.
 --
 bindr :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindr op p = p >>= rest
@@ -381,14 +381,14 @@ bindr op p = p >>= rest
 -- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
--- 'Text.S.Lexeme.powOp''.
+-- 'Text.S.Expr.powOp''.
 --
--- >>> op = addOp <|> subOp <|> mulOp
+-- >>> op = binop "+" (+) <|> binop "-" (-) <|> binop "*" (*)
 -- >>> t' (bindp op (strip integer)) "- 20 * + 2 3 4"
 -- 0
 --
 -- For more information about the @__op__@ in the example above,
--- See @'Text.S.Lexeme.addOp', 'Text.S.Lexeme.subOp', and 'Text.S.Lexeme.mulOp'@.
+-- See @'Text.S.Expr.addOp', 'Text.S.Expr.subOp', and 'Text.S.Expr.mulOp'@.
 --
 bindp :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindp op p = op >>= (\f -> liftA2 f x x) where x = bindp op p <|> p
@@ -410,14 +410,14 @@ bindp op p = op >>= (\f -> liftA2 f x x) where x = bindp op p <|> p
 -- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
--- 'Text.S.Lexeme.powOp''.
+-- 'Text.S.Expr.powOp''.
 --
--- >>> op = addOp <|> subOp <|> mulOp
+-- >>> op = binop "+" (+) <|> binop "-" (-) <|> binop "*" (*)
 -- >>> t' (bindq op (strip integer)) "2 3 + 4 * 20 -"
 -- 0
 --
 -- For more information about the @__op__@ in the example above,
--- See @'Text.S.Lexeme.addOp', 'Text.S.Lexeme.subOp', and 'Text.S.Lexeme.mulOp'@.
+-- See @'Text.S.Expr.addOp', 'Text.S.Expr.subOp', and 'Text.S.Expr.mulOp'@.
 --
 bindq :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindq op p = p >>= rest
@@ -425,3 +425,11 @@ bindq op p = p >>= rest
   rest x = find x <|> pure x
   find x = bindq op p >>= bind x
   bind x y = op >>= rest . flip uncurry (x, y)
+
+-- | Tries to repeatedly parse two @__p__@ operands
+bindu :: MonadPlus m => m (a -> a) -> m (a -> a) -> m a -> m a
+bindu pre post p = do
+  pre  <- option id pre
+  x    <- p
+  post <- option id post
+  return . post . pre $ x

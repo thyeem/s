@@ -175,11 +175,11 @@ spaces' = lexeme' spaces
 -- >>> t' (parens letters) "(parser)"
 -- "parser"
 --
-parens :: (Stream s, NFData s) => ParserS s String -> ParserS s String
+parens :: (Stream s, NFData s) => ParserS s a -> ParserS s a
 parens = between (symbol "(") (symbol ")")
 
 -- | The t'ParserS'' form of 'parens'
-parens' :: (Stream s, NFData s) => ParserS s String -> ParserS' s String
+parens' :: (Stream s, NFData s) => ParserS s a -> ParserS' s a
 parens' p = lexeme' (parens p)
 
 -- | Parses string between curly braces
@@ -187,11 +187,11 @@ parens' p = lexeme' (parens p)
 -- >>> t' (braces letters) "{parser}"
 -- "parser"
 --
-braces :: (Stream s, NFData s) => ParserS s String -> ParserS s String
+braces :: (Stream s, NFData s) => ParserS s a -> ParserS s a
 braces = between (symbol "{") (symbol "}")
 
 -- | The t'ParserS'' form of 'braces'
-braces' :: (Stream s, NFData s) => ParserS s String -> ParserS' s String
+braces' :: (Stream s, NFData s) => ParserS s a -> ParserS' s a
 braces' p = lexeme' (braces p)
 
 -- | Parses string between angle brackets
@@ -199,11 +199,11 @@ braces' p = lexeme' (braces p)
 -- >>> t' (angles letters) "<parser>"
 -- "parser"
 --
-angles :: (Stream s, NFData s) => ParserS s String -> ParserS s String
+angles :: (Stream s, NFData s) => ParserS s a -> ParserS s a
 angles = between (symbol "<") (symbol ">")
 
 -- | The t'ParserS'' form of 'angles'
-angles' :: (Stream s, NFData s) => ParserS s String -> ParserS' s String
+angles' :: (Stream s, NFData s) => ParserS s a -> ParserS' s a
 angles' p = lexeme' (angles p)
 
 -- | Parses string between square brackets
@@ -211,11 +211,11 @@ angles' p = lexeme' (angles p)
 -- >>> t' (squares letters) "[parser]"
 -- "parser"
 --
-squares :: (Stream s, NFData s) => ParserS s String -> ParserS s String
+squares :: (Stream s, NFData s) => ParserS s a -> ParserS s a
 squares = between (symbol "[") (symbol "]")
 
 -- | The t'ParserS'' form of 'squares'
-squares' :: (Stream s, NFData s) => ParserS s String -> ParserS' s String
+squares' :: (Stream s, NFData s) => ParserS s a -> ParserS' s a
 squares' p = lexeme' (squares p)
 
 -- | Parses natural numbers or decimal digits (base-10)
@@ -385,36 +385,6 @@ operator' def = do
 splitBy
   :: (Stream s, NFData s) => ParserS s String -> ParserS s a -> ParserS s [a]
 splitBy = flip sepBy1
-
--- |
---
-addOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a -> a)
-addOp = strip (symbol "+") $> (+)
-
--- |
---
-subOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a -> a)
-subOp = strip (symbol "-") $> (-)
-
--- |
---
-mulOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a -> a)
-mulOp = strip (symbol "*") $> (*)
-
--- |
---
-divOp :: (Stream s, NFData s, Num a, Fractional a) => ParserS s (a -> a -> a)
-divOp = strip (symbol "/") $> (/)
-
--- |
---
-powOp' :: (Stream s, NFData s, Num a, Integral a) => ParserS s (a -> a -> a)
-powOp' = strip (symbol "^") $> (^)
-
--- |
---
-powOp :: (Stream s, NFData s, Num a, Floating a) => ParserS s (a -> a -> a)
-powOp = strip (symbol "**") $> (**)
 
 -- | Parses a single @char literal@
 --
