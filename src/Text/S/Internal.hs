@@ -291,7 +291,7 @@ charParserOf predicate =
       | predicate c -> fOk c state'
       | otherwise -> fError $ addMessage
         (Unexpected $ unwords ["failed. got unexpected character:", show c])
-        state'
+        state
      where
       state' = force $ State cs src' msgs
       src'   = force $ jump src c

@@ -16,6 +16,7 @@ module Text.S.Expr
 
 import           Control.DeepSeq                ( NFData )
 import           Control.Monad
+import           Data.Foldable                  ( foldl' )
 import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Lexeme
@@ -34,7 +35,7 @@ type OpPriority m a = [[Operator m a]]
 
 
 -- |
-type OpRecord m a
+type OpLevelRecord m a
   = ( [m (a -> a)]
     , [m (a -> a)]
     , [m (a -> a -> a)]
@@ -46,11 +47,11 @@ type OpRecord m a
 
 priority :: (Stream s, NFData s) => OpPriority (ParserS s) Integer
 priority =
-  [ [prefixU "-" negate, prefixU "+" id]
-  , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
-  , [infixL "*" (*), infixL "/" div]
-  , [infixL "+" (+), infixL "-" (-)]
-  ]
+  -- [ [prefixU "-" negate, prefixU "+" id]
+  -- , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
+  -- [[infixL "*" (*), infixL "/" div], [infixL "+" (+), infixL "-" (-)]]
+  [[prefixB "*" (*)]]
+
 
 expr :: (Stream s, NFData s) => ParserS s Integer
 expr = expr' unit priority
@@ -60,28 +61,28 @@ unit = strip integer <|> parens expr
 
 -- |
 expr' :: MonadPlus m => m a -> OpPriority m a -> m a
-expr' = foldl setLevelPriority
+expr' = foldl' setLevelPriority
 
 -- |
 setLevelPriority :: MonadPlus m => m a -> [Operator m a] -> m a
-setLevelPriority unit ops = choice [term]
--- setLevelPriority unit ops = choice [expr'r, expr'l, expr'p, expr'q]
+-- setLevelPriority unit ops = choice [expr'r, expr'l, expr'p, expr'q, term]
+setLevelPriority unit ops = choice [expr'p, term]
  where
-  (up, uq, bl, br, bp, bq) = foldr sortOp ([], [], [], [], [], []) ops
-  term                     = bindu (choice up) (choice uq) unit
-  -- expr'r                   = bindr (choice br) term
-  -- expr'l                   = bindl (choice bl) term
-  -- expr'p                   = bindp (choice bp) term
-  -- expr'q                   = bindq (choice bq) term
+  (a, b, c, d, e, f) = foldr sortOp ([], [], [], [], [], []) ops
+  term               = bindu (choice a) (choice b) unit
+  expr'l             = bindl (choice c) term
+  expr'r             = bindr (choice d) term
+  expr'p             = bindp (choice e) term
+  expr'q             = bindq (choice f) term
 
 -- |
-sortOp :: Operator m a -> OpRecord m a -> OpRecord m a
-sortOp (PrefixU  op) (up, uq, bl, br, bp, bq) = (op : up, uq, bl, br, bp, bq)
-sortOp (PostfixU op) (up, uq, bl, br, bp, bq) = (up, op : uq, bl, br, bp, bq)
-sortOp (InfixL   op) (up, uq, bl, br, bp, bq) = (up, uq, op : bl, br, bp, bq)
-sortOp (InfixR   op) (up, uq, bl, br, bp, bq) = (up, uq, bl, op : br, bp, bq)
-sortOp (PrefixB  op) (up, uq, bl, br, bp, bq) = (up, uq, bl, br, op : bp, bq)
-sortOp (PostfixB op) (up, uq, bl, br, bp, bq) = (up, uq, bl, br, bp, op : bq)
+sortOp :: Operator m a -> OpLevelRecord m a -> OpLevelRecord m a
+sortOp (PrefixU  op) (a, b, c, d, e, f) = (op : a, b, c, d, e, f)
+sortOp (PostfixU op) (a, b, c, d, e, f) = (a, op : b, c, d, e, f)
+sortOp (InfixL   op) (a, b, c, d, e, f) = (a, b, op : c, d, e, f)
+sortOp (InfixR   op) (a, b, c, d, e, f) = (a, b, c, op : d, e, f)
+sortOp (PrefixB  op) (a, b, c, d, e, f) = (a, b, c, d, op : e, f)
+sortOp (PostfixB op) (a, b, c, d, e, f) = (a, b, c, d, e, op : f)
 
 -- |
 prefixU :: (Stream s, NFData s) => String -> (a -> a) -> Operator (ParserS s) a

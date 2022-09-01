@@ -21,7 +21,8 @@ module Text.S.Combinator
   , void
   ) where
 
-import           Control.Applicative            ( Alternative(..)
+import           Control.Applicative            ( (<**>)
+                                                , Alternative(..)
                                                 , liftA2
                                                 )
 import           Control.Monad                  ( MonadPlus(..)
@@ -428,6 +429,8 @@ bindq op p = p >>= rest
 
 -- | Tries to repeatedly parse two @__p__@ operands
 bindu :: MonadPlus m => m (a -> a) -> m (a -> a) -> m a -> m a
+-- bindu pre post p = (option id pre <*> p) <**> option id post
+
 bindu pre post p = do
   pre  <- option id pre
   x    <- p
