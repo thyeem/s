@@ -331,7 +331,7 @@ skipSomeTill p end = p *> skipManyTill p end
 -- @'Text.S.Expr.addOp' '<|>' 'Text.S.Expr.subOp'@.
 --
 bindl :: MonadPlus m => m (a -> a -> a) -> m a -> m a
-bindl op p = p >>= rest
+bindl op p = p >>= bind
  where
   rest x = bind x <|> pure x
   bind x = op >>= \f -> p >>= rest . f x
@@ -360,7 +360,7 @@ bindl op p = p >>= rest
 -- @'Text.S.Expr.addOp' '<|>' 'Text.S.Expr.subOp'@.
 --
 bindr :: MonadPlus m => m (a -> a -> a) -> m a -> m a
-bindr op p = p >>= rest
+bindr op p = p >>= bind
  where
   rest x = bind x <|> pure x
   bind x = op >>= (\f -> f x <$> (p >>= rest))
@@ -421,7 +421,7 @@ bindp op p = op >>= (\f -> liftA2 f x x) where x = bindp op p <|> p
 -- See @'Text.S.Expr.addOp', 'Text.S.Expr.subOp', and 'Text.S.Expr.mulOp'@.
 --
 bindq :: MonadPlus m => m (a -> a -> a) -> m a -> m a
-bindq op p = p >>= rest
+bindq op p = p >>= find
  where
   rest x = find x <|> pure x
   find x = bindq op p >>= bind x

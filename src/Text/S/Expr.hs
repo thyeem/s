@@ -47,10 +47,11 @@ type OpLevelRecord m a
 
 priority :: (Stream s, NFData s) => OpPriority (ParserS s) Integer
 priority =
-  -- [ [prefixU "-" negate, prefixU "+" id]
-  -- , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
-  -- [[infixL "*" (*), infixL "/" div], [infixL "+" (+), infixL "-" (-)]]
-  [[prefixB "*" (*)]]
+  [ [prefixU "-" negate, prefixU "+" id]
+  , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
+  , [infixL "*" (*), infixL "/" div]
+  , [infixL "+" (+), infixL "-" (-)]
+  ]
 
 
 expr :: (Stream s, NFData s) => ParserS s Integer
@@ -65,15 +66,14 @@ expr' = foldl' setLevelPriority
 
 -- |
 setLevelPriority :: MonadPlus m => m a -> [Operator m a] -> m a
--- setLevelPriority unit ops = choice [expr'r, expr'l, expr'p, expr'q, term]
-setLevelPriority unit ops = choice [expr'p, term]
+setLevelPriority atom ops = choice [expr'r, expr'l, expr'p, term]
  where
   (a, b, c, d, e, f) = foldr sortOp ([], [], [], [], [], []) ops
-  term               = bindu (choice a) (choice b) unit
+  term               = bindu (choice a) (choice b) atom
   expr'l             = bindl (choice c) term
   expr'r             = bindr (choice d) term
   expr'p             = bindp (choice e) term
-  expr'q             = bindq (choice f) term
+  -- expr'q             = bindq (choice f) term
 
 -- |
 sortOp :: Operator m a -> OpLevelRecord m a -> OpLevelRecord m a
