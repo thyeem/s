@@ -161,6 +161,10 @@ addMessage :: Message -> State s -> State s
 addMessage msg state@State {..} =
   state { stateMesssages = stateMesssages <> [msg] }
 
+mergeState :: State s -> State s -> State s
+mergeState s1@(State _ src1 _) s2@(State _ src2 _) | src1 > src2 = s1
+                                                   | otherwise   = s2
+
 
 -------------------------
 -- Result
@@ -224,7 +228,6 @@ sap f parser = ParserS $ \state fOk fError ->
 instance Monad (ParserS s) where
   return = pure
   (>>=)  = sbind
-  (>>)   = (*>)
 
 
 sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
@@ -249,9 +252,7 @@ szero = fail mempty
 splus :: ParserS s a -> ParserS s a -> ParserS s a
 splus p q = ParserS $ \state fOk fError ->
   let fError' s'@State{} =
-        let fError'' s''@State{} = fError s''
-              { stateMesssages = stateMesssages s' <> stateMesssages s''
-              }
+        let fError'' s''@State{} = fError $ mergeState s' s''
         in  runParser q state fOk fError''
   in  runParser p state fOk fError'
 
@@ -364,7 +365,7 @@ instance Show Source where
 
 instance (Stream s, Show s) => Show (State s) where
   show state@State {..} = join'nn
-    [ join'nt $ show stateSource : (message <$> mergeMessages stateMesssages)
+    [ join'nt $ show stateSource : (message <$> stateMesssages)
     , join'nt ["remains:", showStream]
     ]
    where
@@ -378,16 +379,6 @@ instance (Stream s, Show s, Show a) => Show (Result a s) where
     Ok ok s -> join'n ["Ok " <> show ok, show s]
     Error s -> join'n ["Error", show s]
 
-
--- | merge ErrorMessages by folding consecutive expected errors
-mergeMessages :: Messages -> Messages
-mergeMessages = foldr merge []
- where
-  merge msg msgs = case msgs of
-    msg' : msgs' -> case (msg, msg') of
-      (e1@Expected{}, e2@Expected{}) -> e2 : msgs'
-      (e1           , e2           ) -> e1 : msgs
-    _ -> [msg]
 
 -- |
 join'n :: [String] -> String

@@ -14,9 +14,11 @@ module Text.S.Expr
   ) where
 
 
-import           Control.DeepSeq                ( NFData )
+import           Control.DeepSeq                ( NFData
+                                                , force
+                                                )
 import           Control.Monad
-import           Data.Foldable                  ( foldl' )
+import           Data.List                      ( foldl' )
 import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Lexeme
@@ -31,7 +33,7 @@ data Operator m a  = PrefixU  (m (a -> a))
                    | PostfixB (m (a -> a -> a))
 
 -- |
-type OpPriority m a = [[Operator m a]]
+type OperatorTable m a = [[Operator m a]]
 
 
 -- |
@@ -45,35 +47,22 @@ type OpLevelRecord m a
     )
 
 
-priority :: (Stream s, NFData s) => OpPriority (ParserS s) Integer
-priority =
-  [ [prefixU "-" negate, prefixU "+" id]
-  , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
-  , [infixL "*" (*), infixL "/" div]
-  , [infixL "+" (+), infixL "-" (-)]
-  ]
-
-
-expr :: (Stream s, NFData s) => ParserS s Integer
-expr = expr' unit priority
-
-unit :: (Stream s, NFData s) => ParserS s Integer
-unit = strip integer <|> parens expr
-
--- |
-expr' :: MonadPlus m => m a -> OpPriority m a -> m a
-expr' = foldl' setLevelPriority
-
 -- |
 setLevelPriority :: MonadPlus m => m a -> [Operator m a] -> m a
-setLevelPriority atom ops = choice [expr'r, expr'l, expr'p, term]
+setLevelPriority atom ops =
+  -- choice $ (term >>=) <$> [expr'l, expr'r, expr'q, expr'q, pure]
+  (term >>= expr'l)
+    <|> (term >>= expr'r)
+    <|> (term >>= expr'p)
+    <|> (term >>= expr'q)
  where
-  (a, b, c, d, e, f) = foldr sortOp ([], [], [], [], [], []) ops
-  term               = bindu (choice a) (choice b) atom
-  expr'l             = bindl (choice c) term
-  expr'r             = bindr (choice d) term
-  expr'p             = bindp (choice e) term
-  -- expr'q             = bindq (choice f) term
+  (a, b, c, d, e, f) = foldl' (flip sortOp) ([], [], [], [], [], []) ops
+  term               = betweenOp (choice a) (choice b) atom
+  expr'l             = if null c then const mzero else chainl (choice c) term
+  expr'r             = if null d then const mzero else chainr (choice d) term
+  expr'p             = if null e then const mzero else chainp (choice e) term
+  expr'q             = if null f then const mzero else chainq (choice f) term
+{-# INLINABLE setLevelPriority #-}
 
 -- |
 sortOp :: Operator m a -> OpLevelRecord m a -> OpLevelRecord m a
@@ -83,48 +72,119 @@ sortOp (InfixL   op) (a, b, c, d, e, f) = (a, b, op : c, d, e, f)
 sortOp (InfixR   op) (a, b, c, d, e, f) = (a, b, c, op : d, e, f)
 sortOp (PrefixB  op) (a, b, c, d, e, f) = (a, b, c, d, op : e, f)
 sortOp (PostfixB op) (a, b, c, d, e, f) = (a, b, c, d, e, op : f)
+{-# INLINABLE sortOp #-}
+
+
+
+----------------------------------------------------------------------
+expr :: (Stream s, NFData s) => ParserS s Integer
+expr = foldl' setLevelPriority atom' table'postfixB
+  where atom' = parens expr <|> atom
+
+atom :: (Stream s, NFData s) => ParserS s Integer
+atom = strip integer
+
+table'postfixB :: (Stream s, NFData s) => OperatorTable (ParserS s) Integer
+table'postfixB =
+  [ [ postfixB "^" (^)
+    , postfixB "*" (*)
+    , postfixB "/" div
+    , postfixB "+" (+)
+    , postfixB "-" (-)
+    ]
+  ]
+
+table'prefixB :: (Stream s, NFData s) => OperatorTable (ParserS s) Integer
+table'prefixB =
+  [ [ prefixB "^" (^)
+    , prefixB "*" (*)
+    , prefixB "/" div
+    , prefixB "+" (+)
+    , prefixB "-" (-)
+    ]
+  ]
+
+table'infixL :: (Stream s, NFData s) => OperatorTable (ParserS s) Integer
+table'infixL =
+  [ [prefixU "-" negate, prefixU "+" id]
+  , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
+  , [infixL "^" (^)]
+  , [infixL "*" (*), infixL "/" div]
+  , [infixL "+" (+), infixL "-" (-)]
+  ]
+
+table'infixR :: (Stream s, NFData s) => OperatorTable (ParserS s) Integer
+table'infixR =
+  [ [prefixU "-" negate]
+  , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
+  , [infixR "^" (^)]
+  , [infixR "*" (*), infixR "/" div]
+  , [infixR "+" (+), infixR "-" (-)]
+  ]
+
+table'unary :: (Stream s, NFData s) => OperatorTable (ParserS s) Integer
+table'unary =
+  [[prefixU "-" negate], [postfixU "++" (+ 1), postfixU "--" (subtract 1)]]
+
+op' :: (Stream s, NFData s, Num a, Integral a) => ParserS s (a -> a -> a)
+op' = addOp <|> subOp <|> mulOp <|> divOp' <|> powOp'
+-- |
+-- expr' :: MonadPlus m => m a -> OperatorTable m a -> m a
+-- expr' = foldl' setLevelPriority
+
+----------------------------------------------------------------------
+
 
 -- |
 prefixU :: (Stream s, NFData s) => String -> (a -> a) -> Operator (ParserS s) a
 prefixU sym = PrefixU . unop sym
+{-# INLINE prefixU #-}
 
 -- |
 postfixU
   :: (Stream s, NFData s) => String -> (a -> a) -> Operator (ParserS s) a
 postfixU sym = PostfixU . unop sym
+{-# INLINE postfixU #-}
 
 -- |
 infixL
   :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator (ParserS s) a
 infixL sym = InfixL . binop sym
+{-# INLINE infixL #-}
 
 -- |
 infixR
   :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator (ParserS s) a
 infixR sym = InfixR . binop sym
+{-# INLINE infixR #-}
 
 -- |
 prefixB
   :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator (ParserS s) a
 prefixB sym = PrefixB . binop sym
+{-# INLINE prefixB #-}
 
 -- |
 postfixB
   :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator (ParserS s) a
 postfixB sym = PostfixB . binop sym
+{-# INLINE postfixB #-}
 
 -- |
 binop
   :: (Stream s, NFData s) => String -> (a -> a -> a) -> ParserS s (a -> a -> a)
 binop sym f = strip (symbol sym) $> f
+{-# INLINE binop #-}
 
 -- |
 unop :: (Stream s, NFData s) => String -> (a -> a) -> ParserS s (a -> a)
 unop sym f = strip (symbol sym) $> f
+{-# INLINE unop #-}
 
 -- |
 addOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a -> a)
 addOp = binop "+" (+)
+{-# INLINE addOp #-}
 
 -- |
 --
@@ -143,8 +203,8 @@ divOp = binop "/" (/)
 
 -- |
 --
-powOp' :: (Stream s, NFData s, Num a, Integral a) => ParserS s (a -> a -> a)
-powOp' = binop "^" (^)
+divOp' :: (Stream s, NFData s, Num a, Integral a) => ParserS s (a -> a -> a)
+divOp' = binop "/" div
 
 -- |
 --
@@ -152,9 +212,14 @@ powOp :: (Stream s, NFData s, Num a, Floating a) => ParserS s (a -> a -> a)
 powOp = binop "**" (**)
 
 -- |
-negOp :: (Stream s, NFData s, Num a, Floating a) => ParserS s (a -> a)
+--
+powOp' :: (Stream s, NFData s, Num a, Integral a) => ParserS s (a -> a -> a)
+powOp' = binop "^" (^)
+
+-- |
+negOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a)
 negOp = unop "-" negate
 
 -- |
-posOp :: (Stream s, NFData s, Num a, Floating a) => ParserS s (a -> a)
+posOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a)
 posOp = unop "+" id

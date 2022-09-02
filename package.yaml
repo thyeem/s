@@ -34,6 +34,7 @@ default-extensions:
 - DeriveAnyClass
 - DeriveGeneric
 - ExplicitForAll
+- FlexibleContexts
 - FlexibleInstances
 - GeneralizedNewtypeDeriving
 - MultiParamTypeClasses

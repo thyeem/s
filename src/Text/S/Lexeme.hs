@@ -24,8 +24,10 @@ import           Data.Char                      ( digitToInt
                                                 , toLower
                                                 , toUpper
                                                 )
-import           Data.Foldable                  ( foldl' )
 import           Data.Functor                   ( void )
+import           Data.List                      ( foldl'
+                                                , foldl1'
+                                                )
 import qualified Data.Set                      as S
 import           Text.S.Base
 import           Text.S.Combinator
@@ -149,6 +151,7 @@ alphaNums' = lexeme' alphaNums
 -- |
 digits :: (Stream s, NFData s) => ParserS s String
 digits = some digit
+{-# INLINE digits #-}
 
 -- | The t'ParserS'' form of 'digits'
 digits' :: (Stream s, NFData s) => ParserS' s String
@@ -226,6 +229,7 @@ squares' p = lexeme' (squares p)
 --
 decimals :: (Stream s, NFData s) => ParserS s Integer
 decimals = numbers 10 digits
+{-# INLINE decimals #-}
 
 -- | The t'ParserS'' form of 'decimals'
 decimals' :: (Stream s, NFData s) => ParserS' s Integer
@@ -274,6 +278,7 @@ natural' = lexeme' natural
 --
 sign :: (Stream s, NFData s, Num a) => ParserS s (a -> a)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
+{-# INLINE sign #-}
 
 -- | The same as 'sign' but strip whitespaces between sign and numbers.
 --
@@ -282,6 +287,7 @@ sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 --
 sign' :: (Stream s, NFData s, Num a) => ParserS' s (a -> a)
 sign' = lexeme' sign
+{-# INLINE sign' #-}
 
 -- | Parses an integer (sign + numbers, sign if any)
 --
@@ -290,16 +296,19 @@ sign' = lexeme' sign
 --
 integer :: (Stream s, NFData s) => ParserS s Integer
 integer = sign <*> decimals
+{-# INLINE integer #-}
 
 -- | The t'ParserS'' form of 'integer'
 integer' :: (Stream s, NFData s) => ParserS' s Integer
 integer' def = sign <*> decimals' def
+{-# INLINE integer' #-}
 
 -- | Convert a string parser into integer parser by evaluating the parsed with base
 numbers
   :: (Stream s, NFData s) => Integer -> ParserS s String -> ParserS s Integer
 numbers base parser = foldl' f 0 <$> parser
   where f x d = base * x + toInteger (digitToInt d)
+{-# INLINABLE numbers #-}
 
 -- | Parses general form of floating numbers (including scientific form)
 --
@@ -324,7 +333,7 @@ float' = lexeme' float
 -- 3.1415926535
 --
 floating :: (Stream s, NFData s) => ParserS s Double
-floating = read <$> foldl1 (liftA2 (<>)) [digits, string ".", digits]
+floating = read <$> foldl1' (liftA2 (<>)) [digits, string ".", digits]
   where digits = show <$> decimals
 
 -- | The t'ParserS'' form of 'floating'
