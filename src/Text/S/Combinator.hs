@@ -424,7 +424,7 @@ bindq :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 bindq op p = p >>= find
  where
   rest x = find x <|> pure x
-  find x = bindq op p >>= bind x
+  find x = p >>= rest >>= bind x
   bind x y = op >>= rest . flip uncurry (x, y)
 
 -- | Tries to repeatedly parse two @__p__@ operands
