@@ -227,12 +227,12 @@ squares' p = lexeme' (squares p)
 -- >>> t' decimals "00123456789"
 -- 123456789
 --
-decimals :: (Stream s, NFData s) => ParserS s Integer
+decimals :: (Stream s, NFData s, Num a) => ParserS s a
 decimals = numbers 10 digits
 {-# INLINE decimals #-}
 
 -- | The t'ParserS'' form of 'decimals'
-decimals' :: (Stream s, NFData s) => ParserS' s Integer
+decimals' :: (Stream s, NFData s, Num a) => ParserS' s a
 decimals' = lexeme' decimals
 
 -- | Parses hexadecimal digits (base-16)
@@ -240,11 +240,11 @@ decimals' = lexeme' decimals
 -- >>> t' hexadecimals "0xCOVID-19"
 -- 12
 --
-hexadecimals :: (Stream s, NFData s) => ParserS s Integer
+hexadecimals :: (Stream s, NFData s, Num a) => ParserS s a
 hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
 
 -- | The t'ParserS'' form of 'hexadecimals'
-hexadecimals' :: (Stream s, NFData s) => ParserS' s Integer
+hexadecimals' :: (Stream s, NFData s, Num a) => ParserS' s a
 hexadecimals' = lexeme' hexadecimals
 
 -- | Parses numbers with leading-zeros
@@ -252,11 +252,11 @@ hexadecimals' = lexeme' hexadecimals
 -- >>> t' zeros "000002022"
 -- 2022
 --
-zeros :: (Stream s, NFData s) => ParserS s Integer
+zeros :: (Stream s, NFData s, Num a) => ParserS s a
 zeros = char '0' *> decimals
 
 -- | The t'ParserS'' form of 'zeros'
-zeros' :: (Stream s, NFData s) => ParserS' s Integer
+zeros' :: (Stream s, NFData s, Num a) => ParserS' s a
 zeros' = lexeme' zeros
 
 -- | Parses natural numbers (non-leading zeros and signs)
@@ -304,10 +304,9 @@ integer' def = sign <*> decimals' def
 {-# INLINE integer' #-}
 
 -- | Convert a string parser into integer parser by evaluating the parsed with base
-numbers
-  :: (Stream s, NFData s) => Integer -> ParserS s String -> ParserS s Integer
+numbers :: (Stream s, NFData s, Num a) => a -> ParserS s String -> ParserS s a
 numbers base parser = foldl' f 0 <$> parser
-  where f x d = base * x + toInteger (digitToInt d)
+  where f x d = base * x + fromIntegral (digitToInt d)
 {-# INLINABLE numbers #-}
 
 -- | Parses general form of floating numbers (including scientific form)
@@ -316,11 +315,11 @@ numbers base parser = foldl' f 0 <$> parser
 -- 3.1415926535e-8
 --
 float :: (Stream s, NFData s) => ParserS s Double
-float = read <$> (scientific <|> floatOnly)
+float = read <$> (scientific <|> decimalPoint)
  where
-  scientific = (<>) <$> floatOnly <*> exponent'
-  floatOnly  = show <$> floating
-  exponent'  = (:) <$> oneOf "eE" <*> (show <$> integer)
+  scientific   = (<>) <$> decimalPoint <*> exponent'
+  decimalPoint = show <$> (floating <|> fromIntegral <$> integer)
+  exponent'    = (:) <$> oneOf "eE" <*> (show <$> integer)
 
 -- | The t'ParserS'' form of 'float'
 float' :: (Stream s, NFData s) => ParserS' s Double
@@ -333,8 +332,10 @@ float' = lexeme' float
 -- 3.1415926535
 --
 floating :: (Stream s, NFData s) => ParserS s Double
-floating = read <$> foldl1' (liftA2 (<>)) [digits, string ".", digits]
-  where digits = show <$> decimals
+floating = read <$> foldl1' (liftA2 (<>)) [sign, digits, string ".", digits]
+ where
+  sign   = option "" (string "-" <|> (string "+" $> ""))
+  digits = show <$> decimals
 
 -- | The t'ParserS'' form of 'floating'
 floating' :: (Stream s, NFData s) => ParserS' s Double
