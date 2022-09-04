@@ -14,15 +14,13 @@ module Text.S.Expr
   ) where
 
 
-import           Control.DeepSeq                ( NFData
-                                                , force
-                                                )
-import           Control.Monad
-import           Data.Bool                      ( bool )
+import           Control.DeepSeq                ( NFData )
+import           Control.Monad                  ( MonadPlus(mzero) )
 import           Data.List                      ( foldl' )
 import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Lexeme
+
 
 
 -- |
@@ -33,8 +31,13 @@ data Operator s a  = PrefixU  (ParserS s (a -> a))
                    | PrefixB  (ParserS s (a -> a -> a))
                    | PostfixB (ParserS s (a -> a -> a))
 
+
 -- |
-type OperatorTable s a = [[Operator s a]]
+type LevelPriority s a = [Operator s a]
+
+
+-- |
+type OperatorTable s a = [LevelPriority s a]
 
 
 -- |
@@ -49,21 +52,16 @@ type OperatorRecord s a
 
 
 -- |
-processRecord :: ParserS s a -> [Operator s a] -> ParserS s a
-processRecord atom opTable =
-  (term >>= expr'l)
-    <|> (term >>= expr'r)
-    <|> (term >>= expr'q)
-    <|> expr'p
-    <|> term
+applyPriority :: ParserS s a -> LevelPriority s a -> ParserS s a
+applyPriority atom opTable = choice [expr'l, expr'r, expr'p, expr'q, term]
  where
   (a, b, c, d, e, f) = foldl' (flip sortOp) ([], [], [], [], [], []) opTable
   term               = betweenOp (choice a) (choice b) atom
-  expr'l             = bool (chainl (choice c) term) (const mzero) (null c)
-  expr'r             = bool (chainr (choice d) term) (const mzero) (null d)
-  expr'q             = bool (chainq (choice f) term) (const mzero) (null f)
-  expr'p             = bool (chainp1 (choice e) term) mzero (null e)
-{-# INLINABLE processRecord #-}
+  expr'l             = null c ? mzero ::: term >>= chainl (choice c) term
+  expr'r             = null d ? mzero ::: term >>= chainr (choice d) term
+  expr'q             = null f ? mzero ::: term >>= chainq (choice f) term
+  expr'p             = null e ? mzero ::: chainp1 (choice e) term
+{-# INLINABLE applyPriority #-}
 
 -- |
 sortOp :: Operator s a -> OperatorRecord s a -> OperatorRecord s a
@@ -78,37 +76,38 @@ sortOp (PostfixB op) (a, b, c, d, e, f) = (a, b, c, d, e, op : f)
 
 -- | expression parser builder
 expr :: (Stream s, NFData s) => ParserS s a -> OperatorTable s a -> ParserS s a
-expr = foldl' processRecord
+expr = foldl' applyPriority
+{-# INLINABLE expr #-}
 
 -- |
-prefix'u :: (Stream s, NFData s) => String -> (a -> a) -> Operator s a
-prefix'u sym = PrefixU . unop sym
-{-# INLINE prefix'u #-}
+prefixU :: (Stream s, NFData s) => String -> (a -> a) -> Operator s a
+prefixU sym = PrefixU . unop sym
+{-# INLINE prefixU #-}
 
 -- |
-postfix'u :: (Stream s, NFData s) => String -> (a -> a) -> Operator s a
-postfix'u sym = PostfixU . unop sym
-{-# INLINE postfix'u #-}
+postfixU :: (Stream s, NFData s) => String -> (a -> a) -> Operator s a
+postfixU sym = PostfixU . unop sym
+{-# INLINE postfixU #-}
 
 -- |
-infix'l :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator s a
-infix'l sym = InfixL . binop sym
-{-# INLINE infix'l #-}
+infixL :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator s a
+infixL sym = InfixL . binop sym
+{-# INLINE infixL #-}
 
 -- |
-infix'r :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator s a
-infix'r sym = InfixR . binop sym
-{-# INLINE infix'r #-}
+infixR :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator s a
+infixR sym = InfixR . binop sym
+{-# INLINE infixR #-}
 
 -- |
-prefix'b :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator s a
-prefix'b sym = PrefixB . binop sym
-{-# INLINE prefix'b #-}
+prefixB :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator s a
+prefixB sym = PrefixB . binop sym
+{-# INLINE prefixB #-}
 
 -- |
-postfix'b :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator s a
-postfix'b sym = PostfixB . binop sym
-{-# INLINE postfix'b #-}
+postfixB :: (Stream s, NFData s) => String -> (a -> a -> a) -> Operator s a
+postfixB sym = PostfixB . binop sym
+{-# INLINE postfixB #-}
 
 -- |
 binop

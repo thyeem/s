@@ -29,10 +29,12 @@ dependencies:
 # - docopt >= 0.7.0.6
 
 default-extensions:
+- StrictData
 - BangPatterns
 - DataKinds
 - DeriveAnyClass
 - DeriveGeneric
+- DerivingStrategies
 - ExplicitForAll
 - FlexibleContexts
 - FlexibleInstances
@@ -46,6 +48,7 @@ default-extensions:
 - TemplateHaskell
 - Trustworthy
 - TupleSections
+- TypeOperators
 - TypeSynonymInstances
 
 library:

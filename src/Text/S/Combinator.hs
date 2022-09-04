@@ -351,7 +351,7 @@ skipSomeTill p end = p *> skipManyTill p end
 --
 chainl1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainl1 op p = p >>= chainl op p
-{-# INLINABLE chainl1 #-}
+{-# INLINE chainl1 #-}
 
 -- |
 chainl :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
@@ -359,7 +359,7 @@ chainl op p = rest
  where
   rest x = bind x <|> pure x
   bind x = op >>= \f -> p >>= rest . f x
-{-# INLINABLE chainl #-}
+{-# INLINE chainl #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__infix right-associative__@ binary operator @__op__@.
@@ -386,7 +386,7 @@ chainl op p = rest
 --
 chainr1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainr1 op p = p >>= chainr op p
-{-# INLINABLE chainr1 #-}
+{-# INLINE chainr1 #-}
 
 -- |
 chainr :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
@@ -394,7 +394,7 @@ chainr op p = rest
  where
   rest x = bind x <|> pure x
   bind x = op >>= (\f -> f x <$> (p >>= rest))
-{-# INLINABLE chainr #-}
+{-# INLINE chainr #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__prefix or polish prefix__@ binary operator @__op__@.
@@ -424,12 +424,12 @@ chainr op p = rest
 --
 chainp1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainp1 op p = op <*> o <*> o where o = chainp1 op p <|> p
-{-# INLINABLE chainp1 #-}
+{-# INLINE chainp1 #-}
 
 -- |
 chainp :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
 chainp op p x = op <*> pure x <*> o where o = chainp1 op p <|> p
-{-# INLINABLE chainp #-}
+{-# INLINE chainp #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__postfix or reverse-polish prefix__@ binary operator @__op__@.
@@ -459,7 +459,7 @@ chainp op p x = op <*> pure x <*> o where o = chainp1 op p <|> p
 --
 chainq1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainq1 op p = p >>= chainq op p
-{-# INLINABLE chainq1 #-}
+{-# INLINE chainq1 #-}
 
 -- |
 chainq :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
@@ -468,9 +468,9 @@ chainq op p = rest
   rest x = find x <|> pure x
   find x = (p >>= rest) >>= bind x
   bind x y = op >>= rest . flip uncurry (x, y)
-{-# INLINABLE chainq #-}
+{-# INLINE chainq #-}
 
 -- |
 betweenOp :: MonadPlus m => m (a -> a) -> m (a -> a) -> m a -> m a
 betweenOp pre post p = (option id pre <*> p) <**> option id post
-{-# INLINABLE betweenOp #-}
+{-# INLINE betweenOp #-}

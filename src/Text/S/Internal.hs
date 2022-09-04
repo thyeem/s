@@ -39,6 +39,8 @@ module Text.S.Internal
   , t'
   , ts'
   , unwrap
+  , (?)
+  , CondExpr(..)
   ) where
 
 import           Control.Applicative            ( Alternative(..)
@@ -122,6 +124,7 @@ appendSource s1@Source{} s2@Source{}
   | sourceName s1 /= sourceName s2 = error' "two source names do not match"
   | s1 < s2                        = s2
   | otherwise                      = s1
+{-# INLINE appendSource #-}
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
@@ -160,10 +163,12 @@ initState file stream = State stream (initSource file) mempty
 addMessage :: Message -> State s -> State s
 addMessage msg state@State {..} =
   state { stateMesssages = stateMesssages <> [msg] }
+{-# INLINE addMessage #-}
 
 mergeState :: State s -> State s -> State s
 mergeState s1@(State _ src1 _) s2@(State _ src2 _) | src1 > src2 = s1
                                                    | otherwise   = s2
+{-# INLINE mergeState #-}
 
 
 -------------------------
@@ -203,6 +208,7 @@ label msg parser = ParserS $ \state@State{} fOk fError ->
   let fError' s@State {..} = fError $ addMessage expected s
       expected = Expected . unwords $ ["->", "expected:", msg]
   in  runParser parser state fOk fError'
+{-# INLINABLE label #-}
 
 
 instance Functor (ParserS s) where
@@ -212,6 +218,7 @@ instance Functor (ParserS s) where
 smap :: (a -> b) -> ParserS s a -> ParserS s b
 smap f parser =
   ParserS $ \state fOk fError -> runParser parser state (fOk . f) fError
+{-# INLINE smap #-}
 
 
 instance Applicative (ParserS s) where
@@ -223,6 +230,7 @@ sap :: ParserS s (a -> b) -> ParserS s a -> ParserS s b
 sap f parser = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser parser state' (fOk . x) fError
   in  runParser f state fOk' fError
+{-# INLINE sap #-}
 
 
 instance Monad (ParserS s) where
@@ -234,6 +242,7 @@ sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
 sbind parser f = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser (f x) state' fOk fError
   in  runParser parser state fOk' fError
+{-# INLINE sbind #-}
 
 
 instance Alternative (ParserS s) where
@@ -248,6 +257,7 @@ instance MonadPlus (ParserS s) where
 
 szero :: ParserS s a
 szero = fail mempty
+{-# INLINE szero #-}
 
 splus :: ParserS s a -> ParserS s a -> ParserS s a
 splus p q = ParserS $ \state fOk fError ->
@@ -255,6 +265,7 @@ splus p q = ParserS $ \state fOk fError ->
         let fError'' s''@State{} = fError $ mergeState s' s''
         in  runParser q state fOk fError''
   in  runParser p state fOk fError'
+{-# INLINE splus #-}
 
 
 instance MonadFail (ParserS s) where
@@ -301,6 +312,7 @@ charParserOf predicate =
         '\t' -> Source n ln (move col 8)
         _    -> Source n ln (col + 1)
         where move col size = col + size - ((col - 1) `mod` size)
+{-# INLINABLE charParserOf #-}
 
 
 -- | Tries to parse with @__parser__@ looking ahead without consuming any input.
@@ -347,6 +359,20 @@ unwrap :: (Stream s, Show s) => Result a s -> a
 unwrap r = case r of
   Ok ok _     -> ok
   Error state -> error' . show $ state
+
+
+-- | Conditional expression of if-then-else
+data CondExpr a = a ::: a
+
+infixl 1 ?
+infixl 2 :::
+
+-- | Tenary operator
+--
+-- (bool condition) ? (expression-if-true) ::: (expression-if-false)
+(?) :: Bool -> CondExpr a -> a
+True  ? (x ::: _) = x
+False ? (_ ::: y) = y
 
 
 -------------------------

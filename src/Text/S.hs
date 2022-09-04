@@ -64,50 +64,48 @@ calc'bl = expr atom table
  where
   atom = strip float <|> parens calc'bl
   table =
-    [ [ prefix'u "-" negate
-      , prefix'u "+" id
-      ]
-    -- , [postfix'u "++" (+ 1), postfix'u "--" (subtract 1)]
-    , [infix'l "^" (**)]
-    , [infix'l "*" (*), infix'l "/" (/)]
-    , [infix'l "+" (+), infix'l "-" (-)]
+    [ [prefixU "-" negate, prefixU "+" id]
+    , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
+    , [infixL "^" (**)]
+    , [infixL "*" (*), infixL "/" (/)]
+    , [infixL "+" (+), infixL "-" (-)]
     ]
 
 calc'br :: (Stream s, NFData s) => ParserS s Double
 calc'br = expr atom table
  where
-  atom = strip float <|> parens calc'bl
+  atom = strip float <|> parens calc'br
   table =
-    [ [prefix'u "-" negate]
-    , [postfix'u "++" (+ 1), postfix'u "--" (subtract 1)]
-    , [infix'r "^" (**)]
-    , [infix'r "*" (*), infix'r "/" (/)]
-    , [infix'r "+" (+), infix'r "-" (-)]
+    [ [prefixU "-" negate]
+    , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
+    , [infixR "^" (**)]
+    , [infixR "*" (*), infixR "/" (/)]
+    , [infixR "+" (+), infixR "-" (-)]
     ]
 
 calc'bp :: (Stream s, NFData s) => ParserS s Double
 calc'bp = expr atom table
  where
-  atom = strip float <|> parens calc'bl
+  atom = strip float
   table =
-    [ [ prefix'b "^" (**)
-      , prefix'b "*" (*)
-      , prefix'b "/" (/)
-      , prefix'b "+" (+)
-      , prefix'b "-" (-)
+    [ [ prefixB "^" (**)
+      , prefixB "*" (*)
+      , prefixB "/" (/)
+      , prefixB "+" (+)
+      , prefixB "-" (-)
       ]
     ]
 
 calc'bq :: (Stream s, NFData s) => ParserS s Double
 calc'bq = expr atom table
  where
-  atom = strip float <|> parens calc'bl
+  atom = strip float
   table =
-    [ [ postfix'b "^" (**)
-      , postfix'b "*" (*)
-      , postfix'b "/" (/)
-      , postfix'b "+" (+)
-      , postfix'b "-" (-)
+    [ [ postfixB "^" (**)
+      , postfixB "*" (*)
+      , postfixB "/" (/)
+      , postfixB "+" (+)
+      , postfixB "-" (-)
       ]
     ]
 
@@ -115,4 +113,4 @@ calc :: (Stream s, NFData s) => ParserS s Double
 calc = expr atom table
  where
   atom  = strip float <|> parens calc
-  table = [[infix'r "+" (+)], [infix'l "*" (*)]]
+  table = [[infixR "+" (+)], [infixL "*" (*)]]
