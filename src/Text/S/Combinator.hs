@@ -126,7 +126,7 @@ sepBy p sep = sepBy1 p sep <|> pure []
 -- ["p","rser combin","tor"]
 --
 sepBy1 :: MonadPlus m => m a -> m b -> m [a]
-sepBy1 p sep = liftA2 (:) p (some (sep *> p))
+sepBy1 p sep = liftA2 (:) p (many (sep *> p))
 {-# INLINE sepBy1 #-}
 
 -- | Parses @__0+(zero or more)__@ occurrences of parser @__p__@,

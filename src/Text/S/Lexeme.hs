@@ -461,7 +461,8 @@ charLit' def = lexeme' (string mark *> readChar <* string mark) def
 -- "'\r', a carriage-return or '\n', a line-feed?"
 --
 stringLit :: (Stream s, NFData s) => ParserS s String
-stringLit = string "\"" *> manyTill readChar (string "\"")
+stringLit = string "\"" *> many readChar <* string "\""
+-- stringLit = string "\"" *> manyTill readChar (string "\"")
 {-# INLINE stringLit #-}
 
 -- | The same as 'stringLit', but this reads 'defStringLiteralMark' from 'LanguageDef'
