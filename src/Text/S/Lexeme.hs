@@ -421,23 +421,6 @@ operator' def = do
   set = S.fromList (defReservedSpecials def)
 {-# INLINABLE operator' #-}
 
--- |
---
--- @splitByComma = splitBy (symbol ",")@
---
--- @splitBySemi  = splitBy (symbol ";")@
---
--- @splitBySpace = splitBy spaces@
---
--- >>> p = splitBy (symbol ",") alphaNums
--- >>> t' (symbol "(" *> p <* symbol ")") "(alpha,beta,gamma)"
--- ["alpha","beta","gamma"]
---
-splitBy
-  :: (Stream s, NFData s) => ParserS s String -> ParserS s a -> ParserS s [a]
-splitBy = flip sepBy1
-{-# INLINE splitBy #-}
-
 -- | Parses a single @char literal@
 --
 -- >>> stream = "'\CR', a carriage-return or '\LF', a line-feed?"
@@ -445,31 +428,20 @@ splitBy = flip sepBy1
 -- '\r'
 --
 charLit :: (Stream s, NFData s) => ParserS s Char
-charLit = string "'" *> readChar <* string "'"
+charLit = genCharLit "'"
 {-# INLINE charLit #-}
 
 -- | The same as 'charLit', but this reads 'defCharLiteralMark' from 'LanguageDef'
 charLit' :: (Stream s, NFData s) => ParserS' s Char
-charLit' def = lexeme' (string mark *> readChar <* string mark) def
+charLit' def = lexeme' (genCharLit mark) def
   where mark = defCharLiteralMark def
 {-# INLINE charLit' #-}
 
--- | Parses a single @string literal@
---
--- >>> stream = "\"'\CR', a carriage-return or '\LF', a line-feed?\""
--- >>> t' stringLit stream
--- "'\r', a carriage-return or '\n', a line-feed?"
---
-stringLit :: (Stream s, NFData s) => ParserS s String
-stringLit = string "\"" *> many readChar <* string "\""
--- stringLit = string "\"" *> manyTill readChar (string "\"")
-{-# INLINE stringLit #-}
-
--- | The same as 'stringLit', but this reads 'defStringLiteralMark' from 'LanguageDef'
-stringLit' :: (Stream s, NFData s) => ParserS' s String
-stringLit' def = lexeme' (string mark *> manyTill readChar (string mark)) def
-  where mark = defStringLiteralMark def
-{-# INLINE stringLit' #-}
+-- | Character literal parser builder
+genCharLit :: (Stream s, NFData s) => String -> ParserS s Char
+genCharLit mark =
+  between (string mark) (string mark <?> "end-of-char-literal") readChar
+{-# INLINE genCharLit #-}
 
 -- |
 readChar :: (Stream s, NFData s) => ParserS s Char
@@ -479,3 +451,35 @@ readChar = do
     [(a, s')] -> a <$ skipCount (length s - length s') anychar
     _         -> fail "failed to read any char literal"
 {-# INLINE readChar #-}
+
+-- | Parses a single @string literal@
+--
+-- >>> stream = "\"'\CR', a carriage-return or '\LF', a line-feed?\""
+-- >>> t' stringLit stream
+-- "'\r', a carriage-return or '\n', a line-feed?"
+--
+-- The following can be used, but not very efficient.
+-- >>> stringLit = string "\"" *> manyTill readChar (string "\"")
+--
+stringLit :: (Stream s, NFData s) => ParserS s String
+stringLit = genStringLit "\""
+{-# INLINE stringLit #-}
+
+-- | The same as 'stringLit', but this reads 'defStringLiteralMark' from 'LanguageDef'
+stringLit' :: (Stream s, NFData s) => ParserS' s String
+stringLit' def = lexeme' (genStringLit mark) def
+  where mark = defStringLiteralMark def
+{-# INLINE stringLit' #-}
+
+-- | String literal parser builder
+genStringLit :: (Stream s, NFData s) => String -> ParserS s String
+genStringLit mark = concat <$> between
+  (string mark)
+  (string mark <?> "end-of-string-literal")
+  (many character)
+ where
+  character = choice
+    [ pure <$> noneOf "\\\"\0\n\r\t\b\v\f"
+    , sequence [char '\\', oneOf "\\\"0nrtbvf"]
+    ]
+{-# INLINE genStringLit #-}
