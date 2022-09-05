@@ -39,8 +39,8 @@ module Text.S.Internal
   , t'
   , ts'
   , unwrap
-  , (?)
   , CondExpr(..)
+  , (?)
   ) where
 
 import           Control.Applicative            ( Alternative(..)

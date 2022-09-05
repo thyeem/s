@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      : Text.S.Language
+-- Module      : Text.S.Expr
 -- License     : MIT
 --
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
@@ -20,7 +20,6 @@ import           Data.List                      ( foldl' )
 import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Lexeme
-
 
 
 -- |
@@ -53,10 +52,10 @@ type OperatorRecord s a
 
 -- |
 applyPriority :: ParserS s a -> LevelPriority s a -> ParserS s a
-applyPriority atom opTable = choice [expr'l, expr'r, expr'p, expr'q, term]
+applyPriority unit level = choice [expr'l, expr'r, expr'p, expr'q, term]
  where
-  (a, b, c, d, e, f) = foldl' (flip sortOp) ([], [], [], [], [], []) opTable
-  term               = betweenOp (choice a) (choice b) atom
+  (a, b, c, d, e, f) = foldl' (flip sortOp) ([], [], [], [], [], []) level
+  term               = betweenOp (choice a) (choice b) unit
   expr'l             = null c ? mzero ::: term >>= chainl (choice c) term
   expr'r             = null d ? mzero ::: term >>= chainr (choice d) term
   expr'q             = null f ? mzero ::: term >>= chainq (choice f) term
@@ -111,12 +110,12 @@ postfixB sym = PostfixB . binop sym
 
 -- |
 binop
-  :: (Stream s, NFData s) => String -> (a -> a -> a) -> ParserS s (a -> a -> a)
+  :: (Stream s, NFData s) => String -> (a -> a -> b) -> ParserS s (a -> a -> b)
 binop sym f = strip (symbol sym) $> f
 {-# INLINE binop #-}
 
 -- |
-unop :: (Stream s, NFData s) => String -> (a -> a) -> ParserS s (a -> a)
+unop :: (Stream s, NFData s) => String -> (a -> b) -> ParserS s (a -> b)
 unop sym f = strip (symbol sym) $> f
 {-# INLINE unop #-}
 
@@ -170,3 +169,33 @@ negOp = unop "-" negate
 posOp :: (Stream s, NFData s, Num a) => ParserS s (a -> a)
 posOp = unop "+" id
 {-# INLINE posOp #-}
+
+-- |
+--
+eqOp :: (Stream s, NFData s, Eq a) => ParserS s (a -> a -> Bool)
+eqOp = binop "==" (==)
+{-# INLINE eqOp #-}
+
+-- |
+--
+ltOp :: (Stream s, NFData s, Ord a) => ParserS s (a -> a -> Bool)
+ltOp = binop "<" (<)
+{-# INLINE ltOp #-}
+
+-- |
+--
+gtOp :: (Stream s, NFData s, Ord a) => ParserS s (a -> a -> Bool)
+gtOp = binop ">" (>)
+{-# INLINE gtOp #-}
+
+-- |
+--
+leOp :: (Stream s, NFData s, Ord a) => ParserS s (a -> a -> Bool)
+leOp = binop "<=" (<=)
+{-# INLINE leOp #-}
+
+-- |
+--
+geOp :: (Stream s, NFData s, Ord a) => ParserS s (a -> a -> Bool)
+geOp = binop ">=" (>=)
+{-# INLINE geOp #-}

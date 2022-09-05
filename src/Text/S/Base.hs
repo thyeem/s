@@ -227,7 +227,7 @@ eof :: (Stream s, NFData s) => ParserS s Char
 eof = label "end-of-stream" $ do
   s <- assert $ many anychar
   if null s
-    then return '\NUL'
+    then return (minBound :: Char)
     else fail $ unwords ["EOF not found. Found char:", show . head $ s]
 {-# INLINABLE eof #-}
 
