@@ -97,13 +97,13 @@ skipComments' def = skipMany $ commentLine' def <|> commentBlock' def
 
 -- | Parses single-line comment
 commentLine' :: (Stream s, NFData s) => ParserS' s String
-commentLine' def = p *> manyTill anychar eol
+commentLine' def = p *> manyTill eol anychar
   where p = choice $ string <$> defCommentLine def
 {-# INLINE commentLine' #-}
 
 -- | Parses block comment
 commentBlock' :: (Stream s, NFData s) => ParserS' s String
-commentBlock' def = bra *> manyTill anychar ket
+commentBlock' def = bra *> manyTill ket anychar
  where
   bra = choice $ string <$> defCommentBlockBegin def
   ket = choice $ string <$> defCommentBlockEnd def
@@ -454,9 +454,9 @@ readChar = do
 
 -- | Parses a single @string literal@
 --
--- >>> stream = "\"'\CR', a carriage-return or '\LF', a line-feed?\""
+-- >>> stream = "\"'\\r', a carriage-return or '\\n', a line-feed?\""
 -- >>> t' stringLit stream
--- "'\r', a carriage-return or '\n', a line-feed?"
+-- "'\\r', a carriage-return or '\\n', a line-feed?"
 --
 -- The following can be used, but not very efficient.
 -- >>> stringLit = string "\"" *> manyTill readChar (string "\"")

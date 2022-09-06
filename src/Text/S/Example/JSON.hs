@@ -46,12 +46,12 @@ parseString = S <$> strip stringLit
 
 -- | parse JSON array like: [1, true, "", {}, [],...]
 parseArray :: Parser JSON
-parseArray = A <$> between (char '[') (char ']') (sepBy parseJSON (char ','))
+parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') parseJSON)
 
 -- | parse JSON Object like: {"key": JSON}
 parseObject :: Parser JSON
 parseObject = O
-  <$> between (char '{') (char '}') (sepBy parseKeyValue (char ','))
+  <$> between (char '{') (char '}') (sepBy (char ',') parseKeyValue)
  where
   parseKey      = K <$> strip stringLit
   parseKeyValue = parseKey >>= \key -> KV key <$> (char ':' *> parseJSON)

@@ -105,14 +105,14 @@ between bra ket p = bra *> p <* ket
 --
 -- See also 'endBy'.
 --
--- >>> t' (sepBy decimals (symbol ",")) "1,2,3,4,5"
+-- >>> t' (sepBy (symbol ",") decimals) "1,2,3,4,5"
 -- [1,2,3,4,5]
 --
--- >>> t' (sepBy decimals (symbol ".")) "1,2,3,4,5"
--- []
+-- >>> t' (sepBy (symbol ".") decimals) "1,2,3,4,5"
+-- [1]
 --
-sepBy :: MonadPlus m => m a -> m b -> m [a]
-sepBy p sep = sepBy1 p sep <|> pure []
+sepBy :: MonadPlus m => m sep -> m a -> m [a]
+sepBy sep p = sepBy1 sep p <|> pure []
 {-# INLINE sepBy #-}
 
 -- | Parses @__1+(one or more)__@ occurrences of parser @__p__@,
@@ -122,11 +122,11 @@ sepBy p sep = sepBy1 p sep <|> pure []
 --
 -- See also 'endBy1'
 --
--- >>> t' (sepBy1 (anystringBut "a") (symbol "a")) "parser combinator"
+-- >>> t' (sepBy1 (symbol "a") (anystringBut "a")) "parser combinator"
 -- ["p","rser combin","tor"]
 --
-sepBy1 :: MonadPlus m => m a -> m b -> m [a]
-sepBy1 p sep = liftA2 (:) p (many (sep *> p))
+sepBy1 :: MonadPlus m => m sep -> m a -> m [a]
+sepBy1 sep p = liftA2 (:) p (many (sep *> p))
 {-# INLINE sepBy1 #-}
 
 -- | Parses @__0+(zero or more)__@ occurrences of parser @__p__@,
@@ -137,14 +137,14 @@ sepBy1 p sep = liftA2 (:) p (many (sep *> p))
 -- See also 'sepBy'.
 --
 -- >>> p = some $ alphaNum <|> char '=' <|> space
--- >>> t' (endBy p (char ';')) "int a=1;int b=2;"
+-- >>> t' (endBy (char ';') p) "int a=1;int b=2;"
 -- ["int a=1","int b=2"]
 --
--- >>> t' (endBy digits (char ';')) "10:20:30:"
+-- >>> t' (endBy (char ';') digits) "10:20:30:"
 -- []
 --
-endBy :: MonadPlus m => m a -> m b -> m [a]
-endBy p end = many (p <* end)
+endBy :: MonadPlus m => m end -> m a -> m [a]
+endBy end p = many (p <* end)
 {-# INLINE endBy #-}
 
 -- | Parses @__1+(one or more)__@ occurrences of parser @__p__@,
@@ -154,11 +154,11 @@ endBy p end = many (p <* end)
 --
 -- See also 'sepBy1'
 --
--- >>> t' (endBy1 (anystringBut "a") (symbol "a")) "parser combinator"
+-- >>> t' (endBy1 (symbol "a") (anystringBut "a")) "parser combinator"
 -- ["p","rser combin"]
 --
-endBy1 :: MonadPlus m => m a -> m b -> m [a]
-endBy1 p end = some (p <* end)
+endBy1 :: MonadPlus m => m end -> m a -> m [a]
+endBy1 end p = some (p <* end)
 {-# INLINE endBy1 #-}
 
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@
@@ -168,16 +168,16 @@ endBy1 p end = some (p <* end)
 --
 -- See also 'manyTill''. It keeps the result of parser @__end__@.
 --
--- >>> p = string "{-" *> manyTill anychar (string "-}")
+-- >>> p = string "{-" *> manyTill (string "-}") anychar
 -- >>> t' p "{- haskell block comment here -}"
 -- " haskell block comment here "
 --
--- >>> q = string "{-" *> manyTill special (string "-}")
+-- >>> q = string "{-" *> manyTill (string "-}") special
 -- >>> t' q "{--}"
 -- ""
 --
-manyTill :: MonadPlus m => m a -> m b -> m [a]
-manyTill p end = someTill p end <|> (end $> [])
+manyTill :: MonadPlus m => m end -> m a -> m [a]
+manyTill end p = someTill end p <|> (end $> [])
 {-# INLINE manyTill #-}
 
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@
@@ -185,12 +185,12 @@ manyTill p end = someTill p end <|> (end $> [])
 --
 -- See also 'someTill''. It keeps the result of parser @__end__@.
 --
--- >>> p = someTill (letter <|> space) (string ":")
+-- >>> p = someTill (string ":") (letter <|> space)
 -- >>> t' p "for x in xs: f(x)"
 -- "for x in xs"
 --
-someTill :: MonadPlus m => m a -> m b -> m [a]
-someTill p end = liftA2 (:) p (manyTill p end)
+someTill :: MonadPlus m => m end -> m a -> m [a]
+someTill end p = liftA2 (:) p (manyTill end p)
 {-# INLINE someTill #-}
 
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@
@@ -204,14 +204,14 @@ someTill p end = liftA2 (:) p (manyTill p end)
 -- See also 'manyTill'
 --
 -- >>> p = alphaNum <|> space
--- >>> t' (manyTill' p special) "stop COVID-19"
+-- >>> t' (manyTill' special p) "stop COVID-19"
 -- ("stop COVID",'-')
 --
--- >>> t' (manyTill' digit letters) "stop COVID-19"
+-- >>> t' (manyTill' letters digit) "stop COVID-19"
 -- ("","stop")
 --
-manyTill' :: MonadPlus m => m a -> m b -> m ([a], b)
-manyTill' p end = someTill' p end <|> (([], ) <$> end)
+manyTill' :: MonadPlus m => m end -> m a -> m ([a], end)
+manyTill' end p = someTill' end p <|> (([], ) <$> end)
 {-# INLINE manyTill' #-}
 
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@
@@ -226,11 +226,11 @@ manyTill' p end = someTill' p end <|> (([], ) <$> end)
 --
 -- >>> stopCodon = symbol "UAA"
 -- >>> geneticSequence = "AUCUCGUCAUCUCGUUAACUCGUA"
--- >>> t' (someTill' upper stopCodon) geneticSequence
+-- >>> t' (someTill' stopCodon upper) geneticSequence
 -- ("AUCUCGUCAUCUCGU","UAA")
 --
-someTill' :: MonadPlus m => m a -> m b -> m ([a], b)
-someTill' p end = liftA2 f p (manyTill' p end) where f a b = first (a :) b
+someTill' :: MonadPlus m => m end -> m a -> m ([a], end)
+someTill' end p = liftA2 f p (manyTill' end p) where f a b = first (a :) b
 {-# INLINE someTill' #-}
 
 -- | Tries to parse with parser @__p__@.
@@ -295,17 +295,17 @@ skipCount = replicateM_
 --
 -- >>> stopCodon = symbol "UAA"
 -- >>> geneticSequence = "AUCUCGUCAUCUCGUUAACUCGUA"
--- >>> t' (skipManyTill upper stopCodon) geneticSequence
+-- >>> t' (skipManyTill stopCodon upper) geneticSequence
 -- "UAA"
 --
--- >>> ts' (skipManyTill upper stopCodon) geneticSequence
+-- >>> ts' (skipManyTill stopCodon upper) geneticSequence
 -- "CUCGUA"
 --
--- >>> ts' (skipManyTill upper stopCodon) "UAACUCGUA"
+-- >>> ts' (skipManyTill stopCodon upper) "UAACUCGUA"
 -- "CUCGUA"
 --
-skipManyTill :: MonadPlus m => m a -> m b -> m b
-skipManyTill p end = go where go = end <|> (p *> go)
+skipManyTill :: MonadPlus m => m end -> m a -> m end
+skipManyTill end p = go where go = end <|> (p *> go)
 {-# INLINE skipManyTill #-}
 
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
@@ -316,14 +316,14 @@ skipManyTill p end = go where go = end <|> (p *> go)
 --
 -- See also 'skipManyTill'.
 --
--- >>> t' (skipSomeTill anychar (char '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> t' (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- '#'
 --
--- >>> ts' (skipSomeTill anychar (char '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> ts' (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "-G-Ab-A-Bb-B"
 --
-skipSomeTill :: MonadPlus m => m a -> m b -> m b
-skipSomeTill p end = p *> skipManyTill p end
+skipSomeTill :: MonadPlus m => m end -> m a -> m end
+skipSomeTill end p = p *> skipManyTill end p
 {-# INLINE skipSomeTill #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
