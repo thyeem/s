@@ -14,10 +14,11 @@
 -----------------------------------------------------------------------------
 
 module Text.S.Internal
-  ( ByteString
-  , LazyByteString
+  ( Parser
   , Text
+  , ByteString
   , LazyText
+  , LazyByteString
   , Stream(..)
   , Source(..)
   , initSource
@@ -63,13 +64,35 @@ import           System.IO                      ( readFile )
 import           Text.Pretty.Simple             ( pShowNoColor )
 
 
-type ByteString = C.ByteString
 
-type LazyByteString = CL.ByteString
+-- | ParserS currently supports stream types the following:
+--
+-- 'Text', 'LazyText', 'String', 'ByteString', and 'LazyByteString'.
+--
+-- By default, the Parser stream type is set to 'Text'.
+-- Choose a stream type according to your preference like:
+--
+-- Set Parser stream to LazyText in Data.Text.Lazy
+-- >>> type Parser = ParserS LazyText
+--
+-- Set Parser stream to String or [Char]
+-- >>> type Parser= ParserS String
+--
+-- Set Parser stream to ByteString in Data.ByteString.Char8
+-- >>> type Parser = ParserS ByteString
+--
+-- Set Parser stream to Lazy ByteString in Data.ByteString.Lazy.Char8
+-- >>> type Parser = ParserS LazyByteString
+--
+type Parser = ParserS Text
 
 type Text = T.Text
 
+type ByteString = C.ByteString
+
 type LazyText = TL.Text
+
+type LazyByteString = CL.ByteString
 
 
 -------------------------
@@ -80,24 +103,39 @@ class Stream s where
   readStream :: FilePath -> IO s
 
 instance Stream ByteString where
-  unCons     = C.uncons
+  unCons = C.uncons
+  {-# INLINE unCons #-}
+
   readStream = C.readFile
+  {-# INLINE readStream #-}
 
 instance Stream LazyByteString where
-  unCons     = CL.uncons
+  unCons = CL.uncons
+  {-# INLINE unCons #-}
+
   readStream = CL.readFile
+  {-# INLINE readStream #-}
 
 instance Stream Text where
-  unCons     = T.uncons
+  unCons = T.uncons
+  {-# INLINE unCons #-}
+
   readStream = TIO.readFile
+  {-# INLINE readStream #-}
 
 instance Stream LazyText where
-  unCons     = TL.uncons
+  unCons = TL.uncons
+  {-# INLINE unCons #-}
+
   readStream = TLIO.readFile
+  {-# INLINE readStream #-}
 
 instance Stream String where
-  unCons     = uncons
+  unCons = uncons
+  {-# INLINE unCons #-}
+
   readStream = readFile
+  {-# INLINE readStream #-}
 
 
 -------------------------
@@ -113,10 +151,12 @@ data Source = Source
 
 instance Semigroup Source where
   (<>) = appendSource
+  {-# INLINE (<>) #-}
 
 
 instance Monoid Source where
   mempty = Source "-" 1 1
+  {-# INLINE mempty #-}
 
 
 appendSource :: Source -> Source -> Source
@@ -163,6 +203,7 @@ initState file stream = State stream (initSource file) mempty
 addMessage :: Message -> State s -> State s
 addMessage msg state@State {..} =
   state { stateMesssages = stateMesssages <> [msg] }
+{-# INLINABLE addMessage #-}
 
 mergeState :: State s -> State s -> State s
 mergeState s1@(State _ src1 _) s2@(State _ src2 _) | src1 > src2 = s1
@@ -382,6 +423,9 @@ unwrap r = case r of
   Ok ok _     -> ok
   Error state -> error' . show $ state
 
+-- | Raise error without annoying stacktrace
+error' :: String -> a
+error' = errorWithoutStackTrace
 
 -- | Conditional expression of if-then-else
 data CondExpr a = a ::: a
@@ -396,6 +440,10 @@ infixl 2 :::
 True  ? (x ::: _) = x
 False ? (_ ::: y) = y
 
+
+-------------------------
+-- Simple Pretty Print
+-------------------------
 -- | Pretty-Show and Pretty-Printer
 class Show a => Pretty a where
   pretty :: a -> TL.Text
@@ -405,9 +453,6 @@ class Show a => Pretty a where
   pp = TLIO.putStrLn . pretty
 
 
--------------------------
--- Pretty instances
--------------------------
 instance Pretty Source where
   pretty src@Source {..} = TL.unwords
     [ TL.pack sourceName
@@ -440,20 +485,26 @@ instance (Show s, Pretty a) => Pretty (Result a s) where
     Ok ok s -> TL.unlines [pretty ok <> "\n", pretty s]
     Error s -> TL.unlines ["Error\n", pretty s]
 
+
 instance Pretty Int where
   pretty = TL.pack . show
+
 
 instance Pretty Integer where
   pretty = TL.pack . show
 
+
 instance Pretty Float where
   pretty = TL.pack . show
+
 
 instance Pretty Double where
   pretty = TL.pack . show
 
+
 instance Pretty Rational where
   pretty = TL.pack . show
+
 
 instance Show a => Pretty [a] where
 instance (Show a, Show b) => Pretty (a,b) where
@@ -462,7 +513,3 @@ instance (Show a, Show b, Show c, Show d) => Pretty (a,b,c,d) where
 
 deriving instance Pretty Bool
 deriving instance Pretty Char
-
--- |
-error' :: String -> a
-error' = errorWithoutStackTrace

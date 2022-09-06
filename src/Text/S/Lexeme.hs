@@ -70,7 +70,7 @@ type ParserS' s a = LanguageDef -> ParserS s a
 -- based on the given language definition
 lexeme' :: Stream s => ParserS s a -> ParserS' s a
 lexeme' p def = p <* skip' def
-{-# INLINABLE lexeme' #-}
+{-# INLINE lexeme' #-}
 
 -- | Skips unnecesary whitespaces and comments
 --
@@ -80,12 +80,12 @@ lexeme' p def = p <* skip' def
 --
 skip' :: (Stream s) => ParserS' s ()
 skip' def = skipMany $ spaces <|> commentLine' def <|> commentBlock' def
-{-# INLINABLE skip' #-}
+{-# INLINE skip' #-}
 
 -- | Skips whitespaces
 skipSpaces :: (Stream s) => ParserS s ()
 skipSpaces = skipMany space
-{-# INLINABLE skipSpaces #-}
+{-# INLINE skipSpaces #-}
 
 -- | Skips line and block comments
 skipComments' :: (Stream s) => ParserS' s ()
@@ -116,79 +116,79 @@ commentBlock' def = bra *> manyTill ket anychar
 --
 strip :: (Stream s) => ParserS s a -> ParserS s a
 strip = rstrip . lstrip
-{-# INLINABLE strip #-}
+{-# INLINE strip #-}
 
 -- | Remove any leading whitespaces when parsing with @p@
 --
 lstrip :: (Stream s) => ParserS s a -> ParserS s a
 lstrip p = skipSpaces *> p
-{-# INLINABLE lstrip #-}
+{-# INLINE lstrip #-}
 
 -- | Remove any trailing whitespaces when parsing with @p@
 --
 rstrip :: (Stream s) => ParserS s a -> ParserS s a
 rstrip p = p <* (skipSpaces <|> void eof)
-{-# INLINABLE rstrip #-}
+{-# INLINE rstrip #-}
 
 -- | Parses any string symbol to comsume. The same as 'string'
 symbol :: (Stream s) => String -> ParserS s String
 symbol = string
-{-# INLINABLE symbol #-}
+{-# INLINE symbol #-}
 
 -- | The same as 'symbol', but in the form of  t'ParserS''.
 symbol' :: (Stream s) => String -> ParserS' s String
 symbol' t = lexeme' (symbol t)
-{-# INLINABLE symbol' #-}
+{-# INLINE symbol' #-}
 
 -- |
 letters :: (Stream s) => ParserS s String
 letters = some letter
-{-# INLINABLE letters #-}
+{-# INLINE letters #-}
 
 -- | The same as 'letters', but int the form of t'ParserS''.
 letters' :: (Stream s) => ParserS' s String
 letters' = lexeme' letters
-{-# INLINABLE letters' #-}
+{-# INLINE letters' #-}
 
 -- |
 alphaNums :: (Stream s) => ParserS s String
 alphaNums = some alphaNum
-{-# INLINABLE alphaNums #-}
+{-# INLINE alphaNums #-}
 
 -- | The t'ParserS'' form of 'alphaNums'
 alphaNums' :: (Stream s) => ParserS' s String
 alphaNums' = lexeme' alphaNums
-{-# INLINABLE alphaNums' #-}
+{-# INLINE alphaNums' #-}
 
 -- |
 digits :: (Stream s) => ParserS s String
 digits = some digit
-{-# INLINABLE digits #-}
+{-# INLINE digits #-}
 
 -- | The t'ParserS'' form of 'digits'
 digits' :: (Stream s) => ParserS' s String
 digits' = lexeme' digits
-{-# INLINABLE digits' #-}
+{-# INLINE digits' #-}
 
 -- |
 specials :: (Stream s) => ParserS s String
 specials = some special
-{-# INLINABLE specials #-}
+{-# INLINE specials #-}
 
 -- | The t'ParserS'' form of 'specials'
 specials' :: (Stream s) => ParserS' s String
 specials' = lexeme' specials
-{-# INLINABLE specials' #-}
+{-# INLINE specials' #-}
 
 -- |
 spaces :: (Stream s) => ParserS s String
 spaces = some space
-{-# INLINABLE spaces #-}
+{-# INLINE spaces #-}
 
 -- | The t'ParserS'' form of 'spaces'
 spaces' :: (Stream s) => ParserS' s String
 spaces' = lexeme' spaces
-{-# INLINABLE spaces' #-}
+{-# INLINE spaces' #-}
 
 -- | Parses string between parentheses
 --
@@ -197,12 +197,12 @@ spaces' = lexeme' spaces
 --
 parens :: (Stream s) => ParserS s a -> ParserS s a
 parens = between (symbol "(") (symbol ")")
-{-# INLINABLE parens #-}
+{-# INLINE parens #-}
 
 -- | The t'ParserS'' form of 'parens'
 parens' :: (Stream s) => ParserS s a -> ParserS' s a
 parens' p = lexeme' (parens p)
-{-# INLINABLE parens' #-}
+{-# INLINE parens' #-}
 
 -- | Parses string between curly braces
 --
@@ -211,12 +211,12 @@ parens' p = lexeme' (parens p)
 --
 braces :: (Stream s) => ParserS s a -> ParserS s a
 braces = between (symbol "{") (symbol "}")
-{-# INLINABLE braces #-}
+{-# INLINE braces #-}
 
 -- | The t'ParserS'' form of 'braces'
 braces' :: (Stream s) => ParserS s a -> ParserS' s a
 braces' p = lexeme' (braces p)
-{-# INLINABLE braces' #-}
+{-# INLINE braces' #-}
 
 -- | Parses string between angle brackets
 --
@@ -225,12 +225,12 @@ braces' p = lexeme' (braces p)
 --
 angles :: (Stream s) => ParserS s a -> ParserS s a
 angles = between (symbol "<") (symbol ">")
-{-# INLINABLE angles #-}
+{-# INLINE angles #-}
 
 -- | The t'ParserS'' form of 'angles'
 angles' :: (Stream s) => ParserS s a -> ParserS' s a
 angles' p = lexeme' (angles p)
-{-# INLINABLE angles' #-}
+{-# INLINE angles' #-}
 
 -- | Parses string between square brackets
 --
@@ -239,12 +239,12 @@ angles' p = lexeme' (angles p)
 --
 squares :: Stream s => ParserS s a -> ParserS s a
 squares = between (symbol "[") (symbol "]")
-{-# INLINABLE squares #-}
+{-# INLINE squares #-}
 
 -- | The t'ParserS'' form of 'squares'
 squares' :: Stream s => ParserS s a -> ParserS' s a
 squares' p = lexeme' (squares p)
-{-# INLINABLE squares' #-}
+{-# INLINE squares' #-}
 
 -- | Parses natural numbers or decimal digits (base-10)
 -- This includes numbers with leading zeros
@@ -254,12 +254,12 @@ squares' p = lexeme' (squares p)
 --
 decimals :: (Stream s, Num a) => ParserS s a
 decimals = numbers 10 digits
-{-# INLINABLE decimals #-}
+{-# INLINE decimals #-}
 
 -- | The t'ParserS'' form of 'decimals'
 decimals' :: (Stream s, Num a) => ParserS' s a
 decimals' = lexeme' decimals
-{-# INLINABLE decimals' #-}
+{-# INLINE decimals' #-}
 
 -- | Parses hexadecimal digits (base-16)
 --
@@ -268,12 +268,12 @@ decimals' = lexeme' decimals
 --
 hexadecimals :: (Stream s, Num a) => ParserS s a
 hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
-{-# INLINABLE hexadecimals #-}
+{-# INLINE hexadecimals #-}
 
 -- | The t'ParserS'' form of 'hexadecimals'
 hexadecimals' :: (Stream s, Num a) => ParserS' s a
 hexadecimals' = lexeme' hexadecimals
-{-# INLINABLE hexadecimals' #-}
+{-# INLINE hexadecimals' #-}
 
 -- | Parses numbers with leading-zeros
 --
@@ -282,12 +282,12 @@ hexadecimals' = lexeme' hexadecimals
 --
 zeros :: (Stream s, Num a) => ParserS s a
 zeros = char '0' *> decimals
-{-# INLINABLE zeros #-}
+{-# INLINE zeros #-}
 
 -- | The t'ParserS'' form of 'zeros'
 zeros' :: (Stream s, Num a) => ParserS' s a
 zeros' = lexeme' zeros
-{-# INLINABLE zeros' #-}
+{-# INLINE zeros' #-}
 
 -- | Parses natural numbers (non-leading zeros and signs)
 --
@@ -296,12 +296,12 @@ zeros' = lexeme' zeros
 --
 natural :: Stream s => ParserS s Integer
 natural = assert digit *> assert (anycharBut '0') *> decimals
-{-# INLINABLE natural #-}
+{-# INLINE natural #-}
 
 -- | The t'ParserS'' form of 'natural'
 natural' :: Stream s => ParserS' s Integer
 natural' = lexeme' natural
-{-# INLINABLE natural' #-}
+{-# INLINE natural' #-}
 
 -- | Parses a sign (@+@ or @-@) and lift the corresponding function.
 --
@@ -310,7 +310,7 @@ natural' = lexeme' natural
 --
 sign :: (Stream s, Num a) => ParserS s (a -> a)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
-{-# INLINABLE sign #-}
+{-# INLINE sign #-}
 
 -- | The same as 'sign' but strip whitespaces between sign and numbers.
 --
@@ -319,7 +319,7 @@ sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 --
 sign' :: (Stream s, Num a) => ParserS' s (a -> a)
 sign' = lexeme' sign
-{-# INLINABLE sign' #-}
+{-# INLINE sign' #-}
 
 -- | Parses an integer (sign + numbers, sign if any)
 --
@@ -328,18 +328,18 @@ sign' = lexeme' sign
 --
 integer :: Stream s => ParserS s Integer
 integer = sign <*> decimals
-{-# INLINABLE integer #-}
+{-# INLINE integer #-}
 
 -- | The t'ParserS'' form of 'integer'
 integer' :: Stream s => ParserS' s Integer
 integer' def = sign <*> decimals' def
-{-# INLINABLE integer' #-}
+{-# INLINE integer' #-}
 
 -- | Convert a string parser into integer parser by evaluating the parsed with base
 numbers :: (Stream s, Num a) => a -> ParserS s String -> ParserS s a
 numbers base parser = foldl' f 0 <$> parser
   where f x d = base * x + fromIntegral (digitToInt d)
-{-# INLINABLE numbers #-}
+{-# INLINE numbers #-}
 
 -- | Parses general form of floating numbers (including scientific form)
 --
@@ -352,12 +352,12 @@ float = read <$> (scientific <|> decimalPoint)
   scientific   = (<>) <$> decimalPoint <*> exponent'
   decimalPoint = show <$> (floating <|> fromIntegral <$> integer)
   exponent'    = (:) <$> oneOf "eE" <*> (show <$> integer)
-{-# INLINABLE float #-}
+{-# INLINE float #-}
 
 -- | The t'ParserS'' form of 'float'
 float' :: Stream s => ParserS' s Double
 float' = lexeme' float
-{-# INLINABLE float' #-}
+{-# INLINE float' #-}
 
 -- | Parses format of @'decimals'.'decimals'@
 -- (decimals + decimal point + decimal fractions)
@@ -370,12 +370,12 @@ floating = read <$> foldl1' (liftA2 (<>)) [sign, digits, string ".", digits]
  where
   sign   = option "" (string "-" <|> (string "+" $> ""))
   digits = show <$> decimals
-{-# INLINABLE floating #-}
+{-# INLINE floating #-}
 
 -- | The t'ParserS'' form of 'floating'
 floating' :: Stream s => ParserS' s Double
 floating' = lexeme' floating
-{-# INLINABLE floating' #-}
+{-# INLINE floating' #-}
 
 -- | Parses identifiers based on the given 'LanguageDef'
 --

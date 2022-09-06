@@ -75,125 +75,125 @@ sortOp (PostfixB op) (a, b, c, d, e, f) = (a, b, c, d, e, op : f)
 -- | expression parser builder
 expr :: Stream s => ParserS s a -> OperatorTable s a -> ParserS s a
 expr = foldl' applyPriority
-{-# INLINABLE expr #-}
+{-# INLINE expr #-}
 
 -- |
 prefixU :: (Stream s) => String -> (a -> a) -> Operator s a
 prefixU sym = PrefixU . unop sym
-{-# INLINABLE prefixU #-}
+{-# INLINE prefixU #-}
 
 -- |
 postfixU :: (Stream s) => String -> (a -> a) -> Operator s a
 postfixU sym = PostfixU . unop sym
-{-# INLINABLE postfixU #-}
+{-# INLINE postfixU #-}
 
 -- |
 infixL :: (Stream s) => String -> (a -> a -> a) -> Operator s a
 infixL sym = InfixL . binop sym
-{-# INLINABLE infixL #-}
+{-# INLINE infixL #-}
 
 -- |
 infixR :: (Stream s) => String -> (a -> a -> a) -> Operator s a
 infixR sym = InfixR . binop sym
-{-# INLINABLE infixR #-}
+{-# INLINE infixR #-}
 
 -- |
 prefixB :: (Stream s) => String -> (a -> a -> a) -> Operator s a
 prefixB sym = PrefixB . binop sym
-{-# INLINABLE prefixB #-}
+{-# INLINE prefixB #-}
 
 -- |
 postfixB :: (Stream s) => String -> (a -> a -> a) -> Operator s a
 postfixB sym = PostfixB . binop sym
-{-# INLINABLE postfixB #-}
+{-# INLINE postfixB #-}
 
 -- |
 binop :: Stream s => String -> (a -> a -> b) -> ParserS s (a -> a -> b)
 binop sym f = strip (symbol sym) $> f
-{-# INLINABLE binop #-}
+{-# INLINE binop #-}
 
 -- |
 unop :: Stream s => String -> (a -> b) -> ParserS s (a -> b)
 unop sym f = strip (symbol sym) $> f
-{-# INLINABLE unop #-}
+{-# INLINE unop #-}
 
 -- |
 addOp :: (Stream s, Num a) => ParserS s (a -> a -> a)
 addOp = binop "+" (+)
-{-# INLINABLE addOp #-}
+{-# INLINE addOp #-}
 
 -- |
 --
 subOp :: (Stream s, Num a) => ParserS s (a -> a -> a)
 subOp = binop "-" (-)
-{-# INLINABLE subOp #-}
+{-# INLINE subOp #-}
 
 -- |
 --
 mulOp :: (Stream s, Num a) => ParserS s (a -> a -> a)
 mulOp = binop "*" (*)
-{-# INLINABLE mulOp #-}
+{-# INLINE mulOp #-}
 
 -- |
 --
 divOp :: (Stream s, Num a, Fractional a) => ParserS s (a -> a -> a)
 divOp = binop "/" (/)
-{-# INLINABLE divOp #-}
+{-# INLINE divOp #-}
 
 -- |
 --
 divOp' :: (Stream s, Num a, Integral a) => ParserS s (a -> a -> a)
 divOp' = binop "/" div
-{-# INLINABLE divOp' #-}
+{-# INLINE divOp' #-}
 
 -- |
 --
 powOp :: (Stream s, Num a, Floating a) => ParserS s (a -> a -> a)
 powOp = binop "**" (**)
-{-# INLINABLE powOp #-}
+{-# INLINE powOp #-}
 
 -- |
 --
 powOp' :: (Stream s, Num a, Integral a) => ParserS s (a -> a -> a)
 powOp' = binop "^" (^)
-{-# INLINABLE powOp' #-}
+{-# INLINE powOp' #-}
 
 -- |
 negOp :: (Stream s, Num a) => ParserS s (a -> a)
 negOp = unop "-" negate
-{-# INLINABLE negOp #-}
+{-# INLINE negOp #-}
 
 -- |
 posOp :: (Stream s, Num a) => ParserS s (a -> a)
 posOp = unop "+" id
-{-# INLINABLE posOp #-}
+{-# INLINE posOp #-}
 
 -- |
 --
 eqOp :: (Stream s, Eq a) => ParserS s (a -> a -> Bool)
 eqOp = binop "==" (==)
-{-# INLINABLE eqOp #-}
+{-# INLINE eqOp #-}
 
 -- |
 --
 ltOp :: (Stream s, Ord a) => ParserS s (a -> a -> Bool)
 ltOp = binop "<" (<)
-{-# INLINABLE ltOp #-}
+{-# INLINE ltOp #-}
 
 -- |
 --
 gtOp :: (Stream s, Ord a) => ParserS s (a -> a -> Bool)
 gtOp = binop ">" (>)
-{-# INLINABLE gtOp #-}
+{-# INLINE gtOp #-}
 
 -- |
 --
 leOp :: (Stream s, Ord a) => ParserS s (a -> a -> Bool)
 leOp = binop "<=" (<=)
-{-# INLINABLE leOp #-}
+{-# INLINE leOp #-}
 
 -- |
 --
 geOp :: (Stream s, Ord a) => ParserS s (a -> a -> Bool)
 geOp = binop ">=" (>=)
-{-# INLINABLE geOp #-}
+{-# INLINE geOp #-}

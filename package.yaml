@@ -12,46 +12,45 @@ maintainer:          "Francis Lim <thyeem@gmail.com>"
 license:             MIT
 
 extra-source-files:
-- ChangeLog.md
-- README.md
+  - README.md
 
 dependencies:
-- base >= 4.7 && < 5
-- bytestring
-- containers
-- deepseq
-- parallel
-- random
-- raw-strings-qq
-- text
-- pretty-simple
-# - yaml
-# - aeson
-# - docopt >= 0.7.0.6
+  - base >= 4.7 && < 5
+  - bytestring
+  - containers
+  - deepseq
+  - parallel
+  - random
+  - raw-strings-qq
+  - text
+  - pretty-simple
+  # - yaml
+  # - aeson
+  # - docopt >= 0.7.0.6
 
 default-extensions:
-- StrictData
-- BangPatterns
-- DataKinds
-- DeriveAnyClass
-- DeriveGeneric
-- DerivingStrategies
-- ExplicitForAll
-- FlexibleContexts
-- FlexibleInstances
-- GeneralizedNewtypeDeriving
-- MultiParamTypeClasses
-- OverloadedStrings
-- QuasiQuotes
-- RankNTypes
-- RecordWildCards
-- ScopedTypeVariables
-- StandaloneDeriving
-- TemplateHaskell
-- Trustworthy
-- TupleSections
-- TypeOperators
-- TypeSynonymInstances
+  - StrictData
+  - BangPatterns
+  - DataKinds
+  - DeriveAnyClass
+  - DeriveGeneric
+  - DerivingStrategies
+  - ExplicitForAll
+  - FlexibleContexts
+  - FlexibleInstances
+  - GeneralizedNewtypeDeriving
+  - MultiParamTypeClasses
+  - OverloadedStrings
+  - QuasiQuotes
+  - RankNTypes
+  - RecordWildCards
+  - ScopedTypeVariables
+  - StandaloneDeriving
+  - TemplateHaskell
+  - Trustworthy
+  - TupleSections
+  - TypeOperators
+  - TypeSynonymInstances
 
 library:
   source-dirs: src
@@ -61,30 +60,32 @@ executables:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -dynamic
-    - -g0
-    - -optP-Wno-nonportable-include-path
-    # - -feager-blackholing        -- useful for paralleism
+      - -O0
+      - -g0
+      # - -threaded
+      # - -rtsopts
+      # - -with-rtsopts=-N
+      # - -optP-Wno-nonportable-include-path
+      # - -dynamic
+      # - -feager-blackholing        -- useful for paralleism
     dependencies:
-    - s
+      - s
     when:
-    - condition: false
-      other-modules: Paths_s
+      - condition: false
+        other-modules: Paths_s
 
 tests:
   s-test:
     main:                Spec.hs
     source-dirs:         test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
     dependencies:
-    - tasty
-    - tasty-hunit
-    - tasty-quickcheck
-    - s
-    - doctest
+      - tasty
+      - tasty-hunit
+      - tasty-quickcheck
+      - s
+      - doctest
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -O2
