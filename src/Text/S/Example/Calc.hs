@@ -1,7 +1,6 @@
 module Text.S.Example.Calc where
 
 
-import           Control.DeepSeq                ( NFData )
 import           Control.Monad                  ( unless )
 import           System.IO
 import           Text.S
@@ -9,7 +8,7 @@ import           Text.S
 
 
 -- |
-calc'infixl :: (Stream s, NFData s) => ParserS s Double
+calc'infixl :: Stream s => ParserS s Double
 calc'infixl = expr atom table
  where
   atom = strip float <|> parens calc'infixl
@@ -22,7 +21,7 @@ calc'infixl = expr atom table
     ]
 
 -- |
-calc'infixr :: (Stream s, NFData s) => ParserS s Double
+calc'infixr :: Stream s => ParserS s Double
 calc'infixr = expr atom table
  where
   atom = strip float <|> parens calc'infixr
@@ -35,7 +34,7 @@ calc'infixr = expr atom table
     ]
 
 -- |
-calc'prefix :: (Stream s, NFData s) => ParserS s Double
+calc'prefix :: Stream s => ParserS s Double
 calc'prefix = expr atom table
  where
   atom = strip float
@@ -49,7 +48,7 @@ calc'prefix = expr atom table
     ]
 
 -- |
-calc'postfix :: (Stream s, NFData s) => ParserS s Double
+calc'postfix :: Stream s => ParserS s Double
 calc'postfix = expr atom table
  where
   atom = strip float

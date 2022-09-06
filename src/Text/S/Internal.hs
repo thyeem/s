@@ -35,20 +35,18 @@ module Text.S.Internal
   , charParserOf
   , ahead
   , assert
-  , t
-  , t'
-  , ts'
-  , unwrap
   , CondExpr(..)
   , (?)
   , Pretty(..)
+  , t
+  , t'
+  , tp
+  , ts'
+  , unwrap
   ) where
 
 import           Control.Applicative            ( Alternative(..)
                                                 , liftA2
-                                                )
-import           Control.DeepSeq                ( NFData
-                                                , force
                                                 )
 import           Control.Monad                  ( MonadPlus(..) )
 import qualified Data.ByteString.Char8         as C
@@ -110,7 +108,7 @@ data Source = Source
   , sourceLine   :: !Int
   , sourceColumn :: !Int
   }
-  deriving (Show, Eq, Ord, Generic, NFData)
+  deriving (Show, Eq, Ord)
 
 
 instance Semigroup Source where
@@ -138,7 +136,7 @@ initSource file = Source file 1 1
 data Message = Unexpected !String
              | Expected !String
              | Normal !String
-             deriving (Show, Eq, Ord, Generic, NFData)
+             deriving (Show, Eq, Ord)
 
 type Messages = [Message]
 
@@ -157,7 +155,7 @@ data State s = State
   , stateSource    :: !Source
   , stateMesssages :: !Messages
   }
-  deriving (Show, Eq, Generic, NFData)
+  deriving (Show, Eq)
 
 initState :: FilePath -> s -> State s
 initState file stream = State stream (initSource file) mempty
@@ -178,7 +176,7 @@ mergeState s1@(State _ src1 _) s2@(State _ src2 _) | src1 > src2 = s1
 -------------------------
 data Result a s = Ok a (State s)
                 | Error (State s)
-                deriving (Show, Eq, Generic, NFData)
+                deriving (Show, Eq)
 
 
 -------------------------
@@ -344,6 +342,10 @@ assert parser = ParserS $ \state fOk fError ->
 -- | Tests parsers and its combinators with given strings
 t :: ParserS String a -> String -> Result a String
 t parser s = parse parser (State s mempty [])
+
+-- | Tests parsers and its combinators with given strings and then pretty-print.
+tp :: Pretty a => ParserS String a -> String -> IO ()
+tp parser = pp . t parser
 
 -- | The same as 't', but unwrap the @Result@ of the parse result
 t' :: ParserS String a -> String -> a

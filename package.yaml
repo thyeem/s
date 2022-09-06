@@ -64,10 +64,10 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    - -feager-blackholing
     - -dynamic
     - -g0
     - -optP-Wno-nonportable-include-path
+    # - -feager-blackholing        -- useful for paralleism
     dependencies:
     - s
     when:
