@@ -1,13 +1,10 @@
 module Text.S.Example.Calc where
 
-
-import           Control.Monad                  ( unless )
 import           System.IO
 import           Text.S
 
 
-
--- |
+-- | Expr parser for left-associative infix operators
 calc'infixl :: Stream s => ParserS s Double
 calc'infixl = expr atom table
  where
@@ -20,7 +17,7 @@ calc'infixl = expr atom table
     , [infixL "+" (+), infixL "-" (-)]
     ]
 
--- |
+-- | Expr parser for right-associative infix operators
 calc'infixr :: Stream s => ParserS s Double
 calc'infixr = expr atom table
  where
@@ -33,7 +30,7 @@ calc'infixr = expr atom table
     , [infixR "+" (+), infixR "-" (-)]
     ]
 
--- |
+-- | Expr parser for prefix operators
 calc'prefix :: Stream s => ParserS s Double
 calc'prefix = expr atom table
  where
@@ -47,7 +44,7 @@ calc'prefix = expr atom table
       ]
     ]
 
--- |
+-- | Expr parser for postfix operators
 calc'postfix :: Stream s => ParserS s Double
 calc'postfix = expr atom table
  where
@@ -61,15 +58,32 @@ calc'postfix = expr atom table
       ]
     ]
 
+-- | Expr calculator selector
+calc :: IO ()
+calc = do
+  parser <- read'
+  case parser of
+    "infixl"  -> repl calc'infixl
+    "infixr"  -> repl calc'infixr
+    "prefix"  -> repl calc'prefix
+    "postfix" -> repl calc'postfix
+    "q"       -> pure ()
+    _         -> calc
+ where
+  read' =
+    putStrLn mempty
+      >> putStr "Choose an Expr Calculators [infixl, infixr, prefix, postfix]: "
+      >> hFlush stdout
+      >> getLine
 
--- |
-repl :: IO ()
-repl = do
+-- | read-eval-print-loop
+repl :: ParserS String Double -> IO ()
+repl parser = do
   input <- read'
-  unless (input == ":q" || input == ":quit") $ eval' input >> repl
+  if input == "q" then calc else eval' input >> repl parser
  where
   read' = putStrLn mempty >> putStr "calc> " >> hFlush stdout >> getLine
-  eval' input = case t calc'infixl input of
+  eval' input = case t parser input of
     Ok ok s | null . stateStream $ s -> pp ok
             | otherwise              -> pp s
     Error s -> pp s
