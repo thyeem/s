@@ -29,24 +29,30 @@ import           Text.S.Language
 import           Text.S.Lexeme
 
 
--- | Parser using String or [Char]
-type Parser = ParserS String
-
--- | Parser using ByteString in Data.ByteString.Char8
-type Parser'B = ParserS ByteString
-
--- | Parser using Lazy ByteString in Data.ByteString.Lazy.Char8
-type Parser'BL = ParserS LazyByteString
-
--- | Parser using Text in Data.Text
-type Parser'T = ParserS Text
-
--- | Parser using Text in Data.Text.Lazy
-type Parser'TL = ParserS LazyText
+-- | ParserS currently supports stream types the following:
+--
+-- 'Text', 'LazyText', 'String', 'ByteString', and 'LazyByteString'.
+--
+-- By default, the Parser stream type is set to 'Text'.
+-- Choose a stream type according to your preference like:
+--
+-- Set Parser stream to LazyText in Data.Text.Lazy
+-- >>> type Parser = ParserS LazyText
+--
+-- Set Parser stream to String or [Char]
+-- >>> type Parser= ParserS String
+--
+-- Set Parser stream to ByteString in Data.ByteString.Char8
+-- >>> type Parser = ParserS ByteString
+--
+-- Set Parser stream to Lazy ByteString in Data.ByteString.Lazy.Char8
+-- >>> type Parser = ParserS LazyByteString
+--
+type Parser = ParserS Text
 
 
 -- | tests parsers from files (will be erased)
-tf :: Parser a -> IO (Result a String)
+tf :: Parser a -> IO (Result a Text)
 tf parser = do
   let file = "simple.java"
   s <- readStream file
@@ -54,5 +60,5 @@ tf parser = do
   return . parse parser $ state
 
 -- | tests lexeme parsers
-tl :: (LanguageDef -> ParserS String a) -> String -> Result a String
+tl :: (LanguageDef -> Parser a) -> Text -> Result a Text
 tl l = t (l defDef)

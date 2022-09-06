@@ -43,7 +43,7 @@ import           Text.S.Internal
 --
 char :: Stream s => Char -> ParserS s Char
 char c = charParserOf (== c) <?> show [c]
-{-# INLINABLE char #-}
+{-# INLINE char #-}
 
 -- | Parses any single character
 --
@@ -52,7 +52,7 @@ char c = charParserOf (== c) <?> show [c]
 --
 anychar :: Stream s => ParserS s Char
 anychar = charParserOf (const True) <?> "any character"
-{-# INLINABLE anychar #-}
+{-# INLINE anychar #-}
 
 -- | Parses every single character except for a given character
 --
@@ -62,7 +62,7 @@ anychar = charParserOf (const True) <?> "any character"
 anycharBut :: Stream s => Char -> ParserS s Char
 anycharBut c =
   charParserOf (/= c) <?> unwords ["any character except for", show c]
-{-# INLINABLE anycharBut #-}
+{-# INLINE anycharBut #-}
 
 -- | Parses a given string
 --
@@ -71,7 +71,7 @@ anycharBut c =
 --
 string :: Stream s => String -> ParserS s String
 string s = mapM char s <?> show s
-{-# INLINABLE string #-}
+{-# INLINE string #-}
 
 -- | Parses any string and consumes everything
 --
@@ -80,7 +80,7 @@ string s = mapM char s <?> show s
 --
 anystring :: Stream s => ParserS s String
 anystring = some anychar <?> "any string"
-{-# INLINABLE anystring #-}
+{-# INLINE anystring #-}
 
 -- | Parses any string except for a given string.
 --
@@ -92,7 +92,7 @@ anystring = some anychar <?> "any string"
 anystringBut :: Stream s => String -> ParserS s String
 anystringBut s = go
   where go = (assert (string s <|> eof') $> []) <|> liftA2 (:) anychar go
-{-# INLINABLE anystringBut #-}
+{-# INLINE anystringBut #-}
 
 -- | Parses any single digit, the same as @__[0-9]__@
 --
@@ -101,7 +101,7 @@ anystringBut s = go
 --
 digit :: Stream s => ParserS s Char
 digit = charParserOf isDigit <?> "digit"
-{-# INLINABLE digit #-}
+{-# INLINE digit #-}
 
 -- | Parses any single hexadecimal number, the same as @__[0-9a-f]__@
 --
@@ -110,7 +110,7 @@ digit = charParserOf isDigit <?> "digit"
 --
 hexDigit :: Stream s => ParserS s Char
 hexDigit = charParserOf isHexDigit <?> "hex-digit"
-{-# INLINABLE hexDigit #-}
+{-# INLINE hexDigit #-}
 
 -- | Parses any single alphabetical character, the same as @__[a-zA-Z]__@
 --
@@ -119,7 +119,7 @@ hexDigit = charParserOf isHexDigit <?> "hex-digit"
 --
 alpha :: Stream s => ParserS s Char
 alpha = charParserOf isAlpha <?> "letter"
-{-# INLINABLE alpha #-}
+{-# INLINE alpha #-}
 
 -- | The same as @__alpha__@
 --
@@ -128,7 +128,7 @@ alpha = charParserOf isAlpha <?> "letter"
 --
 letter :: Stream s => ParserS s Char
 letter = alpha
-{-# INLINABLE letter #-}
+{-# INLINE letter #-}
 
 -- | Parses any alphabetical or numeric character, the same as @__[0-9a-zA-Z]__@
 --
@@ -137,7 +137,7 @@ letter = alpha
 --
 alphaNum :: Stream s => ParserS s Char
 alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
-{-# INLINABLE alphaNum #-}
+{-# INLINE alphaNum #-}
 
 -- | Parses any single lowercase letter, the same as @__[a-z]__@
 --
@@ -146,7 +146,7 @@ alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
 --
 lower :: Stream s => ParserS s Char
 lower = charParserOf isLower <?> "lowercase-letter"
-{-# INLINABLE lower #-}
+{-# INLINE lower #-}
 
 -- | Parses any single uppercase letter, the same as @__[A-Z]__@
 --
@@ -155,7 +155,7 @@ lower = charParserOf isLower <?> "lowercase-letter"
 --
 upper :: Stream s => ParserS s Char
 upper = charParserOf isUpper <?> "uppercase-letter"
-{-# INLINABLE upper #-}
+{-# INLINE upper #-}
 
 -- | Parses a single special character, @__anychar := alphaNum <|> special__@
 --
@@ -165,7 +165,7 @@ upper = charParserOf isUpper <?> "uppercase-letter"
 special :: Stream s => ParserS s Char
 special = charParserOf isSpecial <?> "special-character"
   where isSpecial c = or $ ($ c) <$> [isPunctuation, isSymbol]
-{-# INLINABLE special #-}
+{-# INLINE special #-}
 
 -- | Parses tab character, \t
 --
@@ -174,7 +174,7 @@ special = charParserOf isSpecial <?> "special-character"
 --
 tab :: Stream s => ParserS s Char
 tab = char '\t' <?> "tab"
-{-# INLINABLE tab #-}
+{-# INLINE tab #-}
 
 -- | Parses LF or linefeed character, \n
 --
@@ -183,7 +183,7 @@ tab = char '\t' <?> "tab"
 --
 lf :: Stream s => ParserS s Char
 lf = char '\n' <?> "linefeed"
-{-# INLINABLE lf #-}
+{-# INLINE lf #-}
 
 -- | Parses CRLF or carrige return with linefeed, \r\n
 --
@@ -192,7 +192,7 @@ lf = char '\n' <?> "linefeed"
 --
 crlf :: Stream s => ParserS s Char
 crlf = (char '\r' *> char '\n') <?> "carriage-return + linefeed"
-{-# INLINABLE crlf #-}
+{-# INLINE crlf #-}
 
 -- | Parses end-of-line character, the same as @__[LF | CRLF]__@
 --
@@ -201,7 +201,7 @@ crlf = (char '\r' *> char '\n') <?> "carriage-return + linefeed"
 --
 eol :: Stream s => ParserS s Char
 eol = (lf <|> crlf) <?> "end-of-line"
-{-# INLINABLE eol #-}
+{-# INLINE eol #-}
 
 -- | Parses a single whitespace character
 --
@@ -210,7 +210,7 @@ eol = (lf <|> crlf) <?> "end-of-line"
 --
 space :: Stream s => ParserS s Char
 space = charParserOf isSpace <?> "space"
-{-# INLINABLE space #-}
+{-# INLINE space #-}
 
 -- | Checks if the `State` applied to the parser is reached to
 -- @__EOF__@ or /End-of-Stream/
@@ -228,7 +228,7 @@ eof = label "end-of-stream" $ do
   if null s
     then return (minBound :: Char)
     else fail $ unwords ["EOF not found. Found char:", show . head $ s]
-{-# INLINABLE eof #-}
+{-# INLINE eof #-}
 
 -- | The same as `eof`, but in the form of a string parser
 --
@@ -237,7 +237,7 @@ eof = label "end-of-stream" $ do
 --
 eof' :: Stream s => ParserS s String
 eof' = count 1 eof
-{-# INLINABLE eof' #-}
+{-# INLINE eof' #-}
 
 -- | Parses if a character on parsing is in the given char-list
 --
@@ -247,7 +247,7 @@ eof' = count 1 eof
 oneOf :: Stream s => [Char] -> ParserS s Char
 oneOf cs = charParserOf (`elem` cs) <?> label'oneof
   where label'oneof = unwords ["one of", show ((: []) <$> cs)]
-{-# INLINABLE oneOf #-}
+{-# INLINE oneOf #-}
 
 -- | Parses if a character on parsing is NOT in the given char-list
 --
@@ -257,7 +257,7 @@ oneOf cs = charParserOf (`elem` cs) <?> label'oneof
 noneOf :: Stream s => [Char] -> ParserS s Char
 noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
   where label'noneof = unwords ["none of", show ((: []) <$> cs)]
-{-# INLINABLE noneOf #-}
+{-# INLINE noneOf #-}
 
 -- | Picks up one of prepared char-parsers by a string name
 --
@@ -279,4 +279,4 @@ selectp x = case x of
   "anychar"     -> anychar
   c | length c == 1 -> char . head $ c
     | otherwise     -> fail $ unwords ["not found parser such as: ", c]
-{-# INLINABLE selectp #-}
+{-# INLINE selectp #-}

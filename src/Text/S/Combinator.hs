@@ -15,14 +15,12 @@
 
 module Text.S.Combinator
   ( module Text.S.Combinator
-  , many
-  , some
   , ($>)
   , void
   ) where
 
 import           Control.Applicative            ( (<**>)
-                                                , Alternative(..)
+                                                , (<|>)
                                                 , liftA2
                                                 )
 import           Control.Monad                  ( MonadPlus(..)
@@ -41,6 +39,16 @@ import           Text.S.Internal
 -------------------------
 -- parser combinators
 -------------------------
+-- |
+some :: MonadPlus m => m a -> m [a]
+some p = liftA2 (:) p (many p)
+{-# INLINE some #-}
+
+-- |
+many :: MonadPlus m => m a -> m [a]
+many p = some p <|> pure []
+{-# INLINE many #-}
+
 -- | Tries to parse with parsers in the list untill one of them succeeds.
 --
 -- >>> t' (choice [letter, special, digit]) "$parser"
@@ -48,7 +56,7 @@ import           Text.S.Internal
 --
 choice :: MonadPlus m => [m a] -> m a
 choice = foldl' (<|>) mzero
-{-# INLINABLE choice #-}
+{-# INLINE choice #-}
 
 -- | Firstly tries to parse with parser @__p__@.
 --
@@ -59,7 +67,7 @@ choice = foldl' (<|>) mzero
 --
 option :: MonadPlus m => a -> m a -> m a
 option x p = p <|> return x
-{-# INLINABLE option #-}
+{-# INLINE option #-}
 
 -- | Tries to parse @__n-times__@ with the given parser. The same as 'replicateM'.
 --
@@ -70,7 +78,7 @@ option x p = p <|> return x
 --
 count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
-{-# INLINABLE count #-}
+{-# INLINE count #-}
 
 -- | Tries to parse with parser @__p__@. If failed, it returns 'Nothing'.
 -- Otherwise, it returns the result of parser @__p__@ wrapped by 'Just'.
@@ -83,7 +91,7 @@ count = replicateM
 --
 optionMaybe :: MonadPlus m => m a -> m (Maybe a)
 optionMaybe p = option Nothing (Just <$> p)
-{-# INLINABLE optionMaybe #-}
+{-# INLINE optionMaybe #-}
 
 -- | Tries to parse with parser @__p__@, which is between the given two parsers,
 -- an opener @__bra__@ and a closer @__ket__@.
@@ -96,7 +104,7 @@ optionMaybe p = option Nothing (Just <$> p)
 --
 between :: MonadPlus m => m bra -> m ket -> m a -> m a
 between bra ket p = bra *> p <* ket
-{-# INLINABLE between #-}
+{-# INLINE between #-}
 
 -- | Parses @__0+(zero or more)__@ occurrences of parser @__p__@,
 -- which is separated by separator @__sep__@.
@@ -113,7 +121,7 @@ between bra ket p = bra *> p <* ket
 --
 sepBy :: MonadPlus m => m sep -> m a -> m [a]
 sepBy sep p = sepBy1 sep p <|> pure []
-{-# INLINABLE sepBy #-}
+{-# INLINE sepBy #-}
 
 -- | Parses @__1+(one or more)__@ occurrences of parser @__p__@,
 -- which is separated by separator @__sep__@.
@@ -127,7 +135,7 @@ sepBy sep p = sepBy1 sep p <|> pure []
 --
 sepBy1 :: MonadPlus m => m sep -> m a -> m [a]
 sepBy1 sep p = liftA2 (:) p (many (sep *> p))
-{-# INLINABLE sepBy1 #-}
+{-# INLINE sepBy1 #-}
 
 -- | Parses @__0+(zero or more)__@ occurrences of parser @__p__@,
 -- which is ended by parser @__end__@.
@@ -145,7 +153,7 @@ sepBy1 sep p = liftA2 (:) p (many (sep *> p))
 --
 endBy :: MonadPlus m => m end -> m a -> m [a]
 endBy end p = many (p <* end)
-{-# INLINABLE endBy #-}
+{-# INLINE endBy #-}
 
 -- | Parses @__1+(one or more)__@ occurrences of parser @__p__@,
 -- which is ended by parser @__end__@.
@@ -159,7 +167,7 @@ endBy end p = many (p <* end)
 --
 endBy1 :: MonadPlus m => m end -> m a -> m [a]
 endBy1 end p = some (p <* end)
-{-# INLINABLE endBy1 #-}
+{-# INLINE endBy1 #-}
 
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@
 -- until parser @__end__@ succeeds.
@@ -178,7 +186,7 @@ endBy1 end p = some (p <* end)
 --
 manyTill :: MonadPlus m => m end -> m a -> m [a]
 manyTill end p = someTill end p <|> (end $> [])
-{-# INLINABLE manyTill #-}
+{-# INLINE manyTill #-}
 
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@
 -- until parser @__end__@ succeeds.
@@ -191,7 +199,7 @@ manyTill end p = someTill end p <|> (end $> [])
 --
 someTill :: MonadPlus m => m end -> m a -> m [a]
 someTill end p = liftA2 (:) p (manyTill end p)
-{-# INLINABLE someTill #-}
+{-# INLINE someTill #-}
 
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@
 -- until parser @__end__@ succeeds.
@@ -212,7 +220,7 @@ someTill end p = liftA2 (:) p (manyTill end p)
 --
 manyTill' :: MonadPlus m => m end -> m a -> m ([a], end)
 manyTill' end p = someTill' end p <|> (([], ) <$> end)
-{-# INLINABLE manyTill' #-}
+{-# INLINE manyTill' #-}
 
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@
 -- until parser @__end__@ succeeds.
@@ -231,7 +239,7 @@ manyTill' end p = someTill' end p <|> (([], ) <$> end)
 --
 someTill' :: MonadPlus m => m end -> m a -> m ([a], end)
 someTill' end p = liftA2 f p (manyTill' end p) where f a b = first (a :) b
-{-# INLINABLE someTill' #-}
+{-# INLINE someTill' #-}
 
 -- | Tries to parse with parser @__p__@.
 -- If succeeds, then consume the result and throws it away. Otherwise ignore it.
@@ -244,7 +252,7 @@ someTill' end p = liftA2 f p (manyTill' end p) where f a b = first (a :) b
 --
 skipOptional :: MonadPlus m => m a -> m ()
 skipOptional p = void p <|> pure ()
-{-# INLINABLE skipOptional #-}
+{-# INLINE skipOptional #-}
 
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@,
 -- then discards the result.
@@ -257,7 +265,7 @@ skipOptional p = void p <|> pure ()
 --
 skipMany :: MonadPlus m => m a -> m ()
 skipMany = void . many
-{-# INLINABLE skipMany #-}
+{-# INLINE skipMany #-}
 
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
 -- then discards the result.
@@ -267,7 +275,7 @@ skipMany = void . many
 --
 skipSome :: MonadPlus m => m a -> m ()
 skipSome p = p *> skipMany p
-{-# INLINABLE skipSome #-}
+{-# INLINE skipSome #-}
 
 -- | Tries to parse @__n-times__@ with the given parser.
 --
@@ -281,7 +289,7 @@ skipSome p = p *> skipMany p
 --
 skipCount :: MonadPlus m => Int -> m a -> m ()
 skipCount = replicateM_
-{-# INLINABLE skipCount #-}
+{-# INLINE skipCount #-}
 
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@,
 -- until parser @__end__@ succeeds.
@@ -306,7 +314,7 @@ skipCount = replicateM_
 --
 skipManyTill :: MonadPlus m => m end -> m a -> m end
 skipManyTill end p = go where go = end <|> (p *> go)
-{-# INLINABLE skipManyTill #-}
+{-# INLINE skipManyTill #-}
 
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
 -- until parser @__end__@ succeeds.
@@ -324,7 +332,7 @@ skipManyTill end p = go where go = end <|> (p *> go)
 --
 skipSomeTill :: MonadPlus m => m end -> m a -> m end
 skipSomeTill end p = p *> skipManyTill end p
-{-# INLINABLE skipSomeTill #-}
+{-# INLINE skipSomeTill #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__infix left-associative__@ binary operator @__op__@.
@@ -351,7 +359,7 @@ skipSomeTill end p = p *> skipManyTill end p
 --
 chainl1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainl1 op p = p >>= chainl op p
-{-# INLINABLE chainl1 #-}
+{-# INLINE chainl1 #-}
 
 -- |
 chainl :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
@@ -359,7 +367,7 @@ chainl op p = rest
  where
   rest x = bind x <|> pure x
   bind x = op >>= \f -> p >>= rest . f x
-{-# INLINABLE chainl #-}
+{-# INLINE chainl #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__infix right-associative__@ binary operator @__op__@.
@@ -386,7 +394,7 @@ chainl op p = rest
 --
 chainr1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainr1 op p = p >>= chainr op p
-{-# INLINABLE chainr1 #-}
+{-# INLINE chainr1 #-}
 
 -- |
 chainr :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
@@ -394,7 +402,7 @@ chainr op p = rest
  where
   rest x = bind x <|> pure x
   bind x = op >>= (\f -> f x <$> (p >>= rest))
-{-# INLINABLE chainr #-}
+{-# INLINE chainr #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__prefix or polish prefix__@ binary operator @__op__@.
@@ -424,12 +432,12 @@ chainr op p = rest
 --
 chainp1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainp1 op p = op <*> o <*> o where o = chainp1 op p <|> p
-{-# INLINABLE chainp1 #-}
+{-# INLINE chainp1 #-}
 
 -- |
 chainp :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
 chainp op p x = op <*> pure x <*> o where o = chainp1 op p <|> p
-{-# INLINABLE chainp #-}
+{-# INLINE chainp #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__postfix or reverse-polish prefix__@ binary operator @__op__@.
@@ -459,7 +467,7 @@ chainp op p x = op <*> pure x <*> o where o = chainp1 op p <|> p
 --
 chainq1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainq1 op p = p >>= chainq op p
-{-# INLINABLE chainq1 #-}
+{-# INLINE chainq1 #-}
 
 -- |
 chainq :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
@@ -468,9 +476,9 @@ chainq op p = rest
   rest x = find x <|> pure x
   find x = (p >>= rest) >>= bind x
   bind x y = op >>= rest . flip uncurry (x, y)
-{-# INLINABLE chainq #-}
+{-# INLINE chainq #-}
 
 -- |
 betweenOp :: MonadPlus m => m (a -> a) -> m (a -> a) -> m a -> m a
 betweenOp pre post p = (option id pre <*> p) <**> option id post
-{-# INLINABLE betweenOp #-}
+{-# INLINE betweenOp #-}

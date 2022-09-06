@@ -124,7 +124,7 @@ appendSource s1@Source{} s2@Source{}
   | sourceName s1 /= sourceName s2 = error' "two source names do not match"
   | s1 < s2                        = s2
   | otherwise                      = s1
-{-# INLINABLE appendSource #-}
+{-# INLINE appendSource #-}
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
@@ -163,7 +163,6 @@ initState file stream = State stream (initSource file) mempty
 addMessage :: Message -> State s -> State s
 addMessage msg state@State {..} =
   state { stateMesssages = stateMesssages <> [msg] }
-{-# INLINABLE addMessage #-}
 
 mergeState :: State s -> State s -> State s
 mergeState s1@(State _ src1 _) s2@(State _ src2 _) | src1 > src2 = s1
@@ -208,56 +207,72 @@ label msg parser = ParserS $ \state@State{} fOk fError ->
   let fError' s@State {..} = fError $ addMessage expected s
       expected = Expected . unwords $ ["->", "expected:", msg]
   in  runParser parser state fOk fError'
-{-# INLINABLE label #-}
+{-# INLINE label #-}
 
 
 instance Functor (ParserS s) where
   fmap = smap
+  {-# INLINE fmap #-}
 
 
 smap :: (a -> b) -> ParserS s a -> ParserS s b
 smap f parser =
   ParserS $ \state fOk fError -> runParser parser state (fOk . f) fError
-{-# INLINABLE smap #-}
+{-# INLINE smap #-}
 
 
 instance Applicative (ParserS s) where
   pure x = ParserS $ \state ok _ -> ok x state
+  {-# INLINE pure #-}
+
   (<*>) = sap
+  {-# INLINE (<*>) #-}
+
+  liftA2 f x = (<*>) (fmap f $! x)
+  {-# INLINE liftA2 #-}
 
 
 sap :: ParserS s (a -> b) -> ParserS s a -> ParserS s b
 sap f parser = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser parser state' (fOk . x) fError
   in  runParser f state fOk' fError
-{-# INLINABLE sap #-}
+{-# INLINE sap #-}
 
 
 instance Monad (ParserS s) where
   return = pure
-  (>>=)  = sbind
+  {-# INLINE return #-}
+
+  (>>=) = sbind
+  {-# INLINE (>>=) #-}
 
 
 sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
 sbind parser f = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser (f x) state' fOk fError
   in  runParser parser state fOk' fError
-{-# INLINABLE sbind #-}
+{-# INLINE sbind #-}
 
 
 instance Alternative (ParserS s) where
   empty = mzero
+  {-# INLINE empty #-}
+
   (<|>) = mplus
+  {-# INLINE (<|>) #-}
 
 
 instance MonadPlus (ParserS s) where
   mzero = szero
+  {-# INLINE mzero #-}
+
   mplus = splus
+  {-# INLINE mplus #-}
 
 
 szero :: ParserS s a
 szero = fail mempty
-{-# INLINABLE szero #-}
+{-# INLINE szero #-}
 
 splus :: ParserS s a -> ParserS s a -> ParserS s a
 splus p q = ParserS $ \state fOk fError ->
@@ -265,12 +280,13 @@ splus p q = ParserS $ \state fOk fError ->
         let fError'' s''@State{} = fError $ mergeState s' s''
         in  runParser q state fOk fError''
   in  runParser p state fOk fError'
-{-# INLINABLE splus #-}
+{-# INLINE splus #-}
 
 
 instance MonadFail (ParserS s) where
   fail msg =
     ParserS $ \s@State{} _ fError -> fError $ addMessage (Normal msg) s
+  {-# INLINE fail #-}
 
 
 -- | Takes state and parser, then parses it.
@@ -312,7 +328,7 @@ charParserOf predicate =
         '\t' -> Source n ln (move col 8)
         _    -> Source n ln (col + 1)
         where move col size = col + size - ((col - 1) `mod` size)
-{-# INLINABLE charParserOf #-}
+{-# INLINE charParserOf #-}
 
 
 -- | Tries to parse with @__parser__@ looking ahead without consuming any input.
@@ -327,6 +343,7 @@ ahead parser = ParserS $ \state fOk fError ->
   let fOk' x _ = fOk True state
       fError' _ = fOk False state
   in  runParser parser state fOk' fError'
+{-# INLINE ahead #-}
 
 -- | Tries to parse with @__parser__@ looking ahead without consuming any input.
 --
@@ -338,21 +355,22 @@ ahead parser = ParserS $ \state fOk fError ->
 assert :: ParserS s a -> ParserS s a
 assert parser = ParserS $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError
+{-# INLINE assert #-}
 
 -- | Tests parsers and its combinators with given strings
-t :: ParserS String a -> String -> Result a String
+t :: ParserS s a -> s -> Result a s
 t parser s = parse parser (State s mempty [])
 
 -- | Tests parsers and its combinators with given strings and then pretty-print.
-tp :: Pretty a => ParserS String a -> String -> IO ()
+tp :: (Show s, Pretty a) => ParserS s a -> s -> IO ()
 tp parser = pp . t parser
 
 -- | The same as 't', but unwrap the @Result@ of the parse result
-t' :: ParserS String a -> String -> a
+t' :: (Stream s, Show s) => ParserS s a -> s -> a
 t' parser = unwrap . t parser
 
 -- | The same as 't', but unwraps @Result a s@ to get the state @s@ only.
-ts' :: ParserS String a -> String -> String
+ts' :: ParserS s a -> s -> s
 ts' parser = sOnly . t parser
  where
   sOnly (Ok _ (State s _ _)) = s
@@ -377,7 +395,6 @@ infixl 2 :::
 (?) :: Bool -> CondExpr a -> a
 True  ? (x ::: _) = x
 False ? (_ ::: y) = y
-
 
 -- | Pretty-Show and Pretty-Printer
 class Show a => Pretty a where
@@ -416,6 +433,7 @@ instance Show s => Pretty (State s) where
       "\n\t"
       [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
       where s = show stream
+
 
 instance (Show s, Pretty a) => Pretty (Result a s) where
   pretty r = case r of
