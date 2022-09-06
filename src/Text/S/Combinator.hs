@@ -15,12 +15,9 @@
 
 module Text.S.Combinator
   ( module Text.S.Combinator
-  , ($>)
-  , void
   ) where
 
 import           Control.Applicative            ( (<**>)
-                                                , (<|>)
                                                 , liftA2
                                                 )
 import           Control.Monad                  ( MonadPlus(..)
@@ -28,9 +25,6 @@ import           Control.Monad                  ( MonadPlus(..)
                                                 , replicateM_
                                                 )
 import           Data.Bifunctor                 ( first )
-import           Data.Functor                   ( ($>)
-                                                , void
-                                                )
 import           Data.List                      ( foldl' )
 import           Text.S.Internal
 

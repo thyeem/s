@@ -27,6 +27,8 @@ module Text.S.Internal
   , State(..)
   , initState
   , ParserS(..)
+  , ($>)
+  , void
   , (<|>)
   , (<?>)
   , label
@@ -52,6 +54,9 @@ import           Control.Applicative            ( Alternative(..)
 import           Control.Monad                  ( MonadPlus(..) )
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as CL
+import           Data.Functor                   ( ($>)
+                                                , void
+                                                )
 import           Data.List                      ( intercalate
                                                 , uncons
                                                 )
@@ -62,6 +67,7 @@ import qualified Data.Text.Lazy.IO             as TLIO
 import           GHC.Generics                   ( Generic )
 import           System.IO                      ( readFile )
 import           Text.Pretty.Simple             ( pShowNoColor )
+
 
 
 
@@ -203,19 +209,14 @@ initState file stream = State stream (initSource file) mempty
 addMessage :: Message -> State s -> State s
 addMessage msg state@State {..} =
   state { stateMesssages = stateMesssages <> [msg] }
-{-# INLINABLE addMessage #-}
-
-mergeState :: State s -> State s -> State s
-mergeState s1@(State _ src1 _) s2@(State _ src2 _) | src1 > src2 = s1
-                                                   | otherwise   = s2
-{-# INLINABLE mergeState #-}
+{-# INLINE addMessage #-}
 
 
 -------------------------
 -- Result
 -------------------------
-data Result a s = Ok a (State s)
-                | Error (State s)
+data Result a s = Ok a !(State s)
+                | Error !(State s)
                 deriving (Show, Eq)
 
 
@@ -255,6 +256,9 @@ instance Functor (ParserS s) where
   fmap = smap
   {-# INLINE fmap #-}
 
+  (<$) = fmap . const
+  {-# INLINE (<$) #-}
+
 
 smap :: (a -> b) -> ParserS s a -> ParserS s b
 smap f parser =
@@ -272,6 +276,9 @@ instance Applicative (ParserS s) where
   liftA2 f x = (<*>) (fmap f $! x)
   {-# INLINE liftA2 #-}
 
+  (<*) = liftA2 const
+  {-# INLINE (<*) #-}
+
 
 sap :: ParserS s (a -> b) -> ParserS s a -> ParserS s b
 sap f parser = ParserS $ \state fOk fError ->
@@ -287,10 +294,12 @@ instance Monad (ParserS s) where
   (>>=) = sbind
   {-# INLINE (>>=) #-}
 
+  (>>) = (*>)
+  {-# INLINE (>>) #-}
 
 sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
 sbind parser f = ParserS $ \state fOk fError ->
-  let fOk' x state' = runParser (f x) state' fOk fError
+  let fOk' x state' = runParser (f $! x) state' fOk fError
   in  runParser parser state fOk' fError
 {-# INLINE sbind #-}
 
@@ -317,10 +326,7 @@ szero = fail mempty
 
 splus :: ParserS s a -> ParserS s a -> ParserS s a
 splus p q = ParserS $ \state fOk fError ->
-  let fError' s'@State{} =
-        let fError'' s''@State{} = fError $ mergeState s' s''
-        in  runParser q state fOk fError''
-  in  runParser p state fOk fError'
+  let fError' _ = runParser q state fOk fError in runParser p state fOk fError'
 {-# INLINE splus #-}
 
 

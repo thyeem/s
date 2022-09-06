@@ -70,5 +70,6 @@ repl = do
  where
   read' = putStrLn mempty >> putStr "calc> " >> hFlush stdout >> getLine
   eval' input = case t calc'infixl input of
-    Ok ok _ -> pp ok
+    Ok ok s | null . stateStream $ s -> pp ok
+            | otherwise              -> pp s
     Error s -> pp s
