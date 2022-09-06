@@ -423,7 +423,7 @@ operator' def = do
 
 -- | Parses a single @char literal@
 --
--- >>> stream = "'\CR', a carriage-return or '\LF', a line-feed?"
+-- >>> stream = "'\r', a carriage-return or '\n', a line-feed?"
 -- >>> t' charLit stream
 -- '\r'
 --

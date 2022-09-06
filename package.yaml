@@ -24,6 +24,7 @@ dependencies:
 - random
 - raw-strings-qq
 - text
+- pretty-simple
 # - yaml
 # - aeson
 # - docopt >= 0.7.0.6
@@ -40,6 +41,7 @@ default-extensions:
 - FlexibleInstances
 - GeneralizedNewtypeDeriving
 - MultiParamTypeClasses
+- OverloadedStrings
 - QuasiQuotes
 - RankNTypes
 - RecordWildCards

@@ -41,6 +41,7 @@ module Text.S.Internal
   , unwrap
   , CondExpr(..)
   , (?)
+  , Pretty(..)
   ) where
 
 import           Control.Applicative            ( Alternative(..)
@@ -61,6 +62,7 @@ import qualified Data.Text.Lazy                as TL
 import qualified Data.Text.Lazy.IO             as TLIO
 import           GHC.Generics                   ( Generic )
 import           System.IO                      ( readFile )
+import           Text.Pretty.Simple             ( pShowNoColor )
 
 
 type ByteString = C.ByteString
@@ -108,7 +110,7 @@ data Source = Source
   , sourceLine   :: !Int
   , sourceColumn :: !Int
   }
-  deriving (Eq, Ord, Generic, NFData)
+  deriving (Show, Eq, Ord, Generic, NFData)
 
 
 instance Semigroup Source where
@@ -136,7 +138,7 @@ initSource file = Source file 1 1
 data Message = Unexpected !String
              | Expected !String
              | Normal !String
-             deriving (Eq, Show, Ord, Generic, NFData)
+             deriving (Show, Eq, Ord, Generic, NFData)
 
 type Messages = [Message]
 
@@ -155,7 +157,7 @@ data State s = State
   , stateSource    :: !Source
   , stateMesssages :: !Messages
   }
-  deriving (Eq, Generic, NFData)
+  deriving (Show, Eq, Generic, NFData)
 
 initState :: FilePath -> s -> State s
 initState file stream = State stream (initSource file) mempty
@@ -176,7 +178,7 @@ mergeState s1@(State _ src1 _) s2@(State _ src2 _) | src1 > src2 = s1
 -------------------------
 data Result a s = Ok a (State s)
                 | Error (State s)
-                deriving (Eq, Generic, NFData)
+                deriving (Show, Eq, Generic, NFData)
 
 
 -------------------------
@@ -375,54 +377,62 @@ True  ? (x ::: _) = x
 False ? (_ ::: y) = y
 
 
+-- | Pretty-Show and Pretty-Printer
+class Show a => Pretty a where
+  pretty :: a -> TL.Text
+  pretty = pShowNoColor
+
+  pp :: a -> IO ()
+  pp = TLIO.putStrLn . pretty
+
+
 -------------------------
--- Show instances
+-- Pretty instances
 -------------------------
-instance Show Source where
-  show src@Source {..} = unwords
-    [ "\n"
-    , sourceName
+instance Pretty Source where
+  pretty src@Source {..} = TL.unwords
+    [ TL.pack sourceName
     , "(line"
-    , show sourceLine <> ","
+    , TL.pack $ show sourceLine <> ","
     , "column"
-    , show sourceColumn <> "):"
+    , TL.pack $ show sourceColumn <> "):"
     ]
 
 
-instance (Stream s, Show s) => Show (State s) where
-  show state@State {..} = join'nn
-    [ join'nt $ show stateSource : (message <$> stateMesssages)
-    , join'nt ["remains:", showStream]
+instance Show s => Pretty (State s) where
+  pretty state@State {..} = TL.unlines
+    [ pretty stateSource
+    , TL.pack $ intercalate "\n\t" (message <$> stateMesssages)
+    , "remains: " <> TL.pack showStream
     ]
    where
     stream = show stateStream
     showStream | length stream < 200 = stream
                | otherwise           = reduceStream stateStream 60
 
+    reduceStream stream n = intercalate
+      "\n\t"
+      [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
+      where s = show stream
 
-instance (Stream s, Show s, Show a) => Show (Result a s) where
-  show r = case r of
-    Ok ok s -> join'n ["Ok " <> show ok, show s]
-    Error s -> join'n ["Error", show s]
+instance (Show s, Show a) => Pretty (Result a s) where
+  pretty r = case r of
+    Ok ok s -> TL.unlines [pShowNoColor ok <> "\n", pretty s]
+    Error s -> TL.unlines ["Error\n", pretty s]
 
 
--- |
-join'n :: [String] -> String
-join'n = intercalate "\n"
+instance Show a => Pretty [a] where
+instance (Show a, Show b) => Pretty (a,b) where
+instance (Show a, Show b, Show c) => Pretty (a,b,c) where
+instance (Show a, Show b, Show c, Show d) => Pretty (a,b,c,d) where
 
--- |
-join'nn :: [String] -> String
-join'nn = intercalate "\n\n"
-
--- |
-join'nt :: [String] -> String
-join'nt = intercalate "\n\t"
-
--- |
-reduceStream :: (Stream s, Show s) => s -> Int -> String
-reduceStream stream n = join'nt
-  [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
-  where s = show stream
+deriving instance Pretty Bool
+deriving instance Pretty Int
+deriving instance Pretty Integer
+deriving instance Pretty Float
+deriving instance Pretty Double
+deriving instance Pretty Rational
+deriving instance Pretty Char
 
 -- |
 error' :: String -> a
