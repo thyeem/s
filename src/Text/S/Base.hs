@@ -44,7 +44,7 @@ import           Text.S.Internal
 --
 char :: (Stream s, NFData s) => Char -> ParserS s Char
 char c = charParserOf (== c) <?> show [c]
-{-# INLINE char #-}
+{-# INLINABLE char #-}
 
 -- | Parses any single character
 --
@@ -53,7 +53,7 @@ char c = charParserOf (== c) <?> show [c]
 --
 anychar :: (Stream s, NFData s) => ParserS s Char
 anychar = charParserOf (const True) <?> "any character"
-{-# INLINE anychar #-}
+{-# INLINABLE anychar #-}
 
 -- | Parses every single character except for a given character
 --
@@ -63,7 +63,7 @@ anychar = charParserOf (const True) <?> "any character"
 anycharBut :: (Stream s, NFData s) => Char -> ParserS s Char
 anycharBut c =
   charParserOf (/= c) <?> unwords ["any character except for", show c]
-{-# INLINE anycharBut #-}
+{-# INLINABLE anycharBut #-}
 
 -- | Parses a given string
 --
@@ -72,7 +72,7 @@ anycharBut c =
 --
 string :: (Stream s, NFData s) => String -> ParserS s String
 string s = mapM char s <?> show s
-{-# INLINE string #-}
+{-# INLINABLE string #-}
 
 -- | Parses any string and consumes everything
 --
@@ -81,7 +81,7 @@ string s = mapM char s <?> show s
 --
 anystring :: (Stream s, NFData s) => ParserS s String
 anystring = some anychar <?> "any string"
-{-# INLINE anystring #-}
+{-# INLINABLE anystring #-}
 
 -- | Parses any string except for a given string.
 --
@@ -102,7 +102,7 @@ anystringBut s = go
 --
 digit :: (Stream s, NFData s) => ParserS s Char
 digit = charParserOf isDigit <?> "digit"
-{-# INLINE digit #-}
+{-# INLINABLE digit #-}
 
 -- | Parses any single hexadecimal number, the same as @__[0-9a-f]__@
 --
@@ -111,7 +111,7 @@ digit = charParserOf isDigit <?> "digit"
 --
 hexDigit :: (Stream s, NFData s) => ParserS s Char
 hexDigit = charParserOf isHexDigit <?> "hex-digit"
-{-# INLINE hexDigit #-}
+{-# INLINABLE hexDigit #-}
 
 -- | Parses any single alphabetical character, the same as @__[a-zA-Z]__@
 --
@@ -120,7 +120,7 @@ hexDigit = charParserOf isHexDigit <?> "hex-digit"
 --
 alpha :: (Stream s, NFData s) => ParserS s Char
 alpha = charParserOf isAlpha <?> "letter"
-{-# INLINE alpha #-}
+{-# INLINABLE alpha #-}
 
 -- | The same as @__alpha__@
 --
@@ -129,7 +129,7 @@ alpha = charParserOf isAlpha <?> "letter"
 --
 letter :: (Stream s, NFData s) => ParserS s Char
 letter = alpha
-{-# INLINE letter #-}
+{-# INLINABLE letter #-}
 
 -- | Parses any alphabetical or numeric character, the same as @__[0-9a-zA-Z]__@
 --
@@ -138,7 +138,7 @@ letter = alpha
 --
 alphaNum :: (Stream s, NFData s) => ParserS s Char
 alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
-{-# INLINE alphaNum #-}
+{-# INLINABLE alphaNum #-}
 
 -- | Parses any single lowercase letter, the same as @__[a-z]__@
 --
@@ -147,7 +147,7 @@ alphaNum = charParserOf isAlphaNum <?> "letter-or-digit"
 --
 lower :: (Stream s, NFData s) => ParserS s Char
 lower = charParserOf isLower <?> "lowercase-letter"
-{-# INLINE lower #-}
+{-# INLINABLE lower #-}
 
 -- | Parses any single uppercase letter, the same as @__[A-Z]__@
 --
@@ -156,7 +156,7 @@ lower = charParserOf isLower <?> "lowercase-letter"
 --
 upper :: (Stream s, NFData s) => ParserS s Char
 upper = charParserOf isUpper <?> "uppercase-letter"
-{-# INLINE upper #-}
+{-# INLINABLE upper #-}
 
 -- | Parses a single special character, @__anychar := alphaNum <|> special__@
 --
@@ -166,7 +166,7 @@ upper = charParserOf isUpper <?> "uppercase-letter"
 special :: (Stream s, NFData s) => ParserS s Char
 special = charParserOf isSpecial <?> "special-character"
   where isSpecial c = or $ ($ c) <$> [isPunctuation, isSymbol]
-{-# INLINE special #-}
+{-# INLINABLE special #-}
 
 -- | Parses tab character, \t
 --
@@ -175,7 +175,7 @@ special = charParserOf isSpecial <?> "special-character"
 --
 tab :: (Stream s, NFData s) => ParserS s Char
 tab = char '\t' <?> "tab"
-{-# INLINE tab #-}
+{-# INLINABLE tab #-}
 
 -- | Parses LF or linefeed character, \n
 --
@@ -184,7 +184,7 @@ tab = char '\t' <?> "tab"
 --
 lf :: (Stream s, NFData s) => ParserS s Char
 lf = char '\n' <?> "linefeed"
-{-# INLINE lf #-}
+{-# INLINABLE lf #-}
 
 -- | Parses CRLF or carrige return with linefeed, \r\n
 --
@@ -193,7 +193,7 @@ lf = char '\n' <?> "linefeed"
 --
 crlf :: (Stream s, NFData s) => ParserS s Char
 crlf = (char '\r' *> char '\n') <?> "carriage-return + linefeed"
-{-# INLINE crlf #-}
+{-# INLINABLE crlf #-}
 
 -- | Parses end-of-line character, the same as @__[LF | CRLF]__@
 --
@@ -202,7 +202,7 @@ crlf = (char '\r' *> char '\n') <?> "carriage-return + linefeed"
 --
 eol :: (Stream s, NFData s) => ParserS s Char
 eol = (lf <|> crlf) <?> "end-of-line"
-{-# INLINE eol #-}
+{-# INLINABLE eol #-}
 
 -- | Parses a single whitespace character
 --
@@ -211,7 +211,7 @@ eol = (lf <|> crlf) <?> "end-of-line"
 --
 space :: (Stream s, NFData s) => ParserS s Char
 space = charParserOf isSpace <?> "space"
-{-# INLINE space #-}
+{-# INLINABLE space #-}
 
 -- | Checks if the `State` applied to the parser is reached to
 -- @__EOF__@ or /End-of-Stream/
@@ -238,7 +238,7 @@ eof = label "end-of-stream" $ do
 --
 eof' :: (Stream s, NFData s) => ParserS s String
 eof' = count 1 eof
-{-# INLINE eof' #-}
+{-# INLINABLE eof' #-}
 
 -- | Parses if a character on parsing is in the given char-list
 --
@@ -248,7 +248,7 @@ eof' = count 1 eof
 oneOf :: (Stream s, NFData s) => [Char] -> ParserS s Char
 oneOf cs = charParserOf (`elem` cs) <?> label'oneof
   where label'oneof = unwords ["one of", show ((: []) <$> cs)]
-{-# INLINE oneOf #-}
+{-# INLINABLE oneOf #-}
 
 -- | Parses if a character on parsing is NOT in the given char-list
 --
@@ -258,7 +258,7 @@ oneOf cs = charParserOf (`elem` cs) <?> label'oneof
 noneOf :: (Stream s, NFData s) => [Char] -> ParserS s Char
 noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
   where label'noneof = unwords ["none of", show ((: []) <$> cs)]
-{-# INLINE noneOf #-}
+{-# INLINABLE noneOf #-}
 
 -- | Picks up one of prepared char-parsers by a string name
 --

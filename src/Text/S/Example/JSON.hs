@@ -24,10 +24,12 @@ newtype Key = K String
 jsonParser :: Parser JSON
 jsonParser = strip $ choice
   [parseNULL, parseBool, parseNumber, parseString, parseArray, parseObject]
+{-# INLINE jsonParser #-}
 
 -- | Parse JSON nil-value -> null
 parseNULL :: Parser JSON
 parseNULL = NULL <$ strip (symbol "null")
+{-# INLINE parseNULL #-}
 
 -- | Parse JSON bool -> true, false
 parseBool :: Parser JSON
@@ -35,26 +37,30 @@ parseBool = B <$> choice [true, false]
  where
   true  = True <$ strip (symbol "true")
   false = False <$ strip (symbol "false")
+{-# INLINE parseBool #-}
 
 -- | Parse JSON number like: 1234, 1.234, 1.234e-9,...
 parseNumber :: Parser JSON
 parseNumber = N . toRational <$> strip float
+{-# INLINE parseNumber #-}
 
 -- | Parse JSON string like: "json-parser",...
 parseString :: Parser JSON
 parseString = S <$> strip stringLit
+{-# INLINE parseString #-}
 
 -- | Parse JSON array like: [1, true, "", {}, [],...]
 parseArray :: Parser JSON
 parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') jsonParser)
+{-# INLINE parseArray #-}
 
 -- | Parse JSON Object like: {"key": JSON}
 parseObject :: Parser JSON
-parseObject = O
-  <$> between (char '{') (char '}') (sepBy (char ',') parseKeyValue)
+parseObject = O <$> between (char '{') (char '}') (sepBy (char ',') parsePair)
  where
-  parseKey      = K <$> strip stringLit
-  parseKeyValue = parseKey >>= \key -> Pair key <$> (char ':' *> jsonParser)
+  parseKey  = K <$> strip stringLit
+  parsePair = parseKey >>= \key -> Pair key <$> (char ':' *> jsonParser)
+{-# INLINE parseObject #-}
 
 
 deriving instance Pretty JSON

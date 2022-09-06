@@ -126,7 +126,7 @@ appendSource s1@Source{} s2@Source{}
   | sourceName s1 /= sourceName s2 = error' "two source names do not match"
   | s1 < s2                        = s2
   | otherwise                      = s1
-{-# INLINE appendSource #-}
+{-# INLINABLE appendSource #-}
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
@@ -165,12 +165,12 @@ initState file stream = State stream (initSource file) mempty
 addMessage :: Message -> State s -> State s
 addMessage msg state@State {..} =
   state { stateMesssages = stateMesssages <> [msg] }
-{-# INLINE addMessage #-}
+{-# INLINABLE addMessage #-}
 
 mergeState :: State s -> State s -> State s
 mergeState s1@(State _ src1 _) s2@(State _ src2 _) | src1 > src2 = s1
                                                    | otherwise   = s2
-{-# INLINE mergeState #-}
+{-# INLINABLE mergeState #-}
 
 
 -------------------------
@@ -220,7 +220,7 @@ instance Functor (ParserS s) where
 smap :: (a -> b) -> ParserS s a -> ParserS s b
 smap f parser =
   ParserS $ \state fOk fError -> runParser parser state (fOk . f) fError
-{-# INLINE smap #-}
+{-# INLINABLE smap #-}
 
 
 instance Applicative (ParserS s) where
@@ -232,7 +232,7 @@ sap :: ParserS s (a -> b) -> ParserS s a -> ParserS s b
 sap f parser = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser parser state' (fOk . x) fError
   in  runParser f state fOk' fError
-{-# INLINE sap #-}
+{-# INLINABLE sap #-}
 
 
 instance Monad (ParserS s) where
@@ -244,7 +244,7 @@ sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
 sbind parser f = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser (f x) state' fOk fError
   in  runParser parser state fOk' fError
-{-# INLINE sbind #-}
+{-# INLINABLE sbind #-}
 
 
 instance Alternative (ParserS s) where
@@ -259,7 +259,7 @@ instance MonadPlus (ParserS s) where
 
 szero :: ParserS s a
 szero = fail mempty
-{-# INLINE szero #-}
+{-# INLINABLE szero #-}
 
 splus :: ParserS s a -> ParserS s a -> ParserS s a
 splus p q = ParserS $ \state fOk fError ->
@@ -267,7 +267,7 @@ splus p q = ParserS $ \state fOk fError ->
         let fError'' s''@State{} = fError $ mergeState s' s''
         in  runParser q state fOk fError''
   in  runParser p state fOk fError'
-{-# INLINE splus #-}
+{-# INLINABLE splus #-}
 
 
 instance MonadFail (ParserS s) where
@@ -296,7 +296,7 @@ parseFromFile parser file = do
 --
 -- Here is where each parsing job starts.
 --
-charParserOf :: (Stream s, NFData s) => (Char -> Bool) -> ParserS s Char
+charParserOf :: Stream s => (Char -> Bool) -> ParserS s Char
 charParserOf predicate =
   ParserS $ \state@(State stream src msgs) fOk fError -> case unCons stream of
     Nothing ->
@@ -307,8 +307,8 @@ charParserOf predicate =
         (Unexpected $ unwords ["failed. got unexpected character:", show c])
         state
      where
-      state' = force $ State cs src' msgs
-      src'   = force $ jump src c
+      state' = State cs src' msgs
+      src'   = jump src c
       jump (Source n ln col) c = case c of
         '\n' -> Source n (ln + 1) 1
         '\t' -> Source n ln (move col 8)
@@ -415,11 +415,25 @@ instance Show s => Pretty (State s) where
       [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
       where s = show stream
 
-instance (Show s, Show a) => Pretty (Result a s) where
+instance (Show s, Pretty a) => Pretty (Result a s) where
   pretty r = case r of
-    Ok ok s -> TL.unlines [pShowNoColor ok <> "\n", pretty s]
+    Ok ok s -> TL.unlines [pretty ok <> "\n", pretty s]
     Error s -> TL.unlines ["Error\n", pretty s]
 
+instance Pretty Int where
+  pretty = TL.pack . show
+
+instance Pretty Integer where
+  pretty = TL.pack . show
+
+instance Pretty Float where
+  pretty = TL.pack . show
+
+instance Pretty Double where
+  pretty = TL.pack . show
+
+instance Pretty Rational where
+  pretty = TL.pack . show
 
 instance Show a => Pretty [a] where
 instance (Show a, Show b) => Pretty (a,b) where
@@ -427,11 +441,6 @@ instance (Show a, Show b, Show c) => Pretty (a,b,c) where
 instance (Show a, Show b, Show c, Show d) => Pretty (a,b,c,d) where
 
 deriving instance Pretty Bool
-deriving instance Pretty Int
-deriving instance Pretty Integer
-deriving instance Pretty Float
-deriving instance Pretty Double
-deriving instance Pretty Rational
 deriving instance Pretty Char
 
 -- |
