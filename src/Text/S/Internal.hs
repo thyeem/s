@@ -73,21 +73,29 @@ import           Text.Pretty.Simple             ( pShowNoColor )
 
 -- | ParserS currently supports stream types the following:
 --
--- 'Text', 'LazyText', 'String', 'ByteString', and 'LazyByteString'.
+-- * 'Text'
+-- * 'LazyText'
+-- * 'String'
+-- * 'ByteString'
+-- * 'LazyByteString'.
 --
--- By default, the Parser stream type is set to 'Text'.
--- Choose a stream type according to your preference like:
+-- By default, the 'ParserS' 'Stream' is set to 'Text'.
+-- Choose a stream type according to your preference:
 --
--- Set Parser stream to LazyText in Data.Text.Lazy
+-- * Set the parser stream to 'LazyText' comes from 'Data.Text.Lazy'
+--
 -- >>> type Parser = ParserS LazyText
 --
--- Set Parser stream to String or [Char]
--- >>> type Parser= ParserS String
+-- * Set the parser stream to 'String' or ['Char']
 --
--- Set Parser stream to ByteString in Data.ByteString.Char8
+-- >>> type Parser = ParserS String
+--
+-- * Set the parser stream to 'ByteString' comes from 'Data.ByteString.Char8'
+--
 -- >>> type Parser = ParserS ByteString
 --
--- Set Parser stream to Lazy ByteString in Data.ByteString.Lazy.Char8
+-- * Set the parser stream to 'LazyByteString' comes from 'Data.ByteString.Lazy.Char8'
+--
 -- >>> type Parser = ParserS LazyByteString
 --
 type Parser = ParserS Text

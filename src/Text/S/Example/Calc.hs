@@ -5,10 +5,10 @@ import           Text.S
 
 
 -- | Expr parser for left-associative infix operators
-calc'infixl :: Stream s => ParserS s Double
-calc'infixl = expr atom table
+expr'infixl :: Stream s => ParserS s Double
+expr'infixl = expr atom table
  where
-  atom = strip float <|> parens calc'infixl
+  atom = strip float <|> parens expr'infixl
   table =
     [ [prefixU "-" negate, prefixU "+" id]
     , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
@@ -18,10 +18,10 @@ calc'infixl = expr atom table
     ]
 
 -- | Expr parser for right-associative infix operators
-calc'infixr :: Stream s => ParserS s Double
-calc'infixr = expr atom table
+expr'infixr :: Stream s => ParserS s Double
+expr'infixr = expr atom table
  where
-  atom = strip float <|> parens calc'infixr
+  atom = strip float <|> parens expr'infixr
   table =
     [ [prefixU "-" negate, prefixU "+" id]
     , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
@@ -31,8 +31,8 @@ calc'infixr = expr atom table
     ]
 
 -- | Expr parser for prefix operators
-calc'prefix :: Stream s => ParserS s Double
-calc'prefix = expr atom table
+expr'prefix :: Stream s => ParserS s Double
+expr'prefix = expr atom table
  where
   atom = strip float
   table =
@@ -45,8 +45,8 @@ calc'prefix = expr atom table
     ]
 
 -- | Expr parser for postfix operators
-calc'postfix :: Stream s => ParserS s Double
-calc'postfix = expr atom table
+expr'postfix :: Stream s => ParserS s Double
+expr'postfix = expr atom table
  where
   atom = strip float
   table =
@@ -63,10 +63,10 @@ calc :: IO ()
 calc = do
   parser <- read'
   case parser of
-    "infixl"  -> repl calc'infixl
-    "infixr"  -> repl calc'infixr
-    "prefix"  -> repl calc'prefix
-    "postfix" -> repl calc'postfix
+    "infixl"  -> repl expr'infixl
+    "infixr"  -> repl expr'infixr
+    "prefix"  -> repl expr'prefix
+    "postfix" -> repl expr'postfix
     "q"       -> pure ()
     _         -> calc
  where
