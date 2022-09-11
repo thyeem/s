@@ -27,11 +27,22 @@ jsonParser = strip $ choice
 {-# INLINE jsonParser #-}
 
 -- | Parse JSON nil-value -> null
+--
+-- >>> t' parseNULL "null"
+-- NULL
+--
 parseNULL :: Parser JSON
 parseNULL = NULL <$ strip (symbol "null")
 {-# INLINE parseNULL #-}
 
 -- | Parse JSON bool -> true, false
+--
+-- >>> t' parseBool "true"
+-- B True
+--
+-- >>> t' parseBool "false"
+-- B False
+--
 parseBool :: Parser JSON
 parseBool = B <$> choice [true, false]
  where
