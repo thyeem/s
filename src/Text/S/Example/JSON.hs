@@ -20,13 +20,18 @@ data Pair = Pair Key JSON
 newtype Key = K String
   deriving Show
 
+
+
 -- | Parse the whole JSON structure: the outermost function of JSON parser
+--
+-- >>> import Text.S.Example.JSON
+--
 jsonParser :: Parser JSON
 jsonParser = strip $ choice
   [parseNULL, parseBool, parseNumber, parseString, parseArray, parseObject]
 {-# INLINE jsonParser #-}
 
--- | Parse JSON nil-value -> null
+-- | Parse JSON @__null__@ value
 --
 -- >>> t' parseNULL "null"
 -- NULL
@@ -35,7 +40,7 @@ parseNULL :: Parser JSON
 parseNULL = NULL <$ strip (symbol "null")
 {-# INLINE parseNULL #-}
 
--- | Parse JSON bool -> true, false
+-- | Parse JSON bool, @__true__@ and @__false__@
 --
 -- >>> t' parseBool "true"
 -- B True
@@ -50,22 +55,22 @@ parseBool = B <$> choice [true, false]
   false = False <$ strip (symbol "false")
 {-# INLINE parseBool #-}
 
--- | Parse JSON number like: 1234, 1.234, 1.234e-9,...
+-- | Parse JSON @__number__@ like: @1234, 1.234, 1.234e-9,..@
 parseNumber :: Parser JSON
 parseNumber = N . toRational <$> strip float
 {-# INLINE parseNumber #-}
 
--- | Parse JSON string like: "json-parser",...
+-- | Parse JSON @__string__@ like: @"json-parser",..@
 parseString :: Parser JSON
 parseString = S <$> strip stringLit
 {-# INLINE parseString #-}
 
--- | Parse JSON array like: [1, true, "", {}, [],...]
+-- | Parse JSON @__array__@ like: @[1, true, "", {}, [],..]@
 parseArray :: Parser JSON
 parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') jsonParser)
 {-# INLINE parseArray #-}
 
--- | Parse JSON Object like: {"key": JSON}
+-- | Parse JSON @__object__@ like: @{"key": JSON}@
 parseObject :: Parser JSON
 parseObject = O <$> between (char '{') (char '}') (sepBy (char ',') parsePair)
  where
