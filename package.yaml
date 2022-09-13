@@ -65,7 +65,6 @@ executables:
       # - -threaded
       # - -rtsopts
       # - -with-rtsopts=-N
-      # - -optP-Wno-nonportable-include-path
       # - -dynamic
       # - -feager-blackholing        -- useful for paralleism
     dependencies:
@@ -82,10 +81,25 @@ tests:
       - tasty
       - tasty-hunit
       - tasty-quickcheck
-      - s
       - doctest
+      - s
     ghc-options:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
+      - -O2
+
+benchmarks:
+  bench:
+    source-dirs: bench
+    main: Bench.hs
+    dependencies:
+      - bytestring
+      - parsec
+      - attoparsec
+      - megaparsec
+      - flatparse
+      - primitive
+      - gauge
+    ghc-options:
       - -O2

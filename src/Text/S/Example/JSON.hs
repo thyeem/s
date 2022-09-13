@@ -26,6 +26,9 @@ newtype Key = K String
 --
 -- >>> import Text.S.Example.JSON
 --
+-- >>> t' jsonParser "{\"object\": {\"array\": [null, false, 0.125]}}"
+-- O [Pair (K "object") (O [Pair (K "array") (A [NULL,B False,N (1 % 8)])])]
+--
 jsonParser :: Parser JSON
 jsonParser = strip $ choice
   [parseNULL, parseBool, parseNumber, parseString, parseArray, parseObject]
@@ -56,21 +59,37 @@ parseBool = B <$> choice [true, false]
 {-# INLINE parseBool #-}
 
 -- | Parse JSON @__number__@ like: @1234, 1.234, 1.234e-9,..@
+--
+-- >>> t' parseNumber "0.25"
+-- N (1 % 4)
+--
 parseNumber :: Parser JSON
 parseNumber = N . toRational <$> strip float
 {-# INLINE parseNumber #-}
 
 -- | Parse JSON @__string__@ like: @"json-parser",..@
+--
+-- >>> t' parseString "\"JSON-parser\""
+-- S "JSON-parser"
+--
 parseString :: Parser JSON
 parseString = S <$> strip stringLit
 {-# INLINE parseString #-}
 
 -- | Parse JSON @__array__@ like: @[1, true, "", {}, [],..]@
+--
+-- >>> t' parseArray "[2.5, true, \"JSON\"]"
+-- A [N (5 % 2),B True,S "JSON"]
+--
 parseArray :: Parser JSON
 parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') jsonParser)
 {-# INLINE parseArray #-}
 
 -- | Parse JSON @__object__@ like: @{"key": JSON}@
+--
+-- >>> t' parseObject "{\"class\": [\"JavaScript\",\"HTML\",\"CSS\"]}"
+-- O [Pair (K "class") (A [S "JavaScript",S "HTML",S "CSS"])]
+--
 parseObject :: Parser JSON
 parseObject = O <$> between (char '{') (char '}') (sepBy (char ',') parsePair)
  where
