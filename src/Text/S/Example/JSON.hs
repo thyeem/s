@@ -82,7 +82,8 @@ parseString = S <$> strip stringLit
 -- A [N (5 % 2),B True,S "JSON"]
 --
 parseArray :: Stream s => ParserS s JSON
-parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') parseJSON)
+parseArray =
+  A <$> between (symbol "[") (symbol "]") (sepBy (symbol ",") parseJSON)
 {-# INLINE parseArray #-}
 
 -- | Parse JSON @__object__@ like: @{"key": JSON}@
@@ -91,10 +92,11 @@ parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') parseJSON)
 -- O [Pair (K "class") (A [S "JavaScript",S "HTML",S "CSS"])]
 --
 parseObject :: Stream s => ParserS s JSON
-parseObject = O <$> between (char '{') (char '}') (sepBy (char ',') parsePair)
+parseObject = O
+  <$> between (symbol "{") (symbol "}") (sepBy (symbol ",") parsePair)
  where
   parseKey  = K <$> strip stringLit
-  parsePair = parseKey >>= \key -> Pair key <$> (char ':' *> parseJSON)
+  parsePair = parseKey >>= \key -> Pair key <$> (symbol ":" *> parseJSON)
 {-# INLINE parseObject #-}
 
 

@@ -24,6 +24,7 @@ dependencies:
   - raw-strings-qq
   - text
   - pretty-simple
+  - vector
   # - yaml
   # - aeson
   # - docopt >= 0.7.0.6
