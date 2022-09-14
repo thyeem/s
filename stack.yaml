@@ -2,4 +2,7 @@
 resolver: lts-18.22
 
 packages:
-- .
+  - .
+
+extra-deps:
+  - flatparse-0.3.2.0@sha256:fcc5fa608c4c895b3e198cd3d4e36c3ff7e54ff727f172f3db97b259781d03f7,3816

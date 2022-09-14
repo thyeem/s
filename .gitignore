@@ -22,6 +22,7 @@ Thumbs.db
 dist-newstyle/
 *.hi
 *.o
+stack.yaml.lock
 
 # auto-generated *.cabal
 s.cabal

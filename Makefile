@@ -1,7 +1,7 @@
 bin := s
 path := $(shell stack path --local-install-root)/bin
 
-.PHONY: build clean test doc opendoc
+.PHONY: build clean test bench doc opendoc
 build:
 	@echo $(path)
 	stack build
@@ -15,6 +15,9 @@ clean:
 
 test:
 	stack test
+
+bench:
+	stack bench
 
 doc:
 	stack haddock

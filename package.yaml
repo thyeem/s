@@ -60,7 +60,7 @@ executables:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
-      - -O2
+      - -O0
       - -g0
       # - -threaded
       # - -rtsopts
@@ -92,14 +92,13 @@ tests:
 benchmarks:
   bench:
     source-dirs: bench
-    main: Bench.hs
+    main: Benchmarks.hs
     dependencies:
-      - bytestring
+      - criterion
       - parsec
       - attoparsec
       - megaparsec
       - flatparse
-      - primitive
-      - gauge
+      - s
     ghc-options:
       - -O2
