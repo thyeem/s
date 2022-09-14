@@ -98,4 +98,9 @@ parseObject = O <$> between (char '{') (char '}') (sepBy (char ',') parsePair)
 {-# INLINE parseObject #-}
 
 
+-- | Wrapper for 'parseJSON' to check if it ends with @EOF@
+jsonParser :: Stream s => ParserS s JSON
+jsonParser = parseJSON <* eof
+{-# INLINE jsonParser #-}
+
 deriving instance Pretty JSON
