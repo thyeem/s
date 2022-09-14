@@ -345,7 +345,7 @@ instance MonadFail (ParserS s) where
 
 
 -- | Takes state and parser, then parses it.
-parse :: ParserS s a -> State s -> Result a s
+parse :: Stream s => ParserS s a -> State s -> Result a s
 parse parser state = runParser parser state Ok Error
 
 -- | The same as 'parse', but unwrap the @Result@ of the parse result
@@ -413,11 +413,11 @@ assert parser = ParserS $ \state fOk fError ->
 {-# INLINE assert #-}
 
 -- | Tests parsers and its combinators with given strings
-t :: ParserS s a -> s -> Result a s
+t :: Stream s => ParserS s a -> s -> Result a s
 t parser s = parse parser (State s mempty [])
 
 -- | Tests parsers and its combinators with given strings and then pretty-print.
-tp :: (Show s, Pretty a) => ParserS s a -> s -> IO ()
+tp :: (Stream s, Show s, Pretty a) => ParserS s a -> s -> IO ()
 tp parser = pp . t parser
 
 -- | The same as 't', but unwrap the @Result@ of the parse result
@@ -425,7 +425,7 @@ t' :: (Stream s, Show s) => ParserS s a -> s -> a
 t' parser = unwrap . t parser
 
 -- | The same as 't', but unwraps @Result a s@ to get the state @s@ only.
-ts' :: ParserS s a -> s -> s
+ts' :: Stream s => ParserS s a -> s -> s
 ts' parser = sOnly . t parser
  where
   sOnly (Ok _ (State s _ _)) = s

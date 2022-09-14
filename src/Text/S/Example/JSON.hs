@@ -26,20 +26,20 @@ newtype Key = K String
 --
 -- >>> import Text.S.Example.JSON
 --
--- >>> t' jsonParser "{\"object\": {\"array\": [null, false, 0.125]}}"
+-- >>> t' parseJSON "{\"object\": {\"array\": [null, false, 0.125]}}"
 -- O [Pair (K "object") (O [Pair (K "array") (A [NULL,B False,N (1 % 8)])])]
 --
-jsonParser :: Parser JSON
-jsonParser = strip $ choice
+parseJSON :: Stream s => ParserS s JSON
+parseJSON = strip $ choice
   [parseNULL, parseBool, parseNumber, parseString, parseArray, parseObject]
-{-# INLINE jsonParser #-}
+{-# INLINE parseJSON #-}
 
 -- | Parse JSON @__null__@ value
 --
 -- >>> t' parseNULL "null"
 -- NULL
 --
-parseNULL :: Parser JSON
+parseNULL :: Stream s => ParserS s JSON
 parseNULL = NULL <$ strip (symbol "null")
 {-# INLINE parseNULL #-}
 
@@ -51,7 +51,7 @@ parseNULL = NULL <$ strip (symbol "null")
 -- >>> t' parseBool "false"
 -- B False
 --
-parseBool :: Parser JSON
+parseBool :: Stream s => ParserS s JSON
 parseBool = B <$> choice [true, false]
  where
   true  = True <$ strip (symbol "true")
@@ -63,7 +63,7 @@ parseBool = B <$> choice [true, false]
 -- >>> t' parseNumber "0.25"
 -- N (1 % 4)
 --
-parseNumber :: Parser JSON
+parseNumber :: Stream s => ParserS s JSON
 parseNumber = N . toRational <$> strip float
 {-# INLINE parseNumber #-}
 
@@ -72,7 +72,7 @@ parseNumber = N . toRational <$> strip float
 -- >>> t' parseString "\"JSON-parser\""
 -- S "JSON-parser"
 --
-parseString :: Parser JSON
+parseString :: Stream s => ParserS s JSON
 parseString = S <$> strip stringLit
 {-# INLINE parseString #-}
 
@@ -81,8 +81,8 @@ parseString = S <$> strip stringLit
 -- >>> t' parseArray "[2.5, true, \"JSON\"]"
 -- A [N (5 % 2),B True,S "JSON"]
 --
-parseArray :: Parser JSON
-parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') jsonParser)
+parseArray :: Stream s => ParserS s JSON
+parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') parseJSON)
 {-# INLINE parseArray #-}
 
 -- | Parse JSON @__object__@ like: @{"key": JSON}@
@@ -90,11 +90,11 @@ parseArray = A <$> between (char '[') (char ']') (sepBy (char ',') jsonParser)
 -- >>> t' parseObject "{\"class\": [\"JavaScript\",\"HTML\",\"CSS\"]}"
 -- O [Pair (K "class") (A [S "JavaScript",S "HTML",S "CSS"])]
 --
-parseObject :: Parser JSON
+parseObject :: Stream s => ParserS s JSON
 parseObject = O <$> between (char '{') (char '}') (sepBy (char ',') parsePair)
  where
   parseKey  = K <$> strip stringLit
-  parsePair = parseKey >>= \key -> Pair key <$> (char ':' *> jsonParser)
+  parsePair = parseKey >>= \key -> Pair key <$> (char ':' *> parseJSON)
 {-# INLINE parseObject #-}
 
 
