@@ -98,6 +98,7 @@ benchmarks:
     dependencies:
       - criterion
       - split
+      - parser-combinators
       - parsec
       - attoparsec
       - megaparsec

@@ -60,6 +60,7 @@ import           Data.Functor                   ( ($>)
 import           Data.List                      ( intercalate
                                                 , uncons
                                                 )
+import           Data.Proxy
 import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as TIO
 import qualified Data.Text.Lazy                as TL
@@ -359,31 +360,39 @@ parseFromFile parser file = do
   let state = initState file stream
   return . parse parser $ state
 
--- | Gets a char parser that satisfies the given predicate.
+-- | Gets a char parser that satisfies the given predicate @__p__@.
 --
 -- This function describes every parsing work at a fundamental level.
 --
 -- Here is where each parsing job starts.
 --
 charParserOf :: Stream s => (Char -> Bool) -> ParserS s Char
-charParserOf predicate =
-  ParserS $ \state@(State stream src msgs) fOk fError -> case unCons stream of
+charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
+  case unCons stream of
     Nothing ->
       fError $ addMessage (Unexpected "EOF: reached to end-of-stream") state
     Just (c, cs)
-      | predicate c -> fOk c state'
+      | p c -> fOk c state'
       | otherwise -> fError $ addMessage
         (Unexpected $ unwords ["failed. got unexpected character:", show c])
         state
      where
-      state' = State cs src' msgs
-      src'   = jump src c
+      state' = State cs (jump src c) msgs
       jump (Source n ln col) c = case c of
         '\n' -> Source n (ln + 1) 1
         '\t' -> Source n ln (move col 8)
         _    -> Source n ln (col + 1)
         where move col size = col + size - ((col - 1) `mod` size)
 {-# INLINE charParserOf #-}
+
+-- |
+-- take'while :: Stream s => (a -> Bool) -> ParserS s [a]
+-- take'while p = ParserS $ \state@(State stream src msgs) fOk fError ->
+  -- let cs = takeWhile p stream
+  -- in  if null cs
+        -- then fError
+          -- $ addMessage (Unexpected $ unwords ["failed to match:"]) state
+        -- else undefined
 
 
 -- | Tries to parse with @__parser__@ looking ahead without consuming any input.

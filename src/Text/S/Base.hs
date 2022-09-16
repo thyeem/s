@@ -17,15 +17,8 @@ module Text.S.Base
 
 import           Control.Applicative            ( liftA2 )
 import           Control.Monad                  ( mapM )
-import           Data.Char                      ( isAlpha
-                                                , isAlphaNum
-                                                , isDigit
-                                                , isHexDigit
-                                                , isLower
-                                                , isPunctuation
-                                                , isSpace
+import           Data.Char                      ( isPunctuation
                                                 , isSymbol
-                                                , isUpper
                                                 )
 
 import           Text.S.Combinator
@@ -280,3 +273,38 @@ selectp x = case x of
   c | length c == 1 -> char . head $ c
     | otherwise     -> fail $ unwords ["not found parser such as: ", c]
 {-# INLINE selectp #-}
+
+-- |
+isSpace :: Char -> Bool
+isSpace c = (' ' == c) || ('\t' <= c && c <= '\r')
+{-# INLINE isSpace #-}
+
+-- |
+isDigit :: Char -> Bool
+isDigit c = c >= '0' && c <= '9'
+{-# INLINE isDigit #-}
+
+-- |
+isHexDigit :: Char -> Bool
+isHexDigit c = isDigit c || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
+{-# INLINE isHexDigit #-}
+
+-- |
+isAlpha :: Char -> Bool
+isAlpha c = isLower c || isUpper c
+{-# INLINE isAlpha #-}
+
+-- |
+isAlphaNum :: Char -> Bool
+isAlphaNum c = isDigit c || isAlpha c
+{-# INLINE isAlphaNum #-}
+
+-- |
+isUpper :: Char -> Bool
+isUpper c = c <= 'Z' && c >= 'A'
+{-# INLINE isUpper #-}
+
+-- |
+isLower :: Char -> Bool
+isLower c = c <= 'z' && c >= 'a'
+{-# INLINE isLower #-}

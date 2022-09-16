@@ -1,5 +1,6 @@
 module Text.S.Example.CSV where
 
+import           Control.Applicative            ( liftA2 )
 import           Data.Vector                    ( Vector )
 import qualified Data.Vector                   as V
 import           Text.S
@@ -18,7 +19,8 @@ parseCSV = sepBy1 eol parseRecord
 -- | Parse Comma-separated values from a single 'Record'
 parseRecord :: Stream s => ParserS s Record
 parseRecord = V.fromList <$> sepBy (symbol ",") field
-  where field = stringLit <|> many (noneOf ",\n\r")
+  where field = many (noneOf ",\n\r")
+
 {-# INLINE parseRecord #-}
 
 -- | Wrapper for 'parseCSV' to check if it ends with @EOF@
