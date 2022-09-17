@@ -388,11 +388,11 @@ charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
 -- |
 -- take'while :: Stream s => (a -> Bool) -> ParserS s [a]
 -- take'while p = ParserS $ \state@(State stream src msgs) fOk fError ->
-  -- let cs = takeWhile p stream
-  -- in  if null cs
-        -- then fError
-          -- $ addMessage (Unexpected $ unwords ["failed to match:"]) state
-        -- else undefined
+-- let cs = takeWhile p stream
+-- in  if null cs
+-- then fError
+-- $ addMessage (Unexpected $ unwords ["failed to match:"]) state
+-- else undefined
 
 
 -- | Tries to parse with @__parser__@ looking ahead without consuming any input.
