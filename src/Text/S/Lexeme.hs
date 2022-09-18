@@ -21,7 +21,6 @@ import           Data.Char                      ( digitToInt
                                                 , toLower
                                                 , toUpper
                                                 )
-import           Data.Functor                   ( void )
 import           Data.List                      ( foldl'
                                                 , foldl1'
                                                 )
@@ -127,7 +126,7 @@ lstrip p = skipSpaces *> p
 -- | Remove any trailing whitespaces when parsing with @p@
 --
 rstrip :: (Stream s) => ParserS s a -> ParserS s a
-rstrip p = p <* (skipSpaces <|> void eof)
+rstrip p = p <* (skipSpaces <|> eof)
 {-# INLINE rstrip #-}
 
 -- | Parses any string symbol to comsume. The same as 'string'
