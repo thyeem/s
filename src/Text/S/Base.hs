@@ -85,7 +85,7 @@ anystring = some anychar <?> "any string"
 --
 anystringBut :: Stream s => String -> ParserS s String
 anystringBut s = go
-  where go = (assert (string s) $> []) <|> liftA2 (:) anychar go
+  where go = (try (string s) $> []) <|> liftA2 (:) anychar go
 {-# INLINE anystringBut #-}
 
 -- | Parses any single digit, the same as @__[0-9]__@

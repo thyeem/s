@@ -34,12 +34,12 @@ module Text.S.Internal
   , label
   , parse
   , parse'
-  , parseFromFile
+  , parseFile
   , charParserOf
   , stream
   , state
   , ahead
-  , assert
+  , try
   , CondExpr(..)
   , (?)
   , Pretty(..)
@@ -372,8 +372,8 @@ parse' :: Stream s => ParserS s a -> State s -> a
 parse' parser = unwrap . parse parser
 
 -- | The same as 'parse', but takes the stream from a given file
-parseFromFile :: Stream s => ParserS s a -> FilePath -> IO (Result a s)
-parseFromFile parser file = do
+parseFile :: Stream s => ParserS s a -> FilePath -> IO (Result a s)
+parseFile parser file = do
   stream <- readStream file
   let state = initState file stream
   return . parse parser $ state
@@ -390,18 +390,21 @@ charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
     Nothing ->
       fError $ addMessage (Unexpected "EOF: reached to end-of-stream") state
     Just (c, cs)
-      | p c -> fOk c state'
+      | p c -> fOk c (State cs (jump src c) msgs)
       | otherwise -> fError $ addMessage
         (Unexpected $ unwords ["failed. got unexpected character:", show c])
         state
-     where
-      state' = State cs (jump src c) msgs
-      jump (Source n ln col) c = case c of
-        '\n' -> Source n (ln + 1) 1
-        '\t' -> Source n ln (move col 8)
-        _    -> Source n ln (col + 1)
-        where move col size = col + size - ((col - 1) `mod` size)
 {-# INLINE charParserOf #-}
+
+-- | Update the cursor location in the Source by character
+jump :: Source -> Char -> Source
+jump (Source n ln col) c = case c of
+  '\n' -> Source n (ln + 1) 1
+  '\t' -> Source n ln (move col 8)
+  _    -> Source n ln (col + 1)
+  where move col size = col + size - ((col - 1) `mod` size)
+{-# INLINE jump #-}
+
 
 -- |
 state :: Stream s => ParserS s (State s)
@@ -442,10 +445,10 @@ ahead parser = ParserS $ \state fOk fError ->
 --
 -- See also 'ahead'
 --
-assert :: ParserS s a -> ParserS s a
-assert parser = ParserS $ \state fOk fError ->
+try :: ParserS s a -> ParserS s a
+try parser = ParserS $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError
-{-# INLINE assert #-}
+{-# INLINE try #-}
 
 -- | Tests parsers and its combinators with given strings
 t :: Stream s => ParserS s a -> s -> Result a s

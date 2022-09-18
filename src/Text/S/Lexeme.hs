@@ -295,7 +295,7 @@ zeros' = lexeme' zeros
 -- 27182818284
 --
 natural :: Stream s => ParserS s Integer
-natural = assert digit *> assert (anycharBut '0') *> decimals
+natural = try digit *> try (anycharBut '0') *> decimals
 {-# INLINE natural #-}
 
 -- | The t'ParserS'' form of 'natural'
@@ -443,7 +443,7 @@ genCharLit mark =
 -- |
 readChar :: Stream s => ParserS s Char
 readChar = do
-  s <- assert $ count 4 anychar <|> manyTill eof anychar
+  s <- try $ count 4 anychar <|> manyTill eof anychar
   case readLitChar s of
     [(a, s')] -> a <$ skipCount (length s - length s') anychar
     _         -> fail "failed to read any char literal"
