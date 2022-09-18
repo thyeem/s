@@ -22,5 +22,6 @@ main = doctest
   , "src/Text/S/Combinator.hs"
   , "src/Text/S/Example/Calc.hs"
   , "src/Text/S/Example/JSON.hs"
+  , "src/Text/S/Example/CSV.hs"
   , "src/Text/S/Example/Markdown.hs"
   ]

@@ -21,6 +21,7 @@ import           Data.Char                      ( isPunctuation
                                                 , isSymbol
                                                 )
 
+import           Data.Maybe                     ( fromJust )
 import           Text.S.Combinator
 import           Text.S.Internal
 
@@ -77,14 +78,14 @@ anystring = some anychar <?> "any string"
 
 -- | Parses any string except for a given string.
 --
--- Probably this would be one of the most useful string parser for real-world use cases.
+-- Note that this implementation is not fast.
 --
 -- >>> t' (anystringBut "ID") "stop COVID-19"
 -- "stop COV"
 --
 anystringBut :: Stream s => String -> ParserS s String
 anystringBut s = go
-  where go = (assert (string s <|> eof') $> []) <|> liftA2 (:) anychar go
+  where go = (assert (string s) $> []) <|> liftA2 (:) anychar go
 {-# INLINE anystringBut #-}
 
 -- | Parses any single digit, the same as @__[0-9]__@
@@ -208,29 +209,13 @@ space = charParserOf isSpace <?> "space"
 -- | Checks if the `State` applied to the parser is reached to
 -- @__EOF__@ or /End-of-Stream/
 --
--- When reached to @__EOF__@, it returns @\\__NUL__@.
 --
--- It simply originated from @__(minBound::Char) == '\\NUL'__@.
 --
--- >>> t' (anychar <|> eof) ""
--- '\NUL'
---
-eof :: Stream s => ParserS s Char
-eof = label "end-of-stream" $ do
-  s <- assert $ many anychar
-  if null s
-    then return (minBound :: Char)
-    else fail $ unwords ["EOF not found. Found char:", show . head $ s]
+eof :: Stream s => ParserS s ()
+eof = label "end-of-stream" $ stream >>= \s -> if isEmpty s
+  then pure ()
+  else fail $ unwords ["No EOF. Found char:", show . fst . fromJust $ unCons s]
 {-# INLINE eof #-}
-
--- | The same as `eof`, but in the form of a string parser
---
--- >>> t' (anystring <|> eof') ""
--- "\NUL"
---
-eof' :: Stream s => ParserS s String
-eof' = count 1 eof
-{-# INLINE eof' #-}
 
 -- | Parses if a character on parsing is in the given char-list
 --
@@ -251,28 +236,6 @@ noneOf :: Stream s => [Char] -> ParserS s Char
 noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
   where label'noneof = unwords ["none of", show ((: []) <$> cs)]
 {-# INLINE noneOf #-}
-
--- | Picks up one of prepared char-parsers by a string name
---
--- >>> t' (some $ selectp "special") "@${select} parsers by strings"
--- "@${"
---
-selectp :: Stream s => String -> ParserS s Char
-selectp x = case x of
-  "alpha"       -> alpha
-  "alphaNum"    -> alphaNum
-  "letter"      -> letter
-  "digit"       -> digit
-  "hexadecimal" -> hexDigit
-  "lower"       -> lower
-  "upper"       -> upper
-  "space"       -> space
-  "eol"         -> eol
-  "special"     -> special
-  "anychar"     -> anychar
-  c | length c == 1 -> char . head $ c
-    | otherwise     -> fail $ unwords ["not found parser such as: ", c]
-{-# INLINE selectp #-}
 
 -- |
 isSpace :: Char -> Bool
@@ -308,3 +271,25 @@ isUpper c = c <= 'Z' && c >= 'A'
 isLower :: Char -> Bool
 isLower c = c <= 'z' && c >= 'a'
 {-# INLINE isLower #-}
+
+-- | Picks up one of prepared char-parsers by a string name
+--
+-- >>> t' (some $ selectp "special") "@${select} parsers by strings"
+-- "@${"
+--
+selectp :: Stream s => String -> ParserS s Char
+selectp x = case x of
+  "alpha"       -> alpha
+  "alphaNum"    -> alphaNum
+  "letter"      -> letter
+  "digit"       -> digit
+  "hexadecimal" -> hexDigit
+  "lower"       -> lower
+  "upper"       -> upper
+  "space"       -> space
+  "eol"         -> eol
+  "special"     -> special
+  "anychar"     -> anychar
+  c | length c == 1 -> char . head $ c
+    | otherwise     -> fail $ unwords ["not found parser such as: ", c]
+{-# INLINE selectp #-}

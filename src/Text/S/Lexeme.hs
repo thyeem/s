@@ -443,7 +443,7 @@ genCharLit mark =
 -- |
 readChar :: Stream s => ParserS s Char
 readChar = do
-  s <- assert $ count 5 (eof <|> anychar)
+  s <- assert $ count 5 anychar
   case readLitChar s of
     [(a, s')] -> a <$ skipCount (length s - length s') anychar
     _         -> fail "failed to read any char literal"

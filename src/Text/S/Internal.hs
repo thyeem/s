@@ -36,6 +36,8 @@ module Text.S.Internal
   , parse'
   , parseFromFile
   , charParserOf
+  , stream
+  , state
   , ahead
   , assert
   , CondExpr(..)
@@ -113,9 +115,10 @@ type LazyByteString = CL.ByteString
 -------------------------
 -- Stream
 -------------------------
-class Stream s where
+class Show s => Stream s where
   unCons :: s -> Maybe (Char, s)
   readStream :: FilePath -> IO s
+  isEmpty :: s -> Bool
 
 instance Stream ByteString where
   unCons = C.uncons
@@ -124,12 +127,18 @@ instance Stream ByteString where
   readStream = C.readFile
   {-# INLINE readStream #-}
 
+  isEmpty = C.null
+  {-# INLINE isEmpty #-}
+
 instance Stream LazyByteString where
   unCons = CL.uncons
   {-# INLINE unCons #-}
 
   readStream = CL.readFile
   {-# INLINE readStream #-}
+
+  isEmpty = CL.null
+  {-# INLINE isEmpty #-}
 
 instance Stream Text where
   unCons = T.uncons
@@ -138,6 +147,9 @@ instance Stream Text where
   readStream = TIO.readFile
   {-# INLINE readStream #-}
 
+  isEmpty = T.null
+  {-# INLINE isEmpty #-}
+
 instance Stream LazyText where
   unCons = TL.uncons
   {-# INLINE unCons #-}
@@ -145,12 +157,18 @@ instance Stream LazyText where
   readStream = TLIO.readFile
   {-# INLINE readStream #-}
 
+  isEmpty = TL.null
+  {-# INLINE isEmpty #-}
+
 instance Stream String where
   unCons = uncons
   {-# INLINE unCons #-}
 
   readStream = readFile
   {-# INLINE readStream #-}
+
+  isEmpty = null
+  {-# INLINE isEmpty #-}
 
 
 -------------------------
@@ -350,7 +368,7 @@ parse :: Stream s => ParserS s a -> State s -> Result a s
 parse parser state = runParser parser state Ok Error
 
 -- | The same as 'parse', but unwrap the @Result@ of the parse result
-parse' :: (Stream s, Show s) => ParserS s a -> State s -> a
+parse' :: Stream s => ParserS s a -> State s -> a
 parse' parser = unwrap . parse parser
 
 -- | The same as 'parse', but takes the stream from a given file
@@ -384,6 +402,14 @@ charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
         _    -> Source n ln (col + 1)
         where move col size = col + size - ((col - 1) `mod` size)
 {-# INLINE charParserOf #-}
+
+-- |
+state :: Stream s => ParserS s (State s)
+state = ParserS $ \state@State{} fOk _ -> fOk state state
+
+-- |
+stream :: Stream s => ParserS s s
+stream = ParserS $ \state@(State stream _ _) fOk _ -> fOk stream state
 
 -- |
 -- take'while :: Stream s => (a -> Bool) -> ParserS s [a]
@@ -426,11 +452,11 @@ t :: Stream s => ParserS s a -> s -> Result a s
 t parser s = parse parser (State s mempty [])
 
 -- | Tests parsers and its combinators with given strings and then pretty-print.
-tp :: (Stream s, Show s, Pretty a) => ParserS s a -> s -> IO ()
+tp :: (Stream s, Pretty a) => ParserS s a -> s -> IO ()
 tp parser = pp . t parser
 
 -- | The same as 't', but unwrap the @Result@ of the parse result
-t' :: (Stream s, Show s) => ParserS s a -> s -> a
+t' :: Stream s => ParserS s a -> s -> a
 t' parser = unwrap . t parser
 
 -- | The same as 't', but unwraps @Result a s@ to get the state @s@ only.
@@ -441,7 +467,7 @@ ts' parser = sOnly . t parser
   sOnly (Error state       ) = error' . show . stateMesssages $ state
 
 -- | Unwraps @Result a s@, then return the result @a@ only
-unwrap :: (Stream s, Show s) => Result a s -> a
+unwrap :: Stream s => Result a s -> a
 unwrap r = case r of
   Ok ok _     -> ok
   Error state -> error' . show $ state
@@ -536,3 +562,4 @@ instance (Show a, Show b, Show c, Show d) => Pretty (a,b,c,d) where
 
 deriving instance Pretty Bool
 deriving instance Pretty Char
+deriving instance Pretty ()
