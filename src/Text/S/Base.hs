@@ -78,8 +78,6 @@ anystring = some anychar <?> "any string"
 
 -- | Parses any string except for a given string.
 --
--- Note that this implementation is not fast.
---
 -- >>> t' (anystringBut "ID") "stop COVID-19"
 -- "stop COV"
 --

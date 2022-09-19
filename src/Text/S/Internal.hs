@@ -32,22 +32,21 @@ module Text.S.Internal
   , (<|>)
   , (<?>)
   , label
+  , stream
+  , state
+  , try
+  , ahead
+  , charParserOf
   , parse
   , parse'
   , parseFile
-  , charParserOf
-  , stream
-  , state
-  , ahead
-  , try
+  , t
+  , t'
+  , s'
+  , unwrap
   , CondExpr(..)
   , (?)
   , Pretty(..)
-  , t
-  , t'
-  , tp
-  , ts'
-  , unwrap
   ) where
 
 import           Control.Applicative            ( Alternative(..)
@@ -362,23 +361,50 @@ instance MonadFail (ParserS s) where
     ParserS $ \s@State{} _ fError -> fError $ addMessage (Normal msg) s
   {-# INLINE fail #-}
 
+-- |
+state :: Stream s => ParserS s (State s)
+state = ParserS $ \state@State{} fOk _ -> fOk state state
 
--- | Takes state and parser, then parses it.
-parse :: Stream s => ParserS s a -> State s -> Result a s
-parse parser state = runParser parser state Ok Error
+-- |
+stream :: Stream s => ParserS s s
+stream = ParserS $ \state@(State stream _ _) fOk _ -> fOk stream state
 
--- | The same as 'parse', but unwrap the @Result@ of the parse result
-parse' :: Stream s => ParserS s a -> State s -> a
-parse' parser = unwrap . parse parser
+-- |
+-- take'while :: Stream s => (a -> Bool) -> ParserS s [a]
+-- take'while p = ParserS $ \state@(State stream src msgs) fOk fError ->
+-- let cs = takeWhile p stream
+-- in  if null cs
+-- then fError
+-- $ addMessage (Unexpected $ unwords ["failed to match:"]) state
+-- else undefined
 
--- | The same as 'parse', but takes the stream from a given file
-parseFile :: Stream s => ParserS s a -> FilePath -> IO (Result a s)
-parseFile parser file = do
-  stream <- readStream file
-  let state = initState file stream
-  return . parse parser $ state
+-- | Tries to parse with @__parser__@ looking ahead without consuming any input.
+--
+-- In this case, not consuming any intut does not mean it does not fail at all.
+-- Attempts to parse with the given parser, throwing an error if parsing fails.
+--
+-- See also 'ahead'
+--
+try :: ParserS s a -> ParserS s a
+try parser = ParserS $ \state fOk fError ->
+  let fOk' x _ = fOk x state in runParser parser state fOk' fError
+{-# INLINE try #-}
 
--- | Gets a char parser that satisfies the given predicate @__p__@.
+-- | Tries to parse with @__parser__@ looking ahead without consuming any input.
+-- This returns if the next parsing is successful instead of the parse result.
+--
+-- If succeeds then returns @__True__@, otherwise returns @__False__@.
+--
+-- See also 'assert'
+--
+ahead :: ParserS s a -> ParserS s Bool
+ahead parser = ParserS $ \state fOk fError ->
+  let fOk' x _ = fOk True state
+      fError' _ = fOk False state
+  in  runParser parser state fOk' fError'
+{-# INLINE ahead #-}
+
+-- | Gets a char parser that satisfies the given predicate @(Char -> Bool)@.
 --
 -- This function describes every parsing work at a fundamental level.
 --
@@ -405,71 +431,40 @@ jump (Source n ln col) c = case c of
   where move col size = col + size - ((col - 1) `mod` size)
 {-# INLINE jump #-}
 
+-- | Takes a state and a parser, then parses it.
+parse :: Stream s => ParserS s a -> State s -> Result a s
+parse parser state = runParser parser state Ok Error
 
--- |
-state :: Stream s => ParserS s (State s)
-state = ParserS $ \state@State{} fOk _ -> fOk state state
+-- | The same as 'parse', but takes a stream instead of a state.
+parse' :: Stream s => ParserS s a -> s -> Result a s
+parse' parser s = parse parser (State s mempty mempty)
 
--- |
-stream :: Stream s => ParserS s s
-stream = ParserS $ \state@(State stream _ _) fOk _ -> fOk stream state
+-- | The same as 'parse', but takes the stream from a given file
+parseFile :: Stream s => ParserS s a -> FilePath -> IO (Result a s)
+parseFile parser file = do
+  stream <- readStream file
+  let state = initState file stream
+  return . parse parser $ state
 
--- |
--- take'while :: Stream s => (a -> Bool) -> ParserS s [a]
--- take'while p = ParserS $ \state@(State stream src msgs) fOk fError ->
--- let cs = takeWhile p stream
--- in  if null cs
--- then fError
--- $ addMessage (Unexpected $ unwords ["failed to match:"]) state
--- else undefined
+-- | Tests parsers and its combinators with given stream
+-- and then pretty-print the parse result.
+t :: (Stream s, Pretty a) => ParserS s a -> s -> IO ()
+t parser = pp . parse' parser
 
-
--- | Tries to parse with @__parser__@ looking ahead without consuming any input.
--- This returns if the next parsing is successful instead of the parse result.
---
--- If succeeds then returns @__True__@, otherwise returns @__False__@.
---
--- See also 'assert'
---
-ahead :: ParserS s a -> ParserS s Bool
-ahead parser = ParserS $ \state fOk fError ->
-  let fOk' x _ = fOk True state
-      fError' _ = fOk False state
-  in  runParser parser state fOk' fError'
-{-# INLINE ahead #-}
-
--- | Tries to parse with @__parser__@ looking ahead without consuming any input.
---
--- In this case, not consuming any intut does not mean it does not fail at all.
--- Attempts to parse with the given parser, throwing an error if parsing fails.
---
--- See also 'ahead'
---
-try :: ParserS s a -> ParserS s a
-try parser = ParserS $ \state fOk fError ->
-  let fOk' x _ = fOk x state in runParser parser state fOk' fError
-{-# INLINE try #-}
-
--- | Tests parsers and its combinators with given strings
-t :: Stream s => ParserS s a -> s -> Result a s
-t parser s = parse parser (State s mempty [])
-
--- | Tests parsers and its combinators with given strings and then pretty-print.
-tp :: (Stream s, Pretty a) => ParserS s a -> s -> IO ()
-tp parser = pp . t parser
-
--- | The same as 't', but unwrap the @Result@ of the parse result
+-- | The same as 't' but returns the parse result, 'Ok', or 'Error'
+-- instead of pretty-printing it.
 t' :: Stream s => ParserS s a -> s -> a
-t' parser = unwrap . t parser
+t' parser = unwrap . parse' parser
 
--- | The same as 't', but unwraps @Result a s@ to get the state @s@ only.
-ts' :: Stream s => ParserS s a -> s -> s
-ts' parser = sOnly . t parser
+-- | The same as 't' but returns 'Stream' @s@ only
+-- instead of pretty-printing it.
+s' :: Stream s => ParserS s a -> s -> s
+s' parser = sOnly . parse' parser
  where
   sOnly (Ok _ (State s _ _)) = s
   sOnly (Error state       ) = error' . show . stateMesssages $ state
 
--- | Unwraps @Result a s@, then return the result @a@ only
+-- | Unwraps 'Result' @a s@, then gets 'Ok' @ok@ or 'Error' @err@.
 unwrap :: Stream s => Result a s -> a
 unwrap r = case r of
   Ok ok _     -> ok

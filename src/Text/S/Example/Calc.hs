@@ -83,7 +83,7 @@ repl parser = do
   if input == "q" then calc else eval' input >> repl parser
  where
   read' = putStrLn mempty >> putStr "calc> " >> hFlush stdout >> getLine
-  eval' input = case t parser input of
+  eval' input = case parse' parser input of
     Ok ok s | null . stateStream $ s -> pp ok
             | otherwise              -> pp s
     Error s -> pp s

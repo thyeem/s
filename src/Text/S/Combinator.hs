@@ -238,10 +238,10 @@ someTill' end p = liftA2 f p (manyTill' end p) where f a b = first (a :) b
 -- | Tries to parse with parser @__p__@.
 -- If succeeds, then consume the result and throws it away. Otherwise ignore it.
 --
--- >>> ts' (skipOptional special) "$PARSER_COMBINATOR"
+-- >>> s' (skipOptional special) "$PARSER_COMBINATOR"
 -- "PARSER_COMBINATOR"
 --
--- >>> ts' (skipOptional letter) "$PARSER_COMBINATOR"
+-- >>> s' (skipOptional letter) "$PARSER_COMBINATOR"
 -- "$PARSER_COMBINATOR"
 --
 skipOptional :: MonadPlus m => m a -> m ()
@@ -251,10 +251,10 @@ skipOptional p = void p <|> pure ()
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@,
 -- then discards the result.
 --
--- >>> ts' (skipMany (anycharBut '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> s' (skipMany (anycharBut '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "#-G-Ab-A-Bb-B"
 --
--- >>> ts' (skipMany digit) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> s' (skipMany digit) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 --
 skipMany :: MonadPlus m => m a -> m ()
@@ -264,7 +264,7 @@ skipMany = void . many
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
 -- then discards the result.
 --
--- >>> ts' (skipSome (letter <|> char '-')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> s' (skipSome (letter <|> char '-')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "#-G-Ab-A-Bb-B"
 --
 skipSome :: MonadPlus m => m a -> m ()
@@ -278,7 +278,7 @@ skipSome p = p *> skipMany p
 --
 -- See also 'count'
 --
--- >>> ts' (skipCount 5 (digit *> char ':')) "1:2:3:4:5:6:7:8"
+-- >>> s' (skipCount 5 (digit *> char ':')) "1:2:3:4:5:6:7:8"
 -- "6:7:8"
 --
 skipCount :: MonadPlus m => Int -> m a -> m ()
@@ -300,10 +300,10 @@ skipCount = replicateM_
 -- >>> t' (skipManyTill stopCodon upper) geneticSequence
 -- "UAA"
 --
--- >>> ts' (skipManyTill stopCodon upper) geneticSequence
+-- >>> s' (skipManyTill stopCodon upper) geneticSequence
 -- "CUCGUA"
 --
--- >>> ts' (skipManyTill stopCodon upper) "UAACUCGUA"
+-- >>> s' (skipManyTill stopCodon upper) "UAACUCGUA"
 -- "CUCGUA"
 --
 skipManyTill :: MonadPlus m => m end -> m a -> m end
@@ -321,7 +321,7 @@ skipManyTill end p = go where go = end <|> (p *> go)
 -- >>> t' (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- '#'
 --
--- >>> ts' (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> s' (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "-G-Ab-A-Bb-B"
 --
 skipSomeTill :: MonadPlus m => m end -> m a -> m end

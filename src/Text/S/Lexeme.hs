@@ -74,7 +74,7 @@ lexeme' p def = p <* skip' def
 -- | Skips unnecesary whitespaces and comments
 --
 -- >>> input = "# line-comment\n\r\n '''inner block''' should-be-here"
--- >>> ts' (skip' defDef) input
+-- >>> s' (skip' defDef) input
 -- "should-be-here"
 --
 skip' :: (Stream s) => ParserS' s ()
