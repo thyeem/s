@@ -1,3 +1,5 @@
+{-# LANGUAGE TupleSections #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      : Text.S.Combinator
@@ -29,6 +31,8 @@ import           Data.List                      ( foldl' )
 import           Text.S.Internal
 
 
+-- $setup
+-- >>> import Text.S
 
 -------------------------
 -- parser combinators
@@ -107,10 +111,10 @@ between bra ket p = bra *> p <* ket
 --
 -- See also 'endBy'.
 --
--- >>> t' (sepBy (symbol ",") decimals) "1,2,3,4,5"
+-- >>> t' (sepBy (symbol ",") decimal) "1,2,3,4,5"
 -- [1,2,3,4,5]
 --
--- >>> t' (sepBy (symbol ".") decimals) "1,2,3,4,5"
+-- >>> t' (sepBy (symbol ".") decimal) "1,2,3,4,5"
 -- [1]
 --
 sepBy :: MonadPlus m => m sep -> m a -> m [a]

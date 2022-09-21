@@ -1,19 +1,10 @@
+module Main where
+
 import           Test.DocTest
 
 main :: IO ()
 main = doctest
   [ "-isrc"
-  , "-fobject-code"
-  , "-XDeriveGeneric"
-  , "-XDeriveAnyClass"
-  , "-XFlexibleInstances"
-  , "-XLambdaCase"
-  , "-XOverloadedStrings"
-  , "-XRankNTypes"
-  , "-XRecordWildCards"
-  , "-XStandaloneDeriving"
-  , "-XTupleSections"
-  , "-XTypeSynonymInstances"
   , "src/Text/S.hs"
   , "src/Text/S/Base.hs"
   , "src/Text/S/Internal.hs"

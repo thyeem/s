@@ -1,3 +1,7 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
 module Text.S.Example.CSV where
 
 import           Data.Vector                    ( Vector )
@@ -25,11 +29,10 @@ type CSV = [Record]
 -- | Record is represented as Vector of string field elements
 type Record = Vector String
 
+-- $setup
+-- >>> import Text.S
 
 -- | Parse multiple CSV records separated by end-of-line or @EOL@
---
--- >>> import Text.S
--- >>> import Text.S.Example.CSV
 --
 -- >>> r1 = "\"Letter\",\"Frequency\",\"Percentage\""
 -- >>> r2 = "\"A\",24373121,8.1"

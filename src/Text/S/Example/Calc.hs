@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Text.S.Example.Calc where
 
 import           System.IO
