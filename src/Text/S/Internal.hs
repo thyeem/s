@@ -213,7 +213,7 @@ data Message = Unexpected !String
 type Messages = [Message]
 
 message :: Message -> String
-message msg = case msg of
+message = \case
   Unexpected msg -> msg
   Expected   msg -> msg
   Normal     msg -> msg
@@ -424,7 +424,7 @@ charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
 
 -- | Update the cursor location in the Source by character
 jump :: Source -> Char -> Source
-jump (Source n ln col) c = case c of
+jump (Source n ln col) = \case
   '\n' -> Source n (ln + 1) 1
   '\t' -> Source n ln (move col 8)
   _    -> Source n ln (col + 1)
@@ -466,7 +466,7 @@ s' parser = sOnly . parse' parser
 
 -- | Unwraps 'Result' @a s@, then gets 'Ok' @ok@ or 'Error' @err@.
 unwrap :: Stream s => Result a s -> a
-unwrap r = case r of
+unwrap = \case
   Ok ok _     -> ok
   Error state -> error' . show $ state
 
@@ -528,7 +528,7 @@ instance Show s => Pretty (State s) where
 
 
 instance (Show s, Pretty a) => Pretty (Result a s) where
-  pretty r = case r of
+  pretty = \case
     Ok ok s -> TL.unlines [pretty ok <> "\n", pretty s]
     Error s -> TL.unlines ["Error\n", pretty s]
 

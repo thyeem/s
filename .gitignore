@@ -20,13 +20,12 @@ Thumbs.db
 # haskell
 .stack-work/
 dist-newstyle/
+dist/
 *.hi
 *.o
+cabal.project.local
+stack.yaml
 stack.yaml.lock
-
-# auto-generated *.cabal
-s.cabal
-
 
 # python
 *.ipynb_checkpoints

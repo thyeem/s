@@ -7,6 +7,7 @@ main = doctest
   , "-XDeriveGeneric"
   , "-XDeriveAnyClass"
   , "-XFlexibleInstances"
+  , "-XLambdaCase"
   , "-XOverloadedStrings"
   , "-XRankNTypes"
   , "-XRecordWildCards"

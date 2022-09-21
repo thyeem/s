@@ -156,8 +156,7 @@ upper = charParserOf isUpper <?> "uppercase-letter"
 -- '#'
 --
 special :: Stream s => ParserS s Char
-special = charParserOf isSpecial <?> "special-character"
-  where isSpecial c = or $ ($ c) <$> [isPunctuation, isSymbol]
+special = charParserOf isPunctuation <|> charParserOf isSymbol <?> "special-character"
 {-# INLINE special #-}
 
 -- | Parses tab character, \t
@@ -277,7 +276,7 @@ isLower c = c <= 'z' && c >= 'a'
 -- "@${"
 --
 selectp :: Stream s => String -> ParserS s Char
-selectp x = case x of
+selectp = \case
   "alpha"       -> alpha
   "alphaNum"    -> alphaNum
   "letter"      -> letter

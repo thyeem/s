@@ -1,0 +1,218 @@
+cabal-version:      3.6
+name:               s
+version:            0.1.0.0
+
+synopsis:           parser combinators
+description:        The parser-S is a generalized parser combinator easy-to-read.
+                    It is designed to focused on usability, scalability and non-verbosity.
+                    .
+category:           Parsing
+author:             Francis Lim
+maintainer:         thyeem@gmail.com
+license:            MIT
+license-file:       LICENSE
+build-type:         Simple
+
+extra-source-files: README.md
+
+library
+    hs-source-dirs:
+        src
+    exposed-modules:
+        Text.S
+        Text.S.Base
+        Text.S.Combinator
+        Text.S.Expr
+        Text.S.Internal
+        Text.S.Language
+        Text.S.Lexeme
+        Text.S.Example.CSV
+        Text.S.Example.Calc
+        Text.S.Example.JSON
+        Text.S.Example.Markdown
+        Text.S.Example.Sexp
+    other-modules:
+    build-depends:
+        base
+      , bytestring
+      , deepseq
+      , containers
+      , parallel
+      , pretty-simple
+      , text
+      , random
+      , raw-strings-qq
+      , vector
+    default-extensions:
+        StrictData
+        BangPatterns
+        DataKinds
+        DeriveAnyClass
+        DeriveGeneric
+        DerivingStrategies
+        ExplicitForAll
+        FlexibleContexts
+        FlexibleInstances
+        GeneralizedNewtypeDeriving
+        LambdaCase
+        MultiParamTypeClasses
+        OverloadedStrings
+        QuasiQuotes
+        RankNTypes
+        RecordWildCards
+        ScopedTypeVariables
+        StandaloneDeriving
+        TemplateHaskell
+        Trustworthy
+        TupleSections
+        TypeOperators
+        TypeSynonymInstances
+    default-language: Haskell2010
+
+
+executable s
+    main-is:
+        Main.hs
+    hs-source-dirs:
+        app
+    default-extensions:
+        StrictData
+        BangPatterns
+        DataKinds
+        DeriveAnyClass
+        DeriveGeneric
+        DerivingStrategies
+        ExplicitForAll
+        FlexibleContexts
+        FlexibleInstances
+        GeneralizedNewtypeDeriving
+        LambdaCase
+        MultiParamTypeClasses
+        OverloadedStrings
+        QuasiQuotes
+        RankNTypes
+        RecordWildCards
+        ScopedTypeVariables
+        StandaloneDeriving
+        TemplateHaskell
+        Trustworthy
+        TupleSections
+        TypeOperators
+        TypeSynonymInstances
+    ghc-options: -O2
+        -- -threaded -rtsopts -with-rtsopts=-N -dynamic
+        -- -feager-blackholing  (useful for parallelism)
+    build-depends:
+        base
+      , bytestring
+      , deepseq
+      , containers
+      , parallel
+      , pretty-simple
+      , text
+      , random
+      , raw-strings-qq
+      , vector
+      , s
+    default-language: Haskell2010
+
+
+test-suite s-test
+  type:
+      exitcode-stdio-1.0
+  main-is:
+      Spec.hs
+  hs-source-dirs:
+      test
+  default-extensions:
+      StrictData
+      BangPatterns
+      DataKinds
+      DeriveAnyClass
+      DeriveGeneric
+      DerivingStrategies
+      ExplicitForAll
+      FlexibleContexts
+      FlexibleInstances
+      GeneralizedNewtypeDeriving
+      LambdaCase
+      MultiParamTypeClasses
+      OverloadedStrings
+      QuasiQuotes
+      RankNTypes
+      RecordWildCards
+      ScopedTypeVariables
+      StandaloneDeriving
+      TemplateHaskell
+      Trustworthy
+      TupleSections
+      TypeOperators
+      TypeSynonymInstances
+  -- ghc-options:
+      -- -O2 -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+        base
+      , bytestring
+      , deepseq
+      , doctest
+      , containers
+      , parallel
+      , pretty-simple
+      , text
+      , random
+      , raw-strings-qq
+      , vector
+  default-language: Haskell2010
+
+benchmark bench
+  type:
+      exitcode-stdio-1.0
+  main-is:
+      Benchmarks.hs
+  hs-source-dirs:
+      bench
+  default-extensions:
+      StrictData
+      BangPatterns
+      DataKinds
+      DeriveAnyClass
+      DeriveGeneric
+      DerivingStrategies
+      ExplicitForAll
+      FlexibleContexts
+      FlexibleInstances
+      GeneralizedNewtypeDeriving
+      MultiParamTypeClasses
+      OverloadedStrings
+      QuasiQuotes
+      RankNTypes
+      RecordWildCards
+      ScopedTypeVariables
+      StandaloneDeriving
+      TemplateHaskell
+      Trustworthy
+      TupleSections
+      TypeOperators
+      TypeSynonymInstances
+  -- ghc-options:
+      -- -O2 -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      attoparsec
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , criterion
+    , deepseq
+    , flatparse
+    , megaparsec
+    , parallel
+    , parsec
+    , parser-combinators
+    , pretty-simple
+    , random
+    , raw-strings-qq
+    , s
+    , split
+    , text
+    , vector
+  default-language: Haskell2010

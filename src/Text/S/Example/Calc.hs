@@ -61,8 +61,7 @@ expr'postfix = expr atom table
 -- | Expr calculator selector
 calc :: IO ()
 calc = do
-  parser <- read'
-  case parser of
+  read' >>= \case
     "infixl"  -> repl expr'infixl
     "infixr"  -> repl expr'infixr
     "prefix"  -> repl expr'prefix
