@@ -248,30 +248,30 @@ squares' p = lexeme' (squares p)
 -- | Parses natural numbers or decimal digits (base-10)
 -- This includes numbers with leading zeros
 --
--- >>> t' decimals "00123456789"
+-- >>> t' decimal "00123456789"
 -- 123456789
 --
-decimals :: (Stream s, Num a) => ParserS s a
-decimals = numbers 10 digits
-{-# INLINE decimals #-}
+decimal :: (Stream s, Num a) => ParserS s a
+decimal = num 10 digits
+{-# INLINE decimal #-}
 
 -- | The t'ParserS'' form of 'decimals'
-decimals' :: (Stream s, Num a) => ParserS' s a
-decimals' = lexeme' decimals
-{-# INLINE decimals' #-}
+decimal' :: (Stream s, Num a) => ParserS' s a
+decimal' = lexeme' decimal
+{-# INLINE decimal' #-}
 
 -- | Parses hexadecimal digits (base-16)
 --
--- >>> t' hexadecimals "0xCOVID-19"
+-- >>> t' hexadecimal "0xCOVID-19"
 -- 12
 --
-hexadecimals :: (Stream s, Num a) => ParserS s a
-hexadecimals = skipOptional (string "0x") *> numbers 16 (some hexDigit)
-{-# INLINE hexadecimals #-}
+hexadecimal :: (Stream s, Num a) => ParserS s a
+hexadecimal = skipOptional (string "0x") *> num 16 (some hexDigit)
+{-# INLINE hexadecimal #-}
 
 -- | The t'ParserS'' form of 'hexadecimals'
 hexadecimals' :: (Stream s, Num a) => ParserS' s a
-hexadecimals' = lexeme' hexadecimals
+hexadecimals' = lexeme' hexadecimal
 {-# INLINE hexadecimals' #-}
 
 -- | Parses numbers with leading-zeros
@@ -280,7 +280,7 @@ hexadecimals' = lexeme' hexadecimals
 -- 2022
 --
 zeros :: (Stream s, Num a) => ParserS s a
-zeros = char '0' *> decimals
+zeros = char '0' *> decimal
 {-# INLINE zeros #-}
 
 -- | The t'ParserS'' form of 'zeros'
@@ -294,7 +294,7 @@ zeros' = lexeme' zeros
 -- 27182818284
 --
 natural :: Stream s => ParserS s Integer
-natural = try digit *> try (anycharBut '0') *> decimals
+natural = try digit *> try (anycharBut '0') *> decimal
 {-# INLINE natural #-}
 
 -- | The t'ParserS'' form of 'natural'
@@ -326,31 +326,36 @@ sign' = lexeme' sign
 -- -273
 --
 integer :: Stream s => ParserS s Integer
-integer = sign <*> decimals
+integer = sign <*> decimal
 {-# INLINE integer #-}
 
 -- | The t'ParserS'' form of 'integer'
 integer' :: Stream s => ParserS' s Integer
-integer' def = sign <*> decimals' def
+integer' def = sign <*> decimal' def
 {-# INLINE integer' #-}
 
 -- | Convert a string parser into integer parser by evaluating the parsed with base
-numbers :: (Stream s, Num a) => a -> ParserS s String -> ParserS s a
-numbers base parser = foldl' f 0 <$> parser
+num :: (Stream s, Num a) => a -> ParserS s String -> ParserS s a
+num base parser = foldl' f 0 <$> parser
   where f x d = base * x + fromIntegral (digitToInt d)
-{-# INLINE numbers #-}
+{-# INLINE num #-}
 
--- | Parses general form of floating numbers (including scientific form)
+-- | Parses general form of number (including float and integer)
+number :: Stream s => ParserS s Double
+number = float <|> fromIntegral <$> integer
+{-# INLINE number #-}
+
+-- | Parses floating numbers (including scientific form)
 --
 -- >>> t' float  "3.1415926535e-8"
 -- 3.1415926535e-8
 --
 float :: Stream s => ParserS s Double
-float = read <$> (scientific <|> decimalPoint)
+float = read <$> scientific
  where
-  scientific   = (<>) <$> decimalPoint <*> exponent'
-  decimalPoint = show <$> (floating <|> fromIntegral <$> integer)
-  exponent'    = (:) <$> oneOf "eE" <*> (show <$> integer)
+  scientific = (<>) <$> base <*> exponent'
+  base       = show <$> (floating <|> fromIntegral <$> integer)
+  exponent'  = (:) <$> oneOf "eE" <*> (show <$> integer)
 {-# INLINE float #-}
 
 -- | The t'ParserS'' form of 'float'
@@ -358,8 +363,8 @@ float' :: Stream s => ParserS' s Double
 float' = lexeme' float
 {-# INLINE float' #-}
 
--- | Parses format of @'decimals'.'decimals'@
--- (decimals + decimal point + decimal fractions)
+-- | Parses floating number in format of @'decimals'.'decimals'@
+-- (decimal + decimal-point(.) + decimal fractions)
 --
 -- >>> t' floating  "3.1415926535"
 -- 3.1415926535
@@ -368,7 +373,7 @@ floating :: Stream s => ParserS s Double
 floating = read <$> foldl1' (liftA2 (<>)) [sign, digits, string ".", digits]
  where
   sign   = option "" (string "-" <|> (string "+" $> ""))
-  digits = show <$> decimals
+  digits = show <$> decimal
 {-# INLINE floating #-}
 
 -- | The t'ParserS'' form of 'floating'

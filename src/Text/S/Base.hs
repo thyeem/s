@@ -156,7 +156,8 @@ upper = charParserOf isUpper <?> "uppercase-letter"
 -- '#'
 --
 special :: Stream s => ParserS s Char
-special = charParserOf isPunctuation <|> charParserOf isSymbol <?> "special-character"
+special =
+  charParserOf isPunctuation <|> charParserOf isSymbol <?> "special-character"
 {-# INLINE special #-}
 
 -- | Parses tab character, \t

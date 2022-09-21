@@ -8,7 +8,7 @@ import           Text.S
 expr'infixl :: Stream s => ParserS s Double
 expr'infixl = expr atom table
  where
-  atom = strip float <|> parens expr'infixl
+  atom = strip number <|> parens expr'infixl
   table =
     [ [prefixU "-" negate, prefixU "+" id]
     , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
@@ -21,7 +21,7 @@ expr'infixl = expr atom table
 expr'infixr :: Stream s => ParserS s Double
 expr'infixr = expr atom table
  where
-  atom = strip float <|> parens expr'infixr
+  atom = strip number <|> parens expr'infixr
   table =
     [ [prefixU "-" negate, prefixU "+" id]
     , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
@@ -34,7 +34,7 @@ expr'infixr = expr atom table
 expr'prefix :: Stream s => ParserS s Double
 expr'prefix = expr atom table
  where
-  atom = strip float
+  atom = strip number
   table =
     [ [ prefixB "^" (**)
       , prefixB "*" (*)
@@ -48,7 +48,7 @@ expr'prefix = expr atom table
 expr'postfix :: Stream s => ParserS s Double
 expr'postfix = expr atom table
  where
-  atom = strip float
+  atom = strip number
   table =
     [ [ postfixB "^" (**)
       , postfixB "*" (*)

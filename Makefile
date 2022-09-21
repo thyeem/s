@@ -1,26 +1,24 @@
 bin := s
-path := $(shell stack path --local-install-root)/bin
+cabal-path := $(shell cabal list-bin $(bin))
 
 .PHONY: build clean test bench doc opendoc
 build:
-	@echo $(path)
-	stack build
-	cp -f $(path)/$(bin) app/
-	/usr/bin/strip app/$(bin)
+	cabal build
+	cp -f $(cabal-path) app/
+# -/usr/bin/strip app/$(bin)
 
 clean:
 	git clean -xdf
-	stack clean --full
-	-/bin/rm -f $(bin)
+	cabal clean -v3
 
 test:
-	stack test
+	cabal build --enable-tests && cabal exec -- cabal test
 
 bench:
-	stack bench
+	cabal build --enable-benchmarks && cabal bench
 
 doc:
-	stack haddock
+	cabal haddock
 
 opendoc:
-	open $(shell stack path --local-doc-root)/index.html
+	open $(shell /usr/bin/find dist-newstyle -name "index.html")

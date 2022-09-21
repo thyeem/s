@@ -64,7 +64,7 @@ parseBool = B <$> choice [true, false]
 -- N (1 % 4)
 --
 parseNumber :: Stream s => ParserS s JSON
-parseNumber = N . toRational <$> strip float
+parseNumber = N . toRational <$> strip number
 {-# INLINE parseNumber #-}
 
 -- | Parse JSON @__string__@ like: @"json-parser",..@

@@ -21,6 +21,7 @@ Thumbs.db
 .stack-work/
 dist-newstyle/
 dist/
+newdist/
 *.hi
 *.o
 cabal.project.local
