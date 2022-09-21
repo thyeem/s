@@ -1,24 +1,27 @@
 bin := s
-cabal-path := $(shell cabal list-bin $(bin))
 
-.PHONY: build clean test bench doc opendoc
+.PHONY: build
 build:
 	cabal build
-	cp -f $(cabal-path) app/
-# -/usr/bin/strip app/$(bin)
+	cp -f $(shell cabal list-bin $(bin)) app
 
+.PHONY: clean
 clean:
 	git clean -xdf
-	cabal clean -v3
+	cabal clean
 
+.PHONY: test
 test:
 	cabal build --enable-tests && cabal exec -- cabal test
 
+.PHONY: bench
 bench:
 	cabal build --enable-benchmarks && cabal bench
 
+.PHONY: doc
 doc:
-	cabal haddock
+	cabal haddock --haddock-hyperlink-source
 
+.PHONY: opendoc
 opendoc:
 	open $(shell /usr/bin/find dist-newstyle -name "index.html")

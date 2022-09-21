@@ -342,7 +342,7 @@ num base parser = foldl' f 0 <$> parser
 
 -- | Parses general form of number (including float and integer)
 number :: Stream s => ParserS s Double
-number = float <|> fromIntegral <$> integer
+number = float <|> (fromIntegral <$> integer)
 {-# INLINE number #-}
 
 -- | Parses floating numbers (including scientific form)
@@ -351,11 +351,11 @@ number = float <|> fromIntegral <$> integer
 -- 3.1415926535e-8
 --
 float :: Stream s => ParserS s Double
-float = read <$> scientific
+float = scientific <|> floating
  where
-  scientific = (<>) <$> base <*> exponent'
+  scientific = read <$> liftA2 (<>) base exponent'
   base       = show <$> (floating <|> fromIntegral <$> integer)
-  exponent'  = (:) <$> oneOf "eE" <*> (show <$> integer)
+  exponent'  = liftA2 (:) (oneOf "eE") (show <$> integer)
 {-# INLINE float #-}
 
 -- | The t'ParserS'' form of 'float'
@@ -370,10 +370,9 @@ float' = lexeme' float
 -- 3.1415926535
 --
 floating :: Stream s => ParserS s Double
-floating = read <$> foldl1' (liftA2 (<>)) [sign, digits, string ".", digits]
- where
-  sign   = option "" (string "-" <|> (string "+" $> ""))
-  digits = show <$> decimal
+floating = read
+  <$> foldl1' (liftA2 (<>)) [sign, show <$> decimal, string ".", digits]
+  where sign = option mempty (string "-" <|> (string "+" $> mempty))
 {-# INLINE floating #-}
 
 -- | The t'ParserS'' form of 'floating'
