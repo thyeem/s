@@ -10,7 +10,6 @@
 -- |
 -- Module      : Text.S.Internal
 -- License     : MIT
---
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
 --
@@ -49,9 +48,10 @@ module Text.S.Internal
   , parse'
   , parseFile
   , t
-  , t'
-  , s'
+  , tt
+  , ts
   , unwrap
+  , error'
   , CondExpr(..)
   , (?)
   , Pretty(..)
@@ -461,13 +461,13 @@ t parser = pp . parse' parser
 
 -- | The same as 't' but returns the parse result, 'Ok', or 'Error'
 -- instead of pretty-printing it.
-t' :: Stream s => ParserS s a -> s -> a
-t' parser = unwrap . parse' parser
+tt :: Stream s => ParserS s a -> s -> a
+tt parser = unwrap . parse' parser
 
 -- | The same as 't' but returns 'Stream' @s@ only
 -- instead of pretty-printing it.
-s' :: Stream s => ParserS s a -> s -> s
-s' parser = sOnly . parse' parser
+ts :: Stream s => ParserS s a -> s -> s
+ts parser = sOnly . parse' parser
  where
   sOnly (Ok _ (State s _ _)) = s
   sOnly (Error state       ) = error' . show . stateMesssages $ state

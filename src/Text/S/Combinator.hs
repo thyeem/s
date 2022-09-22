@@ -49,7 +49,7 @@ many p = some p <|> pure []
 
 -- | Tries to parse with parsers in the list untill one of them succeeds.
 --
--- >>> t' (choice [letter, special, digit]) "$parser"
+-- >>> tt (choice [letter, special, digit]) "$parser"
 -- '$'
 --
 choice :: MonadPlus m => [m a] -> m a
@@ -60,7 +60,7 @@ choice = foldl' (<|>) mzero
 --
 -- If failed, it returns @__x__@. This is useful to set default value of parser @__p__@.
 --
--- >>> t' (option "Mars" spaces) "nuclear-bomb-explosion -> Earth"
+-- >>> tt (option "Mars" spaces) "nuclear-bomb-explosion -> Earth"
 -- "Mars"
 --
 option :: MonadPlus m => a -> m a -> m a
@@ -71,7 +71,7 @@ option x p = p <|> return x
 --
 -- See also 'skipCount'
 --
--- >>> t' (count 6 letter) "Parser-Combinator"
+-- >>> tt (count 6 letter) "Parser-Combinator"
 -- "Parser"
 --
 count :: MonadPlus m => Int -> m a -> m [a]
@@ -81,10 +81,10 @@ count = replicateM
 -- | Tries to parse with parser @__p__@. If failed, it returns 'Nothing'.
 -- Otherwise, it returns the result of parser @__p__@ wrapped by 'Just'.
 --
--- >>> t' (optionMaybe digits) "COVID-19"
+-- >>> tt (optionMaybe digits) "COVID-19"
 -- Nothing
 --
--- >>> t' (optionMaybe letters) "COVID-19"
+-- >>> tt (optionMaybe letters) "COVID-19"
 -- Just "COVID"
 --
 optionMaybe :: MonadPlus m => m a -> m (Maybe a)
@@ -97,7 +97,7 @@ optionMaybe p = option Nothing (Just <$> p)
 -- This consumes the result of parser @__bra__@ and @__ket__@ from input stream.
 --
 -- >>> p = some $ digit <|> char ','
--- >>> t' (between (symbol "[") (symbol "]") p) "[1,2,3,4]"
+-- >>> tt (between (symbol "[") (symbol "]") p) "[1,2,3,4]"
 -- "1,2,3,4"
 --
 between :: MonadPlus m => m bra -> m ket -> m a -> m a
@@ -111,10 +111,10 @@ between bra ket p = bra *> p <* ket
 --
 -- See also 'endBy'.
 --
--- >>> t' (sepBy (symbol ",") decimal) "1,2,3,4,5"
+-- >>> tt (sepBy (symbol ",") decimal) "1,2,3,4,5"
 -- [1,2,3,4,5]
 --
--- >>> t' (sepBy (symbol ".") decimal) "1,2,3,4,5"
+-- >>> tt (sepBy (symbol ".") decimal) "1,2,3,4,5"
 -- [1]
 --
 sepBy :: MonadPlus m => m sep -> m a -> m [a]
@@ -128,7 +128,7 @@ sepBy sep p = sepBy1 sep p <|> pure []
 --
 -- See also 'endBy1'
 --
--- >>> t' (sepBy1 (symbol "a") (anystringBut "a")) "parser combinator"
+-- >>> tt (sepBy1 (symbol "a") (anystringBut "a")) "parser combinator"
 -- ["p","rser combin","tor"]
 --
 sepBy1 :: MonadPlus m => m sep -> m a -> m [a]
@@ -143,10 +143,10 @@ sepBy1 sep p = liftA2 (:) p (many (sep *> p))
 -- See also 'sepBy'.
 --
 -- >>> p = some $ alphaNum <|> char '=' <|> space
--- >>> t' (endBy (char ';') p) "int a=1;int b=2;"
+-- >>> tt (endBy (char ';') p) "int a=1;int b=2;"
 -- ["int a=1","int b=2"]
 --
--- >>> t' (endBy (char ';') digits) "10:20:30:"
+-- >>> tt (endBy (char ';') digits) "10:20:30:"
 -- []
 --
 endBy :: MonadPlus m => m end -> m a -> m [a]
@@ -160,7 +160,7 @@ endBy end p = many (p <* end)
 --
 -- See also 'sepBy1'
 --
--- >>> t' (endBy1 (symbol "a") (anystringBut "a")) "parser combinator"
+-- >>> tt (endBy1 (symbol "a") (anystringBut "a")) "parser combinator"
 -- ["p","rser combin"]
 --
 endBy1 :: MonadPlus m => m end -> m a -> m [a]
@@ -175,11 +175,11 @@ endBy1 end p = some (p <* end)
 -- See also 'manyTill''. It keeps the result of parser @__end__@.
 --
 -- >>> p = string "{-" *> manyTill (string "-}") anychar
--- >>> t' p "{- haskell block comment here -}"
+-- >>> tt p "{- haskell block comment here -}"
 -- " haskell block comment here "
 --
 -- >>> q = string "{-" *> manyTill (string "-}") special
--- >>> t' q "{--}"
+-- >>> tt q "{--}"
 -- ""
 --
 manyTill :: MonadPlus m => m end -> m a -> m [a]
@@ -192,7 +192,7 @@ manyTill end p = someTill end p <|> (end $> [])
 -- See also 'someTill''. It keeps the result of parser @__end__@.
 --
 -- >>> p = someTill (string ":") (letter <|> space)
--- >>> t' p "for x in xs: f(x)"
+-- >>> tt p "for x in xs: f(x)"
 -- "for x in xs"
 --
 someTill :: MonadPlus m => m end -> m a -> m [a]
@@ -210,10 +210,10 @@ someTill end p = liftA2 (:) p (manyTill end p)
 -- See also 'manyTill'
 --
 -- >>> p = alphaNum <|> space
--- >>> t' (manyTill' special p) "stop COVID-19"
+-- >>> tt (manyTill' special p) "stop COVID-19"
 -- ("stop COVID",'-')
 --
--- >>> t' (manyTill' letters digit) "stop COVID-19"
+-- >>> tt (manyTill' letters digit) "stop COVID-19"
 -- ("","stop")
 --
 manyTill' :: MonadPlus m => m end -> m a -> m ([a], end)
@@ -232,7 +232,7 @@ manyTill' end p = someTill' end p <|> (([], ) <$> end)
 --
 -- >>> stopCodon = symbol "UAA"
 -- >>> geneticSequence = "AUCUCGUCAUCUCGUUAACUCGUA"
--- >>> t' (someTill' stopCodon upper) geneticSequence
+-- >>> tt (someTill' stopCodon upper) geneticSequence
 -- ("AUCUCGUCAUCUCGU","UAA")
 --
 someTill' :: MonadPlus m => m end -> m a -> m ([a], end)
@@ -242,10 +242,10 @@ someTill' end p = liftA2 f p (manyTill' end p) where f a b = first (a :) b
 -- | Tries to parse with parser @__p__@.
 -- If succeeds, then consume the result and throws it away. Otherwise ignore it.
 --
--- >>> s' (skipOptional special) "$PARSER_COMBINATOR"
+-- >>> ts (skipOptional special) "$PARSER_COMBINATOR"
 -- "PARSER_COMBINATOR"
 --
--- >>> s' (skipOptional letter) "$PARSER_COMBINATOR"
+-- >>> ts (skipOptional letter) "$PARSER_COMBINATOR"
 -- "$PARSER_COMBINATOR"
 --
 skipOptional :: MonadPlus m => m a -> m ()
@@ -255,10 +255,10 @@ skipOptional p = void p <|> pure ()
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@,
 -- then discards the result.
 --
--- >>> s' (skipMany (anycharBut '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> ts (skipMany (anycharBut '#')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "#-G-Ab-A-Bb-B"
 --
--- >>> s' (skipMany digit) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> ts (skipMany digit) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 --
 skipMany :: MonadPlus m => m a -> m ()
@@ -268,7 +268,7 @@ skipMany = void . many
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
 -- then discards the result.
 --
--- >>> s' (skipSome (letter <|> char '-')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> ts (skipSome (letter <|> char '-')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "#-G-Ab-A-Bb-B"
 --
 skipSome :: MonadPlus m => m a -> m ()
@@ -282,7 +282,7 @@ skipSome p = p *> skipMany p
 --
 -- See also 'count'
 --
--- >>> s' (skipCount 5 (digit *> char ':')) "1:2:3:4:5:6:7:8"
+-- >>> ts (skipCount 5 (digit *> char ':')) "1:2:3:4:5:6:7:8"
 -- "6:7:8"
 --
 skipCount :: MonadPlus m => Int -> m a -> m ()
@@ -301,13 +301,13 @@ skipCount = replicateM_
 --
 -- >>> stopCodon = symbol "UAA"
 -- >>> geneticSequence = "AUCUCGUCAUCUCGUUAACUCGUA"
--- >>> t' (skipManyTill stopCodon upper) geneticSequence
+-- >>> tt (skipManyTill stopCodon upper) geneticSequence
 -- "UAA"
 --
--- >>> s' (skipManyTill stopCodon upper) geneticSequence
+-- >>> ts (skipManyTill stopCodon upper) geneticSequence
 -- "CUCGUA"
 --
--- >>> s' (skipManyTill stopCodon upper) "UAACUCGUA"
+-- >>> ts (skipManyTill stopCodon upper) "UAACUCGUA"
 -- "CUCGUA"
 --
 skipManyTill :: MonadPlus m => m end -> m a -> m end
@@ -322,10 +322,10 @@ skipManyTill end p = go where go = end <|> (p *> go)
 --
 -- See also 'skipManyTill'.
 --
--- >>> t' (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> tt (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- '#'
 --
--- >>> s' (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> ts (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "-G-Ab-A-Bb-B"
 --
 skipSomeTill :: MonadPlus m => m end -> m a -> m end
@@ -342,14 +342,14 @@ skipSomeTill end p = p *> skipManyTill end p
 -- See also 'chainl' and 'chainr1'.
 --
 -- >>> op = symbol "^" $> (^)
--- >>> t' (chainl1 op (strip integer)) "2 ^ 3 ^ 4"
+-- >>> tt (chainl1 op (strip integer)) "2 ^ 3 ^ 4"
 -- 4096
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- 'Text.S.Expr.powOp''.
 --
 -- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
--- >>> t' (chainl1 op (strip integer)) "7 - 4 + 2"
+-- >>> tt (chainl1 op (strip integer)) "7 - 4 + 2"
 -- 5
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
@@ -377,14 +377,14 @@ chainl op p = rest
 -- See also 'chainr' and 'chainl1'.
 --
 -- >>> op = symbol "^" $> (^)
--- >>> t' (chainr1 op (strip integer)) "2 ^ 3 ^ 4"
+-- >>> tt (chainr1 op (strip integer)) "2 ^ 3 ^ 4"
 -- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- 'Text.S.Expr.powOp''.
 --
 -- >>> op = (symbol "+" $> (+)) <|> (symbol "-" $> (-))
--- >>> t' (chainr1 op (strip integer)) "7 - 4 + 2"
+-- >>> tt (chainr1 op (strip integer)) "7 - 4 + 2"
 -- 1
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
@@ -412,17 +412,17 @@ chainr op p = rest
 -- See also 'chainq1'.
 --
 -- >>> op = strip (symbol "^") $> (^)
--- >>> t' (chainp1 op (strip integer)) "^ ^ 2 3 4"
+-- >>> tt (chainp1 op (strip integer)) "^ ^ 2 3 4"
 -- 4096
 --
--- >>> t' (chainp1 op (strip integer)) "^ 2 ^ 3 4"
+-- >>> tt (chainp1 op (strip integer)) "^ 2 ^ 3 4"
 -- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- 'Text.S.Expr.powOp''.
 --
 -- >>> op = binop "+" (+) <|> binop "-" (-) <|> binop "*" (*)
--- >>> t' (chainp1 op (strip integer)) "- 20 * + 2 3 4"
+-- >>> tt (chainp1 op (strip integer)) "- 20 * + 2 3 4"
 -- 0
 --
 -- For more information about the @__op__@ in the example above,
@@ -447,17 +447,17 @@ chainp op p x = op <*> pure x <*> o where o = chainp1 op p <|> p
 -- See also 'chainp1'.
 --
 -- >>> op = strip (symbol "^") $> (^)
--- >>> t' (chainq1 op (strip integer)) "2 3 ^ 4 ^"
+-- >>> tt (chainq1 op (strip integer)) "2 3 ^ 4 ^"
 -- 4096
 --
--- >>> t' (chainq1 op (strip integer)) "2 3 4 ^ ^"
+-- >>> tt (chainq1 op (strip integer)) "2 3 4 ^ ^"
 -- 2417851639229258349412352
 --
 -- the @__op__@ in the example above is equivalent to \(\to\)
 -- 'Text.S.Expr.powOp''.
 --
 -- >>> op = binop "+" (+) <|> binop "-" (-) <|> binop "*" (*)
--- >>> t' (chainq1 op (strip integer)) "2 3 + 4 * 20 -"
+-- >>> tt (chainq1 op (strip integer)) "2 3 + 4 * 20 -"
 -- 0
 --
 -- For more information about the @__op__@ in the example above,

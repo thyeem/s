@@ -29,7 +29,7 @@ newtype Key = K String
 --
 -- >>> import Text.S.Example.JSON
 --
--- >>> t' parseJSON "{\"object\": {\"array\": [null, false, 0.125]}}"
+-- >>> tt parseJSON "{\"object\": {\"array\": [null, false, 0.125]}}"
 -- O [Pair (K "object") (O [Pair (K "array") (A [NULL,B False,N (1 % 8)])])]
 --
 parseJSON :: Stream s => ParserS s JSON
@@ -39,7 +39,7 @@ parseJSON = strip $ choice
 
 -- | Parse JSON @__null__@ value
 --
--- >>> t' parseNULL "null"
+-- >>> tt parseNULL "null"
 -- NULL
 --
 parseNULL :: Stream s => ParserS s JSON
@@ -48,10 +48,10 @@ parseNULL = NULL <$ strip (symbol "null")
 
 -- | Parse JSON bool, @__true__@ and @__false__@
 --
--- >>> t' parseBool "true"
+-- >>> tt parseBool "true"
 -- B True
 --
--- >>> t' parseBool "false"
+-- >>> tt parseBool "false"
 -- B False
 --
 parseBool :: Stream s => ParserS s JSON
@@ -63,7 +63,7 @@ parseBool = B <$> choice [true, false]
 
 -- | Parse JSON @__number__@ like: @1234, 1.234, 1.234e-9,..@
 --
--- >>> t' parseNumber "0.25"
+-- >>> tt parseNumber "0.25"
 -- N (1 % 4)
 --
 parseNumber :: Stream s => ParserS s JSON
@@ -72,7 +72,7 @@ parseNumber = N . toRational <$> strip number
 
 -- | Parse JSON @__string__@ like: @"json-parser",..@
 --
--- >>> t' parseString "\"JSON-parser\""
+-- >>> tt parseString "\"JSON-parser\""
 -- S "JSON-parser"
 --
 parseString :: Stream s => ParserS s JSON
@@ -81,7 +81,7 @@ parseString = S <$> strip stringLit
 
 -- | Parse JSON @__array__@ like: @[1, true, "", {}, [],..]@
 --
--- >>> t' parseArray "[2.5, true, \"JSON\"]"
+-- >>> tt parseArray "[2.5, true, \"JSON\"]"
 -- A [N (5 % 2),B True,S "JSON"]
 --
 parseArray :: Stream s => ParserS s JSON
@@ -91,7 +91,7 @@ parseArray =
 
 -- | Parse JSON @__object__@ like: @{"key": JSON}@
 --
--- >>> t' parseObject "{\"class\": [\"JavaScript\",\"HTML\",\"CSS\"]}"
+-- >>> tt parseObject "{\"class\": [\"JavaScript\",\"HTML\",\"CSS\"]}"
 -- O [Pair (K "class") (A [S "JavaScript",S "HTML",S "CSS"])]
 --
 parseObject :: Stream s => ParserS s JSON

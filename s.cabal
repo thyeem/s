@@ -44,8 +44,8 @@ library
         Text.S.Example.CSV
         Text.S.Example.Calc
         Text.S.Example.JSON
+        Text.S.Example.Lisp
         Text.S.Example.Markdown
-        Text.S.Example.Sexp
     other-modules:
 
 

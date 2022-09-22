@@ -13,78 +13,81 @@ module Text.S.Language
   ( module Text.S.Language
   ) where
 
+import           Text.S.Base
+import           Text.S.Combinator
+import           Text.S.Internal
 
 -- |
-data LanguageDef = LanguageDef
+data LanguageDef s = LanguageDef
   {
     -- | Flag if the language letter is case-sensitive
     defCaseSensitive     :: Bool
   ,
 
     -- | Characters assigned to indicate char literal region
-    defCharLiteralMark   :: String
+    defCharLiteralMark   :: ParserS s String
   ,
 
     -- | Characters assigned to indicate string literal region
-    defStringLiteralMark :: String
+    defStringLiteralMark :: ParserS s String
   ,
 
     -- | Characters assigned to start a block comment
-    defCommentBlockBegin :: [String]
+    defCommentBlockBegin :: ParserS s String
   ,
 
     -- | Characters assigned to end a block comment
-    defCommentBlockEnd   :: [String]
+    defCommentBlockEnd   :: ParserS s String
   ,
 
     -- | Characters assigned to start a single-line comment
-    defCommentLine       :: [String]
+    defCommentLine       :: ParserS s String
   ,
 
     -- | Characters assigned to start the name of identifiers
-    defIdentifierBegin   :: [String]
+    defIdentifierBegin   :: ParserS s Char
   ,
 
     -- | Characters assigned identifier names except for its first letter
-    defIdentifierName    :: [String]
+    defIdentifierName    :: ParserS s String
   ,
 
     -- | List of reserved names
-    defReservedNames     :: [String]
+    defKeywords          :: [String]
   ,
 
     -- | List of reserved operators and special charecters
-    defReservedSpecials  :: [String]
+    defReservedOps       :: [String]
   }
 
 
 -- | Default Language definition
-defDef :: LanguageDef
-defDef = LanguageDef { defCaseSensitive     = True
-                     , defCharLiteralMark   = "'"
-                     , defStringLiteralMark = "\""
-                     , defCommentBlockBegin = ["'''"]
-                     , defCommentBlockEnd   = ["'''"]
-                     , defCommentLine       = ["#"]
-                     , defIdentifierBegin   = ["_", "alpha"]
-                     , defIdentifierName    = ["alphaNum"]
-                     , defReservedSpecials  = []
-                     , defReservedNames     = ["sofia"]
-                     }
+def :: Stream s => LanguageDef s
+def = LanguageDef { defCaseSensitive     = True
+                  , defCharLiteralMark   = string "'"
+                  , defStringLiteralMark = string "\""
+                  , defCommentBlockBegin = string "/*"
+                  , defCommentBlockEnd   = string "*/"
+                  , defCommentLine       = string "//"
+                  , defIdentifierBegin   = choice [char '_', alpha]
+                  , defIdentifierName    = many alphaNum
+                  , defReservedOps       = []
+                  , defKeywords          = []
+                  }
 
 
 -- | Language definition of Haskell 2010
-haskelldef :: LanguageDef
+haskelldef :: Stream s => LanguageDef s
 haskelldef = LanguageDef
   { defCaseSensitive     = True
-  , defCharLiteralMark   = "'"
-  , defStringLiteralMark = "\""
-  , defCommentBlockBegin = ["{-"]
-  , defCommentBlockEnd   = ["-}"]
-  , defCommentLine       = ["--"]
-  , defIdentifierBegin   = ["alpha"]
-  , defIdentifierName    = ["alphaNum", "'", "_"]
-  , defReservedSpecials  = [ "#"
+  , defCharLiteralMark   = string "'"
+  , defStringLiteralMark = string "\""
+  , defCommentBlockBegin = string "{-"
+  , defCommentBlockEnd   = string "-}"
+  , defCommentLine       = string "--"
+  , defIdentifierBegin   = alpha
+  , defIdentifierName    = many $ choice [alphaNum, char '\'', char '_']
+  , defReservedOps       = [ "#"
                            , "'"
                            , "*"
                            , ","
@@ -115,7 +118,7 @@ haskelldef = LanguageDef
                            , "~"
                            , "!"
                            ]
-  , defReservedNames     = [ "as"
+  , defKeywords          = [ "as"
                            , "case"
                            , "class"
                            , "data"
@@ -147,19 +150,33 @@ haskelldef = LanguageDef
                            ]
   }
 
+-- | Language definition of SLISP
+lispdef :: Stream s => LanguageDef s
+lispdef = LanguageDef
+  { defCaseSensitive     = False
+  , defCharLiteralMark   = string "'"
+  , defStringLiteralMark = string "\""
+  , defCommentBlockBegin = fail "No block comment supported."
+  , defCommentBlockEnd   = fail "No block comment supported."
+  , defCommentLine       = string ";"
+  , defIdentifierBegin   = noneOf "()#'`\"; "
+  , defIdentifierName    = many $ noneOf "()#'`\"; "
+  , defReservedOps       = ["(", ")", "#", "'", "`", "\"", ";", " "]
+  , defKeywords          = ["def!", "list", "quote", "vector"]
+  }
 
 -- | Language definition of Java
-javaDef :: LanguageDef
+javaDef :: Stream s => LanguageDef s
 javaDef = LanguageDef
   { defCaseSensitive     = True
-  , defCharLiteralMark   = "'"
-  , defStringLiteralMark = "\""
-  , defCommentBlockBegin = ["/*"]
-  , defCommentBlockEnd   = ["*/"]
-  , defCommentLine       = ["//"]
-  , defIdentifierBegin   = ["alpha"]
-  , defIdentifierName    = ["alphaNum", "_"]
-  , defReservedSpecials  = [ "!"
+  , defCharLiteralMark   = string "'"
+  , defStringLiteralMark = string "\""
+  , defCommentBlockBegin = string "/*"
+  , defCommentBlockEnd   = string "*/"
+  , defCommentLine       = string "//"
+  , defIdentifierBegin   = alpha
+  , defIdentifierName    = many $ alphaNum <|> char '_'
+  , defReservedOps       = [ "!"
                            , "$"
                            , "("
                            , ")"
@@ -181,7 +198,7 @@ javaDef = LanguageDef
                            , "}"
                            , "'"
                            ]
-  , defReservedNames     = [ "abstract"
+  , defKeywords          = [ "abstract"
                            , "assert"
                            , "boolean"
                            , "break"

@@ -38,7 +38,7 @@ type Record = Vector String
 -- >>> r2 = "\"A\",24373121,8.1"
 -- >>> r3 = "\"B\",4762938,1.6"
 -- >>> r4 = "\"C\",8982417,3.0"
--- >>> pp $ t' parseCSV (unlines [r1,r2,r3,r4])
+-- >>> pp $ tt parseCSV (unlines [r1,r2,r3,r4])
 -- [
 --     [ ""Letter""
 --     , ""Frequency""
@@ -63,7 +63,7 @@ type Record = Vector String
 -- ]
 --
 -- >>> csv ="key,val\n1,{\"type\":\"point\",\"coord\":\"[0.5,-1.5]\"}"
--- >>> pp $ t' parseCSV csv
+-- >>> pp $ tt parseCSV csv
 -- [
 --     [ "key"
 --     , "val"
@@ -83,7 +83,7 @@ parseCSV = sepBy eol parseRecord
 -- | Parse Comma-separated values from a single 'Record'
 --
 -- >>> record = "36,1963,47,\"Gregory Peck\",\"To Kill a Mockingbird\""
--- >>> pp $ t' parseRecord record
+-- >>> pp $ tt parseRecord record
 -- [ "36"
 -- , "1963"
 -- , "47"
