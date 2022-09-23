@@ -36,9 +36,11 @@ import           Control.Monad                  ( MonadPlus(..)
 import           Data.Maybe                     ( fromMaybe )
 
 
+lexeme :: Stream s => ParserS s a -> ParserS s a
+lexeme p = p <* skip
 
 -- | Parses any string symbol to comsume. The same as 'string'
-symbol :: (Stream s) => String -> ParserS s String
+symbol :: Stream s => String -> ParserS s String
 symbol = string
 {-# INLINE symbol #-}
 

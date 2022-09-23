@@ -162,7 +162,7 @@ lispdef = LanguageDef
   , defIdentifierBegin   = noneOf "()#'`\"; "
   , defIdentifierName    = many $ noneOf "()#'`\"; "
   , defReservedOps       = ["(", ")", "#", "'", "`", "\"", ";", " "]
-  , defKeywords          = ["def!", "list", "quote", "vector"]
+  , defKeywords          = []
   }
 
 -- | Language definition of Java

@@ -216,15 +216,9 @@ initSource file = Source file 1 1
 data Message = Unexpected !String
              | Expected !String
              | Normal !String
-             deriving (Show, Eq, Ord)
+             deriving (Eq, Ord)
 
 type Messages = [Message]
-
-message :: Message -> String
-message = \case
-  Unexpected msg -> msg
-  Expected   msg -> msg
-  Normal     msg -> msg
 
 
 -------------------------
@@ -508,6 +502,13 @@ class Show a => Pretty a where
   pp = TLIO.putStrLn . pretty
 
 
+instance Show Message where
+  show = \case
+    Unexpected msg -> msg
+    Expected   msg -> msg
+    Normal     msg -> msg
+
+
 instance Pretty Source where
   pretty src@Source {..} = TL.unwords
     [ TL.pack sourceName
@@ -518,10 +519,14 @@ instance Pretty Source where
     ]
 
 
+instance {-# OVERLAPPING #-} Pretty Messages where
+  pretty msgs = TL.pack $ intercalate "\n\t" (show <$> msgs)
+
+
 instance Show s => Pretty (State s) where
   pretty state@State {..} = TL.unlines
     [ pretty stateSource
-    , TL.pack $ intercalate "\n\t" (message <$> stateMesssages)
+    , pretty stateMesssages
     , "remains: " <> TL.pack showStream
     ]
    where

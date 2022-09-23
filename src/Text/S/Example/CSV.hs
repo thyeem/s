@@ -29,6 +29,8 @@ type CSV = [Record]
 -- | Record is represented as Vector of string field elements
 type Record = Vector String
 
+deriving instance Pretty Record
+
 -- $setup
 -- >>> import Text.S
 
@@ -59,7 +61,6 @@ type Record = Vector String
 --     , "8982417"
 --     , "3.0"
 --     ]
--- , [ "" ]
 -- ]
 --
 -- >>> csv ="key,val\n1,{\"type\":\"point\",\"coord\":\"[0.5,-1.5]\"}"
@@ -77,7 +78,7 @@ type Record = Vector String
 -- ]
 --
 parseCSV :: Stream s => ParserS s CSV
-parseCSV = sepBy eol parseRecord
+parseCSV = filter (not . null) <$> sepBy eol parseRecord
 {-# INLINE parseCSV #-}
 
 -- | Parse Comma-separated values from a single 'Record'
@@ -92,7 +93,7 @@ parseCSV = sepBy eol parseRecord
 -- ]
 --
 parseRecord :: Stream s => ParserS s Record
-parseRecord = V.fromList <$> sepBy (symbol ",") (go [])
+parseRecord = V.fromList . filter (not . null) <$> sepBy (symbol ",") (go [])
  where
   go x = field >>= \f -> if null f then pure x else go (x <> f)
   field  = quoted <|> many (noneOf ",\n\r")
@@ -103,5 +104,3 @@ parseRecord = V.fromList <$> sepBy (symbol ",") (go [])
 csvParser :: Stream s => ParserS s CSV
 csvParser = parseCSV <* eof
 {-# INLINE csvParser #-}
-
-deriving instance Pretty Record
