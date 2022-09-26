@@ -7,6 +7,7 @@ module Text.S.Example.Lisp where
 
 import           Control.Monad.IO.Class         ( MonadIO )
 import           Data.List                      ( intercalate )
+import qualified Data.Map                      as M
 import           Data.String                    ( fromString )
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
@@ -14,19 +15,19 @@ import           System.Console.Haskeline
 import           Text.S
 
 
-data Sexp = A Atom
-          | L List
-          deriving (Eq, Show)
+data Sexp = Atom Atom
+          | List List
+          deriving (Eq, Ord)
 
 
-data Atom = NIL           -- nil
-          | S String      -- symbol
-          | K String      -- keyword
-          | B Bool        -- boolean
-          | I Integer     -- integer
-          | F Rational    -- float
-          | Q String      -- literal string
-          deriving (Eq, Show)
+data Atom = NIL
+          | S String
+          | K String
+          | B Bool
+          | I Integer
+          | R Double
+          | Q String
+          deriving (Eq, Ord)
 
 
 type List = [Sexp]
@@ -35,50 +36,59 @@ type List = [Sexp]
 deriving instance Pretty Atom
 deriving instance Pretty Sexp
 
+----------
+-- Env
+----------
+
+type Env = M.Map String Sexp
+
+
 
 ----------
 -- Read
 ----------
 
 sexp :: Parser Sexp
-sexp = choice [nil, str, bool, flt, int, key, sym, form, quote]
+sexp = choice [nil, str, bool, real, int, key, sym, form, quote]
 
 nil :: Parser Sexp
-nil = A NIL <$ lexeme (symbol "nil" <|> symbol "'nil")
+nil = Atom NIL <$ (symbol "nil" <|> symbol "'nil")
 
 key :: Parser Sexp
-key = A . K <$> lexeme (symbol ":" *> identifier lispdef)
+key = Atom . K <$> (symbol ":" *> identifier lispdef)
 
 sym :: Parser Sexp
-sym = A . S <$> lexeme (identifier lispdef)
+sym = Atom . S <$> identifier lispdef
 
 str :: Parser Sexp
-str = A . Q <$> lexeme stringLit
+str = Atom . Q <$> stringLit
 
 bool :: Parser Sexp
-bool = A . B <$> lexeme (symbol "t" $> True)
+bool = Atom . B <$> (symbol "t" $> True)
 
-flt :: Parser Sexp
-flt = A . F . toRational <$> lexeme float
+real :: Parser Sexp
+real = Atom . R <$> float
 
 int :: Parser Sexp
-int = A . I <$> lexeme integer
+int = Atom . I <$> integer
 
 form :: Parser Sexp
 form =
-  L <$> lexeme (between (symbol "(") (symbol ")") (sepBy (some space) sexp))
+  List <$> between (symbol "(") (symbol ")") (skip *> endBy (many space) sexp)
+
+-- vector :: Parser Sexp
+-- vector =
+  -- List <$> between (symbol "[") (symbol "]") (skip *> endBy (many space) sexp)
 
 quote :: Parser Sexp
 quote = symbol "'" *> sexp
 
-
 read' :: Text -> Either String Sexp
 read' s = case parse' sexp s of
-  Ok ok _ -> Right ok
-  Error st ->
-    Left
-      . unlines
-      $ ["error occurred while parsing s-expression:", TL.unpack (pretty st)]
+  Ok ok (State stream _ _)
+    | isEmpty stream -> Right ok
+    | otherwise -> err ["*** More than one sexp in input ***", T.unpack stream]
+  Error state -> err ["*** Parsing error ***", TL.unpack (pretty state)]
 
 
 
@@ -86,33 +96,58 @@ read' s = case parse' sexp s of
 -- Eval
 ----------
 
-eval :: Sexp -> Either String Sexp
-eval = pure
+eval :: Env -> Sexp -> Either String (Sexp, Env)
+eval env sexp = case sexp of
+  a@(Atom _)                 -> pure (a, env)
+  List (Atom (S sym) : rest) -> apply env sym rest
+  List (Atom v : _) -> err ["*** Eval error *** Invalid function:", show v]
+  _                          -> err ["nothing"]
+
+
+apply :: Env -> String -> [Sexp] -> Either String (Sexp, Env)
+apply env sym rest = err ["Not implemented yet"]
 
 ----------
 -- Print
 ----------
 
-print' :: MonadIO m => Either String Sexp -> InputT m ()
-print' = outputStrLn . show'
+print' :: MonadIO m => Sexp -> InputT m ()
+print' = outputStrLn . TL.unpack . pretty
 
-show' :: Either String Sexp -> String
-show' = \case
-  Left  err  -> err
-  Right sexp -> show sexp
+err :: [String] -> Either String a
+err = Left . unwords
+
+
+instance Show Atom where
+  show = \case
+    NIL       -> "NIL"
+    S symbol  -> symbol
+    K keyword -> keyword
+    B bool    -> show bool
+    I int     -> show int
+    R real    -> show real
+    Q string  -> string
+
+
+instance Show Sexp where
+  show = \case
+    Atom atom -> show atom
+    List list -> "(" <> unwords (show <$> list) <> ")"
+
 
 ----------
 -- Loop
 ----------
 -- |
 repl :: IO ()
-repl = runInputT defaultSettings loop
+repl = runInputT defaultSettings (loop M.empty)
  where
-  loop = do
+  loop env = do
     input <- getInputLine "SLISP> "
     case input of
       Nothing    -> pure ()
-      Just ""    -> loop
-      Just input -> do
-        print' $ read' (fromString input) >>= eval
-        loop
+      Just "q"   -> pure ()
+      Just []    -> loop env
+      Just input -> case read' (fromString input) >>= eval env of
+        Left  err         -> outputStrLn err >> loop env
+        Right (expr, env) -> print' expr >> loop env

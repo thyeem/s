@@ -35,7 +35,7 @@ import           Control.Monad                  ( MonadPlus(..)
                                                 )
 import           Data.Maybe                     ( fromMaybe )
 
-
+-- |
 lexeme :: Stream s => ParserS s a -> ParserS s a
 lexeme p = p <* skip
 

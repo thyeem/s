@@ -1,16 +1,16 @@
-{-# LANGUAGE LambdaCase #-}
-
 module Text.S.Example.Calc where
 
-import           System.IO
+import           Control.Monad.IO.Class         ( MonadIO )
+import qualified Data.Text.Lazy                as TL
+import           System.Console.Haskeline
 import           Text.S
 
 
 -- | Expr parser for left-associative infix operators
-expr'infixl :: Stream s => ParserS s Double
-expr'infixl = expr atom table
+infixl' :: Stream s => ParserS s Double
+infixl' = expr atom table
  where
-  atom = strip number <|> parens expr'infixl
+  atom = strip number <|> parens infixl'
   table =
     [ [prefixU "-" negate, prefixU "+" id]
     , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
@@ -20,10 +20,10 @@ expr'infixl = expr atom table
     ]
 
 -- | Expr parser for right-associative infix operators
-expr'infixr :: Stream s => ParserS s Double
-expr'infixr = expr atom table
+infixr' :: Stream s => ParserS s Double
+infixr' = expr atom table
  where
-  atom = strip number <|> parens expr'infixr
+  atom = strip number <|> parens infixr'
   table =
     [ [prefixU "-" negate, prefixU "+" id]
     , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
@@ -33,8 +33,8 @@ expr'infixr = expr atom table
     ]
 
 -- | Expr parser for prefix operators
-expr'prefix :: Stream s => ParserS s Double
-expr'prefix = expr atom table
+prefix' :: Stream s => ParserS s Double
+prefix' = expr atom table
  where
   atom = strip number
   table =
@@ -47,8 +47,8 @@ expr'prefix = expr atom table
     ]
 
 -- | Expr parser for postfix operators
-expr'postfix :: Stream s => ParserS s Double
-expr'postfix = expr atom table
+postfix' :: Stream s => ParserS s Double
+postfix' = expr atom table
  where
   atom = strip number
   table =
@@ -60,31 +60,37 @@ expr'postfix = expr atom table
       ]
     ]
 
--- | Expr calculator selector
-calc :: IO ()
-calc = do
-  read' >>= \case
-    "infixl"  -> repl expr'infixl
-    "infixr"  -> repl expr'infixr
-    "prefix"  -> repl expr'prefix
-    "postfix" -> repl expr'postfix
-    "q"       -> pure ()
-    _         -> calc
- where
-  read' =
-    putStrLn mempty
-      >> putStr "Choose an Expr Calculators [infixl, infixr, prefix, postfix]: "
-      >> hFlush stdout
-      >> getLine
+-- | print
+print' :: (MonadIO m, Pretty a) => a -> InputT m ()
+print' = outputStrLn . TL.unpack . pretty
 
--- | read-eval-print-loop
-repl :: ParserS String Double -> IO ()
-repl parser = do
-  input <- read'
-  if input == "q" then calc else eval' input >> repl parser
+-- | read-eval-print
+rep :: MonadIO m => ParserS String Double -> String -> InputT m ()
+rep parser input = case parse' parser input of
+  Ok ok state | null . stateStream $ state -> print' ok
+              | otherwise                  -> print' state
+  Error state -> print' state
+
+-- | Expr calculator
+calc :: IO ()
+calc = runInputT defaultSettings intro
  where
-  read' = putStrLn mempty >> putStr "calc> " >> hFlush stdout >> getLine
-  eval' input = case parse' parser input of
-    Ok ok s | null . stateStream $ s -> pp ok
-            | otherwise              -> pp s
-    Error s -> pp s
+  intro = do
+    input <- getInputLine
+      "Choose an Expr Calculators [infixl, infixr, prefix, postfix]: "
+    case input of
+      Nothing        -> pure ()
+      Just "q"       -> pure ()
+      Just "infixl"  -> repl infixl'
+      Just "infixr"  -> repl infixr'
+      Just "prefix"  -> repl prefix'
+      Just "postfix" -> repl postfix'
+      Just _         -> intro
+
+  repl parser = do
+    input <- getInputLine "calc> "
+    case input of
+      Nothing    -> pure ()
+      Just ""    -> repl parser
+      Just "q"   -> intro
+      Just input -> rep parser input *> repl parser

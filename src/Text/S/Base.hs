@@ -245,37 +245,41 @@ noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
   where label'noneof = unwords ["none of", show ((: []) <$> cs)]
 {-# INLINE noneOf #-}
 
--- |
+
+-- | Check if a given char is one of whitespaces
+--
+--- This predicate gives correct answers for the ASCII encoding only.
+--
 isSpace :: Char -> Bool
 isSpace c = (' ' == c) || ('\t' <= c && c <= '\r')
 {-# INLINE isSpace #-}
 
--- |
+-- | Check if a given char is one of decimal digits.
 isDigit :: Char -> Bool
 isDigit c = c >= '0' && c <= '9'
 {-# INLINE isDigit #-}
 
--- |
+-- | Check if a given char is one of hexadecimals
 isHexDigit :: Char -> Bool
 isHexDigit c = isDigit c || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 {-# INLINE isHexDigit #-}
 
--- |
+-- | Check if a given char is an ASCII letter.
 isAlpha :: Char -> Bool
 isAlpha c = isLower c || isUpper c
 {-# INLINE isAlpha #-}
 
--- |
+-- | Check if a given char is an ASCII letter or a decimal digit.
 isAlphaNum :: Char -> Bool
 isAlphaNum c = isDigit c || isAlpha c
 {-# INLINE isAlphaNum #-}
 
--- |
+-- | Check if a given char is an ASCII upper-case letter.
 isUpper :: Char -> Bool
 isUpper c = c <= 'Z' && c >= 'A'
 {-# INLINE isUpper #-}
 
--- |
+-- | Check if a given char is an ASCII lower-case letter.
 isLower :: Char -> Bool
 isLower c = c <= 'z' && c >= 'a'
 {-# INLINE isLower #-}
