@@ -67,9 +67,10 @@ print' = outputStrLn . TL.unpack . pretty
 -- | read-eval-print
 rep :: MonadIO m => ParserS String Double -> String -> InputT m ()
 rep parser input = case parse' parser input of
-  Ok ok state | null . stateStream $ state -> print' ok
-              | otherwise                  -> print' state
-  Error state -> print' state
+  Ok ok state@(State s _ _) | null . stateStream $ state -> print' ok
+                            | otherwise                  -> err s
+  Error (State s _ _) -> err s
+  where err s = print' . unwords $ ["*** Error ***", s]
 
 -- | Expr calculator
 calc :: IO ()

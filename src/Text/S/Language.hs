@@ -159,8 +159,8 @@ lispdef = LanguageDef
   , defCommentBlockBegin = fail "No block comment supported."
   , defCommentBlockEnd   = fail "No block comment supported."
   , defCommentLine       = string ";"
-  , defIdentifierBegin   = noneOf "()#'`\"; "
-  , defIdentifierName    = many $ noneOf "()#'`\"; "
+  , defIdentifierBegin   = noneOf "()'`\"; "
+  , defIdentifierName    = many $ noneOf "()'`\"; "
   , defReservedOps       = ["(", ")", "#", "'", "`", "\"", ";", " "]
   , defKeywords          = []
   }
