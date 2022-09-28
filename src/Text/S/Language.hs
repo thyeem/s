@@ -153,11 +153,11 @@ haskelldef = LanguageDef
 -- | Language definition of SLISP
 lispdef :: Stream s => LanguageDef s
 lispdef = LanguageDef
-  { defCaseSensitive     = False
-  , defCharLiteralMark   = string "'"
+  { defCaseSensitive     = True
+  , defCharLiteralMark   = fail "Not defined char-literal"
   , defStringLiteralMark = string "\""
-  , defCommentBlockBegin = fail "No block comment supported."
-  , defCommentBlockEnd   = fail "No block comment supported."
+  , defCommentBlockBegin = string "|#"
+  , defCommentBlockEnd   = string "#|"
   , defCommentLine       = string ";"
   , defIdentifierBegin   = noneOf "()'`\"; "
   , defIdentifierName    = many $ noneOf "()'`\"; "

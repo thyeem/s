@@ -220,6 +220,10 @@ rstrip :: (Stream s) => ParserS s a -> ParserS s a
 rstrip p = p <* (skip <|> eof)
 {-# INLINE rstrip #-}
 
+-- | Guarantees one or more spaces, or @EOF@
+gap :: (Stream s) => ParserS s ()
+gap = skipSome space <|> eof
+
 -- | Skips whitespaces
 skip :: (Stream s) => ParserS s ()
 skip = skipMany space
@@ -247,7 +251,8 @@ skipc def = skipMany $ linec def <|> blockc def
 
 -- | Parses a single line comment
 linec :: Stream s => LanguageDef s -> ParserS s String
-linec def = some p *> manyTill eol anychar where p = defCommentLine def
+linec def = some p *> (manyTill eol anychar <|> manyTill eof anychar)
+  where p = defCommentLine def
 {-# INLINABLE linec #-}
 
 -- | Parses a multi-line block comment

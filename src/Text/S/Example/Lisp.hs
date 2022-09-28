@@ -1,15 +1,18 @@
 {-# Language DeriveAnyClass #-}
-{-# Language FlexibleContexts #-}
 {-# Language LambdaCase #-}
-{-# Language StandaloneDeriving #-}
+{-# Language NamedFieldPuns #-}
 {-# Language OverloadedStrings #-}
+{-# Language RankNTypes #-}
+{-# Language StandaloneDeriving #-}
+{-# Language TupleSections #-}
 
 module Text.S.Example.Lisp where
 
-import           Control.Applicative            ( liftA2 )
+import           Control.Monad                  ( foldM )
 import           Control.Monad.IO.Class         ( MonadIO )
 import           Data.Dynamic
-import           Data.List                      ( intercalate )
+import           Data.Fixed                     ( mod' )
+import           Data.List                      ( foldl1' )
 import qualified Data.Map                      as M
 import           Data.String                    ( fromString )
 import qualified Data.Text                     as T
@@ -18,27 +21,21 @@ import           System.Console.Haskeline
 import           Text.S
 
 
-data Sexp = Atom Atom
-          | List List
+-- | S-exp AST
+data Sexp = NIL
+          | Boolean     Bool
+          | Int         Integer
+          | Real        Double
+          | Symbol      String
+          | Keyword     String
+          | StringLit   String
+          | Quote       String
+          | List        [Sexp]
           deriving (Eq, Ord)
 
 
-data Atom = NIL
-          | B Bool
-          | I Integer
-          | R Double
-          | S String
-          | K String
-          | L String
-          | Q String
-          deriving (Eq, Ord)
-
-
-type List = [Sexp]
-
-
-deriving instance Pretty Atom
-deriving instance Pretty Sexp
+-- | Context of Result or Error
+type RE = Either String
 
 
 ----------
@@ -47,122 +44,192 @@ deriving instance Pretty Sexp
 
 type Env = M.Map String Sexp
 
-(??) :: Ord k => k -> M.Map k a -> Bool
-(??) = M.member
+(>?) :: Ord k => M.Map k a -> k -> Bool
+(>?) = flip M.member
+
+(??) :: Ord k => M.Map k a -> k -> Maybe a
+(??) = flip M.lookup
 
 
 ----------
 -- Read
 ----------
 -- |
-read' :: Text -> Either String Sexp
+read' :: Text -> RE Sexp
 read' s = case parse' sexp s of
-  Ok ok (State stream _ _)
-    | isEmpty stream -> Right ok
-    | otherwise -> err ["*** More than one sexp in input ***", T.unpack stream]
-  Error state -> err ["*** Parsing error ***", TL.unpack (pretty state)]
+  Ok ok (State stream _ _) | isEmpty stream -> pure ok
+                           | otherwise      -> err [errRepl, errManySexp]
+  Error state -> err [errRead, errParsing, TL.unpack (pretty state)]
 
 sexp :: Parser Sexp
-sexp = choice [nil, str, bool, real, int, quote, key, sym, form]
+sexp =
+  jump *> choice [nil, str, bool, real, int, quote, key, sym, form] <* jump
+
+jump :: Parser ()
+jump = skips lispdef
 
 nil :: Parser Sexp
-nil = Atom NIL <$ (symbol "nil" <|> symbol "'nil")
+nil = NIL <$ symbol "nil" <* gap
 
 bool :: Parser Sexp
-bool = Atom . B <$> (symbol "t" $> True)
+bool = Boolean <$> (symbol "t" <* gap $> True)
 
 int :: Parser Sexp
-int = Atom . I <$> (skip *> integer)
+int = Int <$> integer
 
 real :: Parser Sexp
-real = Atom . R <$> float
+real = Real <$> float
 
 sym :: Parser Sexp
-sym = Atom . S <$> identifier lispdef
+sym = Symbol <$> identifier lispdef
 
 key :: Parser Sexp
-key = Atom . K . (":" ++) <$> (symbol ":" *> identifier lispdef)
+key = Keyword . (":" ++) <$> (symbol ":" *> identifier lispdef)
 
 str :: Parser Sexp
-str = Atom . L <$> stringLit
+str = StringLit <$> stringLit
 
 quote :: Parser Sexp
-quote = symbol "'" *> (Atom . Q . ("'" ++) . show <$> (skip *> sexp))
+quote = symbol "'" *> (Quote . ("'" ++) . show <$> sexp)
 
 form :: Parser Sexp
-form =
-  List <$> between (symbol "(") (symbol ")") (skip *> endBy (many space) sexp)
+form = List <$> between (symbol "(") (symbol ")") (endBy (many space) sexp)
 
 -- vector :: Parser Sexp
 -- vector =
-  -- List <$> between (symbol "[") (symbol "]") (skip *> endBy (many space) sexp)
+  -- List <$> between (symbol "[") (symbol "]") (endBy (many space) sexp)
 
 ----------
 -- Eval
 ----------
 -- |
-eval :: Env -> Sexp -> Either String (Sexp, Env)
-eval env sexp = case sexp of
-  Atom (Q v)                 -> pure (Atom . Q . tail $ v, env)
-  v@Atom{}                   -> pure (v, env)
-  List (Atom (S sym) : args) -> apply env sym args
-  List (v : _) -> err ["*** Eval error *** Invalid function:", show v]
-  v                          -> Right (v, env)
+eval :: Env -> Sexp -> RE (Env, Sexp)
+eval env e = case e of
+  List   []                  -> pure (env, NIL)
+  List   (v@Symbol{} : args) -> evalList args >>= apply env v
+  List   (v          : _   ) -> err [errEval, errInvalidFn, show v]
+  Symbol sym                 -> lookupSymbol env sym
+  Quote  v                   -> pure (env, Quote . tail $ v)
+  v                          -> pure (env, v)
+ where
+  evalList xs = mapM ((snd <$>) . eval env) xs
+  lookupSymbol e x = case e ?? x of
+    Just v  -> pure (e, v)
+    Nothing -> err [errEval, errVoidSymbolVar, x]
 
+-- |
+apply :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+apply env e args = case e of
+  Symbol "+"     -> (env, ) <$> fold (f'calc (+)) args (Int 0)
+  Symbol "-"     -> (env, ) <$> fold (f'calc (-)) args NIL
+  Symbol "*"     -> (env, ) <$> fold (f'calc (*)) args (Int 1)
+  Symbol "/"     -> (env, ) <$> fold (f'calc (/)) args NIL
+  -- Symbol "%"     -> (env, ) <$> f'calc mod' args
+  -- Symbol "mod"   -> f'calc mod' env args
+  -- Symbol "expt"  -> f'calc (**) env args
+  Symbol "list"  -> f'list env args
+  Symbol "quote" -> f'quote env args
+  Symbol sym     -> err [errEval, errVoidSymbolFn, sym]
+  _              -> err [errEval, errNotAllowed]
 
-apply :: Env -> String -> [Sexp] -> Either String (Sexp, Env)
-apply env sym args = case sym of
-  "+"     -> f'calc env sym args
-  "list"  -> f'list env args
-  "quote" -> f'quote env args
-  _ -> err ["*** Eval error *** Symbol's function definition is void:", sym]
+-- |
+f'calc
+  :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
+  -> Sexp
+  -> Sexp
+  -> RE Sexp
+f'calc op a b = case (a, b) of
+  (Int  a, Int b ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
+  (Int  a, Real b) -> pure . Real $ fromIntegral a `op` b
+  (Real a, Int b ) -> pure . Real $ a `op` fromIntegral b
+  (Real a, Real b) -> pure . Real $ a `op` b
+  _                -> err [errEval, errNotAllowed]
 
+-- |
+f'list :: Env -> [Sexp] -> RE (Env, Sexp)
+f'list env args = pure (env, List args)
 
-f'calc :: Env -> String -> [Sexp] -> Either String (Sexp, Env)
-f'calc env sym args = case args of
-  [Atom (I a), Atom (I b)] -> Right (Atom . I $ a + b, env)
-  [Atom (I a), Atom (R b)] -> Right (Atom . R $ fromIntegral a + b, env)
-  [Atom (R a), Atom (I b)] -> Right (Atom . R $ a + fromIntegral b, env)
-  [Atom (R a), Atom (R b)] -> Right (Atom . R $ a + b, env)
-  _                        -> err ["None"]
-
-f'list :: Env -> [Sexp] -> Either String (Sexp, Env)
-f'list env args = Right (List args, env)
-
-f'quote :: Env -> [Sexp] -> Either String (Sexp, Env)
+-- |
+f'quote :: Env -> [Sexp] -> RE (Env, Sexp)
 f'quote env args
-  | nargs /= 1 = err ["*** Wrong number of arguments ***", "quote,", show nargs]
-  | otherwise  = Right (Atom . Q . show . head $ args, env)
+  | nargs /= 1 = err [errEval, errWrongNargs, "quote,", show nargs]
+  | otherwise  = pure (env, Quote . show . head $ args)
   where nargs = length args
+
+-- |
+fold :: (Sexp -> Sexp -> RE Sexp) -> [Sexp] -> Sexp -> RE Sexp
+fold f lst def = case lst of
+  (x : xs) -> foldM f x xs
+  _ | def == NIL -> err [errEval, errWrongNargs, show 0]
+    | otherwise  -> pure def
+
+
 
 ----------
 -- Print
 ----------
 -- |
 print' :: MonadIO m => Sexp -> InputT m ()
-print' = outputStrLn . show
--- print' = outputStrLn . TL.unpack . pretty
+-- print' = outputStrLn . show
 
-err :: [String] -> Either String a
+
+-- instance Show Sexp where
+  -- show = \case
+    -- NIL               -> "nil"
+    -- Int       intger  -> show intger
+    -- Real      real    -> show real
+    -- Symbol    symbol  -> symbol
+    -- Keyword   keyword -> keyword
+    -- StringLit string  -> string
+    -- Quote     string  -> string
+    -- Boolean bool | bool      -> "t"
+                 -- | otherwise -> "nil"
+    -- List list -> "(" <> unwords (show <$> list) <> ")"
+
+
+deriving instance Pretty Sexp
+
+----------------
+-- debug
+
+print' = outputStrLn . TL.unpack . pretty
+
+deriving instance Show Sexp
+----------------
+
+
+err :: [String] -> RE a
 err = Left . unwords
 
+errEval :: String
+errEval = "*** Eval error ***"
 
-instance Show Atom where
-  show = \case
-    NIL       -> "NIL"
-    S symbol  -> symbol
-    K keyword -> keyword
-    B bool    -> show bool
-    I intger  -> show intger
-    R real    -> show real
-    L string  -> string
-    Q string  -> string
+errRepl :: String
+errRepl = "*** REPL error ***"
 
+errRead :: String
+errRead = "*** Read error ***"
 
-instance Show Sexp where
-  show = \case
-    Atom atom -> show atom
-    List list -> "(" <> unwords (show <$> list) <> ")"
+errInvalidFn :: String
+errInvalidFn = "Invalid function:"
+
+errVoidSymbolFn :: String
+errVoidSymbolFn = "Symbol's function definition is void:"
+
+errVoidSymbolVar :: String
+errVoidSymbolVar = "Symbol's value as variable is void:"
+
+errWrongNargs :: String
+errWrongNargs = "Wrong number of arguments:"
+
+errManySexp :: String
+errManySexp = "More than one sexp in input"
+
+errParsing :: String
+errParsing = "Occurred error during parsing\n"
+
+errNotAllowed :: String
+errNotAllowed = "Operation not allowed"
 
 
 ----------
@@ -170,8 +237,9 @@ instance Show Sexp where
 ----------
 -- | repl for SLISP
 sl :: IO ()
-sl = runInputT defaultSettings (loop M.empty)
+sl = runInputT (defaultSettings { historyFile }) (loop M.empty)
  where
+  historyFile = Just "/tmp/slisp.hist"
   loop env = do
     input <- getInputLine "SLISP> "
     case input of
@@ -180,4 +248,4 @@ sl = runInputT defaultSettings (loop M.empty)
       Just []    -> loop env
       Just input -> case read' (fromString input) >>= eval env of
         Left  err         -> outputStrLn err >> loop env
-        Right (expr, env) -> print' expr >> loop env
+        Right (env, expr) -> print' expr >> loop env
