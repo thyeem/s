@@ -124,48 +124,64 @@ eval env e = case e of
 -- |
 apply :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 apply env e args = case e of
-  Symbol "+"     -> (env, ) <$> fold (f'calc (+)) args (Int 0)
-  Symbol "-"     -> (env, ) <$> fold (f'calc (-)) args NIL
-  Symbol "*"     -> (env, ) <$> fold (f'calc (*)) args (Int 1)
-  Symbol "/"     -> (env, ) <$> fold (f'calc (/)) args NIL
-  -- Symbol "%"     -> (env, ) <$> f'calc mod' args
-  -- Symbol "mod"   -> f'calc mod' env args
-  -- Symbol "expt"  -> f'calc (**) env args
   Symbol "list"  -> f'list env args
-  Symbol "quote" -> f'quote env args
+  Symbol "quote" -> unary f'quote env e args
+  Symbol "+"     -> (env, ) <$> fold (f'calc (+) env) e args
+  Symbol "-"     -> (env, ) <$> fold (f'calc (-) env) e args
+  Symbol "*"     -> (env, ) <$> fold (f'calc (*) env) e args
+  Symbol "/"     -> (env, ) <$> fold (f'calc (/) env) e args
+  Symbol "%"     -> (env, ) <$> binary (f'calc mod') env e args
+  Symbol "mod"   -> (env, ) <$> binary (f'calc mod') env e args
+  Symbol "expt"  -> (env, ) <$> binary (f'calc (**)) env e args
+  Symbol "1+"    -> unary f'quote env e args
   Symbol sym     -> err [errEval, errVoidSymbolFn, sym]
   _              -> err [errEval, errNotAllowed]
+
+-- | list
+f'list :: Env -> [Sexp] -> RE (Env, Sexp)
+f'list env args = pure (env, List args)
+
+-- | quote
+f'quote :: Env -> Sexp -> RE (Env, Sexp)
+f'quote env e = pure (env, e)
 
 -- |
 f'calc
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
+  -> Env
   -> Sexp
   -> Sexp
   -> RE Sexp
-f'calc op a b = case (a, b) of
+f'calc op _ a b = case (a, b) of
   (Int  a, Int b ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
   (Int  a, Real b) -> pure . Real $ fromIntegral a `op` b
   (Real a, Int b ) -> pure . Real $ a `op` fromIntegral b
   (Real a, Real b) -> pure . Real $ a `op` b
   _                -> err [errEval, errNotAllowed]
 
--- |
-f'list :: Env -> [Sexp] -> RE (Env, Sexp)
-f'list env args = pure (env, List args)
-
--- |
-f'quote :: Env -> [Sexp] -> RE (Env, Sexp)
-f'quote env args
-  | nargs /= 1 = err [errEval, errWrongNargs, "quote,", show nargs]
-  | otherwise  = pure (env, head args)
+-- | applies list args to the given unary function
+unary :: (Env -> Sexp -> RE a) -> Env -> Sexp -> [Sexp] -> RE a
+unary f env e args
+  | nargs /= 1 = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
+  | otherwise  = f env (head args)
   where nargs = length args
 
--- |
-fold :: (Sexp -> Sexp -> RE Sexp) -> [Sexp] -> Sexp -> RE Sexp
-fold f lst def = case lst of
+-- | applies list args to the given binary function
+binary :: (Env -> Sexp -> Sexp -> RE a) -> Env -> Sexp -> [Sexp] -> RE a
+binary f env e args
+  | nargs /= 2 = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
+  | otherwise  = f env (head args) (head . tail $ args)
+  where nargs = length args
+
+-- | fold list args using the given binary function
+fold :: (Sexp -> Sexp -> RE Sexp) -> Sexp -> [Sexp] -> RE Sexp
+fold f e args = case args of
   (x : xs) -> foldM f x xs
-  _ | def == NIL -> err [errEval, errWrongNargs, show 0]
-    | otherwise  -> pure def
+  []       -> case e of
+    Symbol "+" -> pure (Int 0)
+    Symbol "*" -> pure (Int 1)
+    _          -> err [errEval, errWrongNargs, show' e, show 0]
+
 
 
 
@@ -187,7 +203,9 @@ show' = \case
   Quote     sexp    -> "'" ++ show' sexp
   Boolean bool | bool      -> "t"
                | otherwise -> "nil"
-  List list -> "(" <> unwords (show' <$> list) <> ")"
+  List list -> case list of
+    [] -> "nil"
+    _  -> "(" <> unwords (show' <$> list) <> ")"
 
 
 deriving instance Pretty Sexp
