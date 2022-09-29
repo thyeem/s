@@ -75,7 +75,7 @@ bool :: Parser Sexp
 bool = Boolean <$> (symbol "t" <* gap $> True)
 
 int :: Parser Sexp
-int = Int <$> integer
+int = Int <$> (integer <* (gap <|> (void . try $ string ")")))
 
 real :: Parser Sexp
 real = Real <$> float
@@ -93,7 +93,7 @@ quote :: Parser Sexp
 quote = symbol "'" *> (Quote . ("'" ++) . show <$> sexp)
 
 form :: Parser Sexp
-form = List <$> between (symbol "(") (symbol ")") (endBy (many space) sexp)
+form = List <$> between (symbol "(") (symbol ")") (many sexp)
 
 -- vector :: Parser Sexp
 -- vector =
@@ -244,7 +244,6 @@ sl = runInputT (defaultSettings { historyFile }) (loop M.empty)
     input <- getInputLine "SLISP> "
     case input of
       Nothing    -> pure ()
-      Just "q"   -> pure ()
       Just []    -> loop env
       Just input -> case read' (fromString input) >>= eval env of
         Left  err         -> outputStrLn err >> loop env
