@@ -102,6 +102,7 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 -- vector =
   -- List <$> between (symbol "[") (symbol "]") (endBy (many space) sexp)
 
+
 ----------
 -- Eval
 ----------
@@ -159,6 +160,18 @@ f'calc op _ a b = case (a, b) of
   (Real a, Real b) -> pure . Real $ a `op` b
   _                -> err [errEval, errNotAllowed]
 
+-- | fold list args using the given binary function
+fold :: (Sexp -> Sexp -> RE Sexp) -> Sexp -> [Sexp] -> RE Sexp
+fold f e args = case args of
+  (x : xs) -> foldM f x xs
+  []       -> case e of
+    Symbol "+" -> pure (Int 0)
+    Symbol "*" -> pure (Int 1)
+    _          -> err [errEval, errWrongNargs, show' e, show 0]
+
+-- arity :: (b -> a) -> (c -> Bool) -> Env -> Sexp -> [Sexp] -> a
+-- arity f p
+
 -- | applies list args to the given unary function
 unary :: (Env -> Sexp -> RE a) -> Env -> Sexp -> [Sexp] -> RE a
 unary f env e args
@@ -173,14 +186,12 @@ binary f env e args
   | otherwise  = f env (head args) (head . tail $ args)
   where nargs = length args
 
--- | fold list args using the given binary function
-fold :: (Sexp -> Sexp -> RE Sexp) -> Sexp -> [Sexp] -> RE Sexp
-fold f e args = case args of
-  (x : xs) -> foldM f x xs
-  []       -> case e of
-    Symbol "+" -> pure (Int 0)
-    Symbol "*" -> pure (Int 1)
-    _          -> err [errEval, errWrongNargs, show' e, show 0]
+-- | applies list args to the given even-ary function
+evenary :: (Env -> [Sexp] -> RE a) -> Env -> Sexp -> [Sexp] -> RE a
+evenary f env e args
+  | even nargs = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
+  | otherwise  = f env args
+  where nargs = length args
 
 
 
@@ -237,6 +248,9 @@ errVoidSymbolVar = "Symbol's value as variable is void:"
 errWrongNargs :: String
 errWrongNargs = "Wrong number of arguments:"
 
+errWrongTargs :: String
+errWrongTargs = "Wrong type arguments:"
+
 errManySexp :: String
 errManySexp = "More than one sexp in input"
 
@@ -271,10 +285,11 @@ sl = runInputT (defaultSettings { historyFile }) (loop M.empty normal)
 ----------
 -- Debug
 ----------
+-- | debug-mode printer
 print'd :: MonadIO m => Sexp -> InputT m ()
 print'd = outputStrLn . TL.unpack . pretty
 
--- |
+-- | debug-mode reader
 read'd :: Text -> RE Sexp
 read'd s = case parse' sexp s of
   Ok ok (State stream _ _) | isEmpty stream -> pure ok
