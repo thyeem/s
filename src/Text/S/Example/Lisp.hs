@@ -59,26 +59,29 @@ read' :: Text -> RE Sexp
 read' s = case parse' sexp s of
   Ok ok (State stream _ _) | isEmpty stream -> pure ok
                            | otherwise      -> err [errRepl, errManySexp]
-  Error state -> err [errRead, errParsing, TL.unpack (pretty state)]
+  Error _ -> err [errRead, errParsing]
 
 sexp :: Parser Sexp
 sexp =
-  jump *> choice [nil, str, bool, real, int, quote, key, sym, form] <* jump
+  between jump jump (choice [nil, str, bool, real, int, quote, key, sym, form])
 
 jump :: Parser ()
 jump = skips lispdef
 
+end :: Parser ()
+end = gap <|> void (try (symbol ")"))
+
 nil :: Parser Sexp
-nil = NIL <$ symbol "nil" <* gap
+nil = NIL <$ symbol "nil" <* end
 
 bool :: Parser Sexp
-bool = Boolean <$> (symbol "t" <* gap $> True)
+bool = Boolean <$> (symbol "t" <* end $> True)
 
 int :: Parser Sexp
-int = Int <$> (integer <* (gap <|> (void . try $ string ")")))
+int = Int <$> integer <* end
 
 real :: Parser Sexp
-real = Real <$> float
+real = Real <$> float <* end
 
 sym :: Parser Sexp
 sym = Symbol <$> identifier lispdef
@@ -90,7 +93,7 @@ str :: Parser Sexp
 str = StringLit <$> stringLit
 
 quote :: Parser Sexp
-quote = symbol "'" *> (Quote . ("'" ++) . show <$> sexp)
+quote = symbol "'" *> (Quote . ("'" ++) . show' <$> sexp)
 
 form :: Parser Sexp
 form = List <$> between (symbol "(") (symbol ")") (many sexp)
@@ -107,7 +110,7 @@ eval :: Env -> Sexp -> RE (Env, Sexp)
 eval env e = case e of
   List   []                  -> pure (env, NIL)
   List   (v@Symbol{} : args) -> evalList args >>= apply env v
-  List   (v          : _   ) -> err [errEval, errInvalidFn, show v]
+  List   (v          : _   ) -> err [errEval, errInvalidFn, show' v]
   Symbol sym                 -> lookupSymbol env sym
   Quote  v                   -> pure (env, Quote . tail $ v)
   v                          -> pure (env, v)
@@ -153,7 +156,7 @@ f'list env args = pure (env, List args)
 f'quote :: Env -> [Sexp] -> RE (Env, Sexp)
 f'quote env args
   | nargs /= 1 = err [errEval, errWrongNargs, "quote,", show nargs]
-  | otherwise  = pure (env, Quote . show . head $ args)
+  | otherwise  = pure (env, Quote . show' . head $ args)
   where nargs = length args
 
 -- |
@@ -170,32 +173,25 @@ fold f lst def = case lst of
 ----------
 -- |
 print' :: MonadIO m => Sexp -> InputT m ()
--- print' = outputStrLn . show
+print' = outputStrLn . show'
 
-
--- instance Show Sexp where
-  -- show = \case
-    -- NIL               -> "nil"
-    -- Int       intger  -> show intger
-    -- Real      real    -> show real
-    -- Symbol    symbol  -> symbol
-    -- Keyword   keyword -> keyword
-    -- StringLit string  -> string
-    -- Quote     string  -> string
-    -- Boolean bool | bool      -> "t"
-                 -- | otherwise -> "nil"
-    -- List list -> "(" <> unwords (show <$> list) <> ")"
+show' :: Sexp -> String
+show' = \case
+  NIL               -> "nil"
+  Int       intger  -> show intger
+  Real      real    -> show real
+  Symbol    symbol  -> symbol
+  Keyword   keyword -> keyword
+  StringLit string  -> string
+  Quote     string  -> string
+  Boolean bool | bool      -> "t"
+               | otherwise -> "nil"
+  List list -> "(" <> unwords (show' <$> list) <> ")"
 
 
 deriving instance Pretty Sexp
 
-----------------
--- debug
-
-print' = outputStrLn . TL.unpack . pretty
-
 deriving instance Show Sexp
-----------------
 
 
 err :: [String] -> RE a
@@ -226,7 +222,7 @@ errManySexp :: String
 errManySexp = "More than one sexp in input"
 
 errParsing :: String
-errParsing = "Occurred error during parsing\n"
+errParsing = "Occurred error during parsing"
 
 errNotAllowed :: String
 errNotAllowed = "Operation not allowed"
@@ -237,14 +233,31 @@ errNotAllowed = "Operation not allowed"
 ----------
 -- | repl for SLISP
 sl :: IO ()
-sl = runInputT (defaultSettings { historyFile }) (loop M.empty)
+sl = runInputT (defaultSettings { historyFile }) (loop M.empty normal)
  where
+  normal      = (read', print')
+  debug       = (read'd, print'd)
   historyFile = Just "/tmp/slisp.hist"
-  loop env = do
+  loop env mode@(reader, printer) = do
     input <- getInputLine "SLISP> "
     case input of
       Nothing    -> pure ()
-      Just []    -> loop env
-      Just input -> case read' (fromString input) >>= eval env of
-        Left  err         -> outputStrLn err >> loop env
-        Right (env, expr) -> print' expr >> loop env
+      Just []    -> loop env normal
+      Just ";;;" -> loop env debug
+      Just input -> case reader (fromString input) >>= eval env of
+        Left  err          -> outputStrLn err >> loop env mode
+        Right (env', expr) -> printer expr >> loop env' mode
+
+
+----------
+-- Debug
+----------
+print'd :: MonadIO m => Sexp -> InputT m ()
+print'd = outputStrLn . TL.unpack . pretty
+
+-- |
+read'd :: Text -> RE Sexp
+read'd s = case parse' sexp s of
+  Ok ok (State stream _ _) | isEmpty stream -> pure ok
+                           | otherwise      -> err [errRepl, errManySexp]
+  Error state -> err [errRead, errParsing, "\n", TL.unpack (pretty state)]
