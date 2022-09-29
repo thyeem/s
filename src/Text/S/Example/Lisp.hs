@@ -29,7 +29,7 @@ data Sexp = NIL
           | Symbol      String
           | Keyword     String
           | StringLit   String
-          | Quote       String
+          | Quote       Sexp
           | List        [Sexp]
           deriving (Eq, Ord)
 
@@ -93,7 +93,7 @@ str :: Parser Sexp
 str = StringLit <$> stringLit
 
 quote :: Parser Sexp
-quote = symbol "'" *> (Quote . ("'" ++) . show' <$> sexp)
+quote = symbol "'" *> (Quote <$> sexp)
 
 form :: Parser Sexp
 form = List <$> between (symbol "(") (symbol ")") (many sexp)
@@ -108,12 +108,13 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 -- |
 eval :: Env -> Sexp -> RE (Env, Sexp)
 eval env e = case e of
-  List   []                  -> pure (env, NIL)
-  List   (v@Symbol{} : args) -> evalList args >>= apply env v
-  List   (v          : _   ) -> err [errEval, errInvalidFn, show' v]
-  Symbol sym                 -> lookupSymbol env sym
-  Quote  v                   -> pure (env, Quote . tail $ v)
-  v                          -> pure (env, v)
+  Quote v -> pure (env, v)
+  List [] -> pure (env, NIL)
+  List (v@(Symbol "quote") : args) -> apply env v args
+  List (v@(Symbol _) : args) -> evalList args >>= apply env v
+  List (v : _) -> err [errEval, errInvalidFn, show' v]
+  Symbol sym -> lookupSymbol env sym
+  v -> pure (env, v)
  where
   evalList xs = mapM ((snd <$>) . eval env) xs
   lookupSymbol e x = case e ?? x of
@@ -156,7 +157,7 @@ f'list env args = pure (env, List args)
 f'quote :: Env -> [Sexp] -> RE (Env, Sexp)
 f'quote env args
   | nargs /= 1 = err [errEval, errWrongNargs, "quote,", show nargs]
-  | otherwise  = pure (env, Quote . show' . head $ args)
+  | otherwise  = pure (env, head args)
   where nargs = length args
 
 -- |
@@ -183,7 +184,7 @@ show' = \case
   Symbol    symbol  -> symbol
   Keyword   keyword -> keyword
   StringLit string  -> string
-  Quote     string  -> string
+  Quote     sexp    -> "'" ++ show' sexp
   Boolean bool | bool      -> "t"
                | otherwise -> "nil"
   List list -> "(" <> unwords (show' <$> list) <> ")"
