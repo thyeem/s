@@ -10,10 +10,7 @@ module Text.S.Example.Lisp where
 
 import           Control.Monad                  ( foldM )
 import           Control.Monad.IO.Class         ( MonadIO )
-import           Data.Bifunctor                 ( bimap )
-import           Data.Dynamic
 import           Data.Fixed                     ( mod' )
-import           Data.List                      ( foldl1' )
 import qualified Data.Map                      as M
 import           Data.String                    ( fromString )
 import qualified Data.Text                     as T
@@ -126,26 +123,81 @@ eval env e = case e of
 -- |
 apply :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 apply env e args = case e of
-  Symbol "list"  -> pure (env, List args)
-  Symbol "quote" -> (env, ) <$> unary e args
-  Symbol "+"     -> (env, ) <$> fold (curry (f'calc (+))) e args
-  Symbol "-"     -> (env, ) <$> fold (curry (f'calc (-))) e args
-  Symbol "*"     -> (env, ) <$> fold (curry (f'calc (*))) e args
-  Symbol "/"     -> (env, ) <$> fold (curry (f'calc (/))) e args
-  Symbol "%"     -> (env, ) <$> (binary e args >>= f'calc mod')
-  Symbol "mod"   -> (env, ) <$> (binary e args >>= f'calc mod')
-  Symbol "expt"  -> (env, ) <$> (binary e args >>= f'calc (**))
-  Symbol "1+"    -> (env, ) <$> (unary e args >>= f'calc (+) . (, Int 1))
-  Symbol "1-"    -> (env, ) <$> (unary e args >>= f'calc (-) . (, Int 1))
+  Symbol "list"  -> f'list env e args
+  Symbol "quote" -> f'quote env e args
+  Symbol "+"     -> f'add env e args
+  Symbol "-"     -> f'sub env e args
+  Symbol "*"     -> f'mul env e args
+  Symbol "/"     -> f'div env e args
+  Symbol "%"     -> f'mod env e args
+  Symbol "mod"   -> f'mod env e args
+  Symbol "expt"  -> f'expt env e args
+  Symbol "sqrt"  -> f'sqrt env e args
+  Symbol "1+"    -> f'1p env e args
+  Symbol "1-"    -> f'1m env e args
   Symbol sym     -> err [errEval, errVoidSymbolFn, sym]
   _              -> err [errEval, errNotAllowed]
 
+
+-- | list
+f'list :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'list env e args = pure (env, List args)
+
+-- | quote
+f'quote :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'quote env e args = (env, ) <$> unary e args
+
+-- | (+)
+f'add :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'add env e args = (env, ) <$> fold (curry (f'calb (+))) e args
+
+-- | (-)
+f'sub :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'sub env e args = (env, ) <$> fold (curry (f'calb (-))) e args
+
+-- | (*)
+f'mul :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'mul env e args = (env, ) <$> fold (curry (f'calb (*))) e args
+
+-- | (/)
+f'div :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'div env e args = (env, ) <$> fold (curry (f'calb (/))) e args
+
+-- | (%) or mod
+f'mod :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'mod env e args = (env, ) <$> (binary e args >>= f'calb mod')
+
+-- | expt
+f'expt :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'expt env e args = (env, ) <$> (binary e args >>= f'calb (**))
+
+-- | sqrt
+f'sqrt :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'sqrt env e args =
+  (env, ) <$> (unary e args >>= (f'calb (*) . (, Real 1)) >>= f'calu sqrt)
+
+-- | (1+)
+f'1p :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'1p env e args = (env, ) <$> (unary e args >>= f'calu (+ 1))
+
+-- | (1-)
+f'1m :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'1m env e args = (env, ) <$> (unary e args >>= f'calu (subtract 1))
+
 -- |
-f'calc
+f'calu
+  :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
+f'calu f = \case
+  Int  a -> pure . Int . floor . f $ fromIntegral a
+  Real a -> pure . Real . f $ a
+  _      -> err [errEval, errNotAllowed]
+
+-- |
+f'calb
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
   -> (Sexp, Sexp)
   -> RE Sexp
-f'calc op (a, b) = case (a, b) of
+f'calb op = \case
   (Int  a, Int b ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
   (Int  a, Real b) -> pure . Real $ fromIntegral a `op` b
   (Real a, Int b ) -> pure . Real $ a `op` fromIntegral b
