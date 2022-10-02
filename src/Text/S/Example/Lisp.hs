@@ -42,12 +42,16 @@ type RE = Either String
 
 type Env = M.Map String Sexp
 
-(>?) :: Ord k => M.Map k a -> k -> Bool
-(>?) = flip M.member
+(%>) :: Ord k => M.Map k a -> k -> Bool
+(%>) = flip M.member
 
-(??) :: Ord k => M.Map k a -> k -> Maybe a
-(??) = flip M.lookup
+(%?) :: Ord k => M.Map k a -> k -> Maybe a
+(%?) = flip M.lookup
 
+(%+) :: Ord k => M.Map k a -> (k, a) -> M.Map k a
+(%+) = flip (uncurry M.insert)
+
+-- TODO: symbol and function don't share namespaces
 
 ----------
 -- Read
@@ -109,6 +113,7 @@ eval :: Env -> Sexp -> RE (Env, Sexp)
 eval env e = case e of
   Quote v -> pure (env, v)
   List [] -> pure (env, NIL)
+  List (v@(Symbol "defvar") : args) -> apply env v args
   List (v@(Symbol "quote") : args) -> apply env v args
   List (v@(Symbol _) : args) -> evalList args >>= apply env v
   List (v : _) -> err [errEval, errInvalidFn, show' v]
@@ -116,28 +121,77 @@ eval env e = case e of
   v -> pure (env, v)
  where
   evalList xs = mapM ((snd <$>) . eval env) xs
-  lookupSymbol e x = case e ?? x of
+  lookupSymbol e x = case e %? x of
     Just v  -> pure (e, v)
     Nothing -> err [errEval, errVoidSymbolVar, x]
 
 -- |
 apply :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 apply env e args = case e of
-  Symbol "list"  -> f'list env e args
-  Symbol "quote" -> f'quote env e args
-  Symbol "+"     -> f'add env e args
-  Symbol "-"     -> f'sub env e args
-  Symbol "*"     -> f'mul env e args
-  Symbol "/"     -> f'div env e args
-  Symbol "%"     -> f'mod env e args
-  Symbol "mod"   -> f'mod env e args
-  Symbol "expt"  -> f'expt env e args
-  Symbol "sqrt"  -> f'sqrt env e args
-  Symbol "1+"    -> f'1p env e args
-  Symbol "1-"    -> f'1m env e args
-  Symbol sym     -> err [errEval, errVoidSymbolFn, sym]
-  _              -> err [errEval, errNotAllowed]
+  Symbol "symbolp" -> f'symbolp env e args
+  Symbol "numberp" -> f'numberp env e args
+  Symbol "stringp" -> f'stringp env e args
+  Symbol "listp"   -> f'listp env e args
+  Symbol "defvar"  -> f'defvar env e args
+  Symbol "list"    -> f'list env e args
+  Symbol "quote"   -> f'quote env e args
+  Symbol "+"       -> f'add env e args
+  Symbol "-"       -> f'sub env e args
+  Symbol "*"       -> f'mul env e args
+  Symbol "/"       -> f'div env e args
+  Symbol "mod"     -> f'mod env e args
+  Symbol "expt"    -> f'expt env e args
+  Symbol "sqrt"    -> f'sqrt env e args
+  Symbol "1+"      -> f'1p env e args
+  Symbol "1-"      -> f'1m env e args
+  Symbol sym       -> err [errEval, errVoidSymbolFn, sym]
+  _                -> err [errEval, errNotAllowed]
 
+
+
+symbolp :: Sexp -> Sexp
+symbolp = \case
+  Symbol{} -> Boolean True
+  _        -> NIL
+
+numberp :: Sexp -> Sexp
+numberp = \case
+  Int{}  -> Boolean True
+  Real{} -> Boolean True
+  _      -> NIL
+
+stringp :: Sexp -> Sexp
+stringp = \case
+  StringLit{} -> Boolean True
+  _           -> NIL
+
+listp :: Sexp -> Sexp
+listp = \case
+  List{} -> Boolean True
+  _      -> NIL
+
+-- | symbolp
+f'symbolp :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'symbolp env e args = (env, ) . symbolp <$> unary e args
+
+-- | numberp
+f'numberp :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'numberp env e args = (env, ) . numberp <$> unary e args
+
+-- | stringp
+f'stringp :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'stringp env e args = (env, ) . stringp <$> unary e args
+
+-- | stringp
+f'listp :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'listp env e args = (env, ) . listp <$> unary e args
+
+-- | defvar
+f'defvar :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'defvar env e args = binary e args >>= \(a, b) -> do
+  case (a, b) of
+    (s@(Symbol v), a) -> pure (env %+ (v, a), s)
+    _                 -> err ["Not a symbol"]
 
 -- | list
 f'list :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
