@@ -10,6 +10,7 @@ module Text.S.Example.Lisp where
 
 import           Control.Monad                  ( foldM )
 import           Control.Monad.IO.Class         ( MonadIO )
+import           Data.Bifunctor                 ( bimap )
 import           Data.Dynamic
 import           Data.Fixed                     ( mod' )
 import           Data.List                      ( foldl1' )
@@ -125,35 +126,26 @@ eval env e = case e of
 -- |
 apply :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 apply env e args = case e of
-  Symbol "list"  -> f'list env args
-  Symbol "quote" -> unary f'quote env e args
-  Symbol "+"     -> (env, ) <$> fold (f'calc (+) env) e args
-  Symbol "-"     -> (env, ) <$> fold (f'calc (-) env) e args
-  Symbol "*"     -> (env, ) <$> fold (f'calc (*) env) e args
-  Symbol "/"     -> (env, ) <$> fold (f'calc (/) env) e args
-  Symbol "%"     -> (env, ) <$> binary (f'calc mod') env e args
-  Symbol "mod"   -> (env, ) <$> binary (f'calc mod') env e args
-  Symbol "expt"  -> (env, ) <$> binary (f'calc (**)) env e args
-  Symbol "1+"    -> unary f'quote env e args
+  Symbol "list"  -> pure (env, List args)
+  Symbol "quote" -> (env, ) <$> unary e args
+  Symbol "+"     -> (env, ) <$> fold (curry (f'calc (+))) e args
+  Symbol "-"     -> (env, ) <$> fold (curry (f'calc (-))) e args
+  Symbol "*"     -> (env, ) <$> fold (curry (f'calc (*))) e args
+  Symbol "/"     -> (env, ) <$> fold (curry (f'calc (/))) e args
+  Symbol "%"     -> (env, ) <$> (binary e args >>= f'calc mod')
+  Symbol "mod"   -> (env, ) <$> (binary e args >>= f'calc mod')
+  Symbol "expt"  -> (env, ) <$> (binary e args >>= f'calc (**))
+  Symbol "1+"    -> (env, ) <$> (unary e args >>= f'calc (+) . (, Int 1))
+  Symbol "1-"    -> (env, ) <$> (unary e args >>= f'calc (-) . (, Int 1))
   Symbol sym     -> err [errEval, errVoidSymbolFn, sym]
   _              -> err [errEval, errNotAllowed]
-
--- | list
-f'list :: Env -> [Sexp] -> RE (Env, Sexp)
-f'list env args = pure (env, List args)
-
--- | quote
-f'quote :: Env -> Sexp -> RE (Env, Sexp)
-f'quote env e = pure (env, e)
 
 -- |
 f'calc
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
-  -> Env
-  -> Sexp
-  -> Sexp
+  -> (Sexp, Sexp)
   -> RE Sexp
-f'calc op _ a b = case (a, b) of
+f'calc op (a, b) = case (a, b) of
   (Int  a, Int b ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
   (Int  a, Real b) -> pure . Real $ fromIntegral a `op` b
   (Real a, Int b ) -> pure . Real $ a `op` fromIntegral b
@@ -169,29 +161,29 @@ fold f e args = case args of
     Symbol "*" -> pure (Int 1)
     _          -> err [errEval, errWrongNargs, show' e, show 0]
 
--- arity :: (b -> a) -> (c -> Bool) -> Env -> Sexp -> [Sexp] -> a
--- arity f p
 
--- | applies list args to the given unary function
-unary :: (Env -> Sexp -> RE a) -> Env -> Sexp -> [Sexp] -> RE a
-unary f env e args
-  | nargs /= 1 = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
-  | otherwise  = f env (head args)
+-- | creates functions to control a function's number of arguments
+arity :: (Int -> Bool) -> Sexp -> [Sexp] -> RE [Sexp]
+arity pred e args
+  | pred nargs = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
+  | otherwise  = pure args
   where nargs = length args
 
--- | applies list args to the given binary function
-binary :: (Env -> Sexp -> Sexp -> RE a) -> Env -> Sexp -> [Sexp] -> RE a
-binary f env e args
-  | nargs /= 2 = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
-  | otherwise  = f env (head args) (head . tail $ args)
-  where nargs = length args
+-- | guard for arguments of unary functions
+unary :: Sexp -> [Sexp] -> RE Sexp
+unary e args = head <$> arity (/= 1) e args
 
--- | applies list args to the given even-ary function
-evenary :: (Env -> [Sexp] -> RE a) -> Env -> Sexp -> [Sexp] -> RE a
-evenary f env e args
-  | even nargs = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
-  | otherwise  = f env args
-  where nargs = length args
+-- | guard for arguments of binary functions
+binary :: Sexp -> [Sexp] -> RE (Sexp, Sexp)
+binary e args = x >>= \a -> y >>= \b -> pure (a, b)
+ where
+  g = arity (/= 2) e args
+  x = head <$> g
+  y = head . tail <$> g
+
+-- | guard for arguments of even-ary(pairwise) functions
+evenary :: Sexp -> [Sexp] -> RE [Sexp]
+evenary = arity even
 
 
 
