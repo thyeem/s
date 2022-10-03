@@ -3,11 +3,13 @@
 {-# Language NamedFieldPuns #-}
 {-# Language OverloadedStrings #-}
 {-# Language RankNTypes #-}
+{-# Language RecordWildCards #-}
 {-# Language StandaloneDeriving #-}
 {-# Language TupleSections #-}
 
 module Text.S.Example.Lisp where
 
+import           Control.Applicative            ( (<|>) )
 import           Control.Monad                  ( foldM )
 import           Control.Monad.IO.Class         ( MonadIO )
 import           Data.Fixed                     ( mod' )
@@ -37,70 +39,67 @@ type RE = Either String
 
 
 ----------
--- Env
-----------
-
-type Env = M.Map String Sexp
-
-(%>) :: Ord k => M.Map k a -> k -> Bool
-(%>) = flip M.member
-
-(%?) :: Ord k => M.Map k a -> k -> Maybe a
-(%?) = flip M.lookup
-
-(%+) :: Ord k => M.Map k a -> (k, a) -> M.Map k a
-(%+) = flip (uncurry M.insert)
-
-
-----------
 -- Read
 ----------
--- |
+-- | READ
 read' :: Text -> RE Sexp
 read' s = case parse' sexp s of
   Ok ok (State stream _ _) | isEmpty stream -> pure ok
                            | otherwise      -> err [errRepl, errManySexp]
   Error _ -> err [errRead, errParsing]
 
+-- | S-expression
 sexp :: Parser Sexp
 sexp = between
   jump
   jump
   (choice [nil, str, bool, real, int, quote, key, sym, vec, form])
 
+-- | skips whitespaces and line/block comments
 jump :: Parser ()
 jump = skips lispdef
 
+-- | end of identifiers
 end :: Parser ()
 end = gap <|> void (try (symbol ")"))
 
+-- | nil
 nil :: Parser Sexp
 nil = NIL <$ symbol "nil" <* end
 
+-- | boolean
 bool :: Parser Sexp
 bool = Boolean <$> (symbol "t" <* end $> True)
 
+-- | integer
 int :: Parser Sexp
 int = Int <$> integer <* end
 
+-- | real number
 real :: Parser Sexp
 real = Real <$> float <* end
 
+-- | symbol
 sym :: Parser Sexp
 sym = Symbol <$> identifier lispdef
 
+-- | keyword
 key :: Parser Sexp
 key = Keyword . (":" ++) <$> (symbol ":" *> identifier lispdef)
 
+-- | string literal
 str :: Parser Sexp
 str = StringLit <$> stringLit
 
+-- | quote
 quote :: Parser Sexp
 quote = symbol "'" *> (Quote <$> sexp)
 
+-- | vector
 vec :: Parser Sexp
 vec = List <$> between (symbol "#(") (symbol ")") (many sexp)
 
+-- | form
 form :: Parser Sexp
 form = List <$> between (symbol "(") (symbol ")") (many sexp)
 
@@ -111,16 +110,16 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 -- |
 eval :: Env -> Sexp -> RE (Env, Sexp)
 eval env e = case e of
-  Quote  v   -> pure (env, v)
-  List   []  -> pure (env, NIL)
-  List (v@(Symbol "defparameter") : args) -> apply env v args
-  List (v@(Symbol "defvar") : args) -> apply env v args
-  List (v@(Symbol "quote") : args) -> apply env v args
-  List (v@(Symbol _) : args) -> evalList env args >>= apply env v
+  Quote  q  -> pure (env, q)
+  List   [] -> pure (env, NIL)
+  List (s@(Symbol "defparameter") : args) -> apply env s args
+  List (s@(Symbol "defvar") : args) -> apply env s args
+  List (s@(Symbol "quote") : args) -> apply env s args
+  List (s@(Symbol _) : args) -> evalList env args >>= apply env s
   List (l@List{} : args) -> evalList env args >>= apply env l
-  List (v : _) -> err [errEval, errInvalidFn, show' v]
-  Symbol sym -> lookupSymbol env sym
-  v          -> pure (env, v)
+  List (a : _) -> err [errEval, errInvalidFn, show' a]
+  Symbol k  -> (env, ) <$> get k env
+  a         -> pure (env, a)
 
 -- |
 apply :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
@@ -142,34 +141,34 @@ apply env e args = case e of
   Symbol "sqrt"         -> f'sqrt env e args
   Symbol "1+"           -> f'1p env e args
   Symbol "1-"           -> f'1m env e args
-  Symbol sym            -> err [errEval, errVoidSymbolFn, sym]
+  Symbol k              -> err [errEval, errVoidSymbolFn, k]
   _                     -> err [errEval, errNotAllowed]
 
 
+-- |
 evalList :: Env -> [Sexp] -> RE [Sexp]
 evalList env = mapM ((snd <$>) . eval env)
 
-lookupSymbol :: M.Map String Sexp -> String -> RE (Env, Sexp)
-lookupSymbol e x = case e %? x of
-  Just v  -> pure (e, v)
-  Nothing -> err [errEval, errVoidSymbolVar, x]
-
+-- |
 symbolp :: Sexp -> Sexp
 symbolp = \case
   Symbol{} -> Boolean True
   _        -> NIL
 
+-- |
 numberp :: Sexp -> Sexp
 numberp = \case
   Int{}  -> Boolean True
   Real{} -> Boolean True
   _      -> NIL
 
+-- |
 stringp :: Sexp -> Sexp
 stringp = \case
   StringLit{} -> Boolean True
   _           -> NIL
 
+-- |
 listp :: Sexp -> Sexp
 listp = \case
   List{} -> Boolean True
@@ -195,19 +194,19 @@ f'listp env e args = (env, ) . listp <$> unary e args
 f'defparameter :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 f'defparameter env e args = binary e args >>= \(a, b) -> do
   case (a, b) of
-    (s@(Symbol v), a) -> pure (env %+ (v, a), s)
+    (s@(Symbol v), a) -> (, s) <$> set'g (v, a) env
     _                 -> err ["Not a symbol"]
 
 -- | defvar
 f'defvar :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 f'defvar env e args = binary e args >>= \(a, b) -> do
   case (a, b) of
-    (s@(Symbol v), a) -> pure (defvar v a, s)
+    (s@(Symbol v), a) -> (, s) <$> defvar v a
     _                 -> err ["Not a symbol"]
  where
-  defvar k a = case env %? k of
-    Just _  -> env
-    Nothing -> env %+ (k, a)
+  defvar k a = case M.lookup k (env'g env) of
+    Just _  -> pure env
+    Nothing -> set'g (k, a) env
 
 -- | let
 f'let :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
@@ -320,6 +319,47 @@ evenary :: Sexp -> [Sexp] -> RE [Sexp]
 evenary = arity even
 
 
+----------
+-- Env
+----------
+-- |
+data Env = Env
+  { env'g :: M.Map String Sexp
+  , env'l :: M.Map String Sexp
+  }
+  deriving Show
+
+-- |
+init'env :: Env
+init'env = Env M.empty M.empty
+
+-- |
+get :: String -> Env -> RE Sexp
+get k env = case match of
+  Just v  -> pure v
+  Nothing -> err [errEval, errVoidSymbolVar, k]
+  where match = env'l env %? k <|> env'g env %? k
+
+-- |
+set :: (String, Sexp) -> Env -> RE Env
+set (k, e) env@Env {..} | M.member k env'l = set'l (k, e) env
+                        | otherwise        = set'g (k, e) env
+
+-- |
+set'g :: (String, Sexp) -> Env -> RE Env
+set'g (k, e) env@Env {..} = pure (env { env'g = M.insert k e env'g })
+
+-- |
+set'l :: (String, Sexp) -> Env -> RE Env
+set'l (k, e) env@Env {..} = pure (env { env'l = M.insert k e env'l })
+
+-- | when going into local scope
+local :: Env -> Env
+local env@Env {..} = env { env'g = env'l <> env'g, env'l = M.empty }
+
+-- | when getting out from local scope
+global :: Env -> Env -> Env
+global l@Env{} g@Env{} = g { env'g = env'g l }
 
 
 ----------
@@ -392,7 +432,7 @@ errNotAllowed = "Operation not allowed"
 ----------
 -- | repl for SLISP
 sl :: IO ()
-sl = runInputT (defaultSettings { historyFile }) (loop M.empty normal)
+sl = runInputT (defaultSettings { historyFile }) (loop init'env normal)
  where
   normal      = (read', print')
   debug       = (read'd, print'd)
