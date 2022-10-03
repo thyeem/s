@@ -13,6 +13,7 @@ import           Control.Applicative            ( (<|>) )
 import           Control.Monad                  ( foldM )
 import           Control.Monad.IO.Class         ( MonadIO )
 import           Data.Fixed                     ( mod' )
+import           Data.Functor                   ( (<&>) )
 import qualified Data.Map                      as M
 import           Data.String                    ( fromString )
 import qualified Data.Text                     as T
@@ -223,8 +224,9 @@ f'defvar env es = binary es >>= \(a, b) -> do
 -- | let
 f'let :: Env -> [Sexp] -> RE (ST Sexp)
 f'let env (_ : args) = case args of
-  (bind@List{} : rest) -> let'bind (local env) bind >>= eval . (, Seq rest)
-  _                    -> err ["Malformed let"]
+  (bind@List{} : rest) ->
+    let'bind (local env) bind >>= eval . (, Seq rest) <&> global env
+  _ -> err ["Malformed let"]
 f'let _ _ = err [errEval, errNotAllowed]
 
 let'bind :: Env -> Sexp -> RE Env
@@ -395,8 +397,8 @@ local :: Env -> Env
 local env@Env {..} = env { env'g = env'l <> env'g, env'l = M.empty }
 
 -- | when getting out from local scope
-global :: Env -> Env -> Env
-global l@Env{} g@Env{} = g { env'g = env'g l }
+global :: Env -> ST a -> ST a
+global g@Env{} (l@Env{}, e) = (g { env'g = env'g l }, e)
 
 
 ----------
