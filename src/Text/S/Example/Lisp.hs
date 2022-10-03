@@ -338,7 +338,7 @@ get :: String -> Env -> RE Sexp
 get k env = case match of
   Just v  -> pure v
   Nothing -> err [errEval, errVoidSymbolVar, k]
-  where match = env'l env %? k <|> env'g env %? k
+  where match = M.lookup k (env'l env) <|> M.lookup k (env'g env)
 
 -- |
 set :: (String, Sexp) -> Env -> RE Env
