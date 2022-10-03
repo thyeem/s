@@ -212,12 +212,15 @@ f'defvar env e args = binary e args >>= \(a, b) -> do
 f'let :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 f'let env e args = case args of
   (bind@List{} : rest) -> do
-    env' <- let'bind env bind
+    env' <- let'bind bind (local env)
     eval env' (List rest)
   _ -> err ["Malformed let"]
 
-let'bind :: Env -> Sexp -> RE Env
-let'bind = undefined
+let'bind :: Sexp -> Env -> RE Env
+let'bind bind env = case bind of
+  List (List [Symbol s, a] : rest) -> set'l (s, a) env >>= let'bind (List rest)
+  List [] -> pure env
+  _ -> err ["Malformed let-binding"]
 
 
 -- | list
