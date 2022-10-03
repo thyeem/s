@@ -64,8 +64,10 @@ read' s = case parse' sexp s of
   Error _ -> err [errRead, errParsing]
 
 sexp :: Parser Sexp
-sexp =
-  between jump jump (choice [nil, str, bool, real, int, quote, key, sym, form])
+sexp = between
+  jump
+  jump
+  (choice [nil, str, bool, real, int, quote, key, sym, vec, form])
 
 jump :: Parser ()
 jump = skips lispdef
@@ -97,12 +99,11 @@ str = StringLit <$> stringLit
 quote :: Parser Sexp
 quote = symbol "'" *> (Quote <$> sexp)
 
+vec :: Parser Sexp
+vec = List <$> between (symbol "#(") (symbol ")") (many sexp)
+
 form :: Parser Sexp
 form = List <$> between (symbol "(") (symbol ")") (many sexp)
-
--- vector :: Parser Sexp
--- vector =
-  -- List <$> between (symbol "[") (symbol "]") (endBy (many space) sexp)
 
 
 ----------
@@ -116,15 +117,11 @@ eval env e = case e of
   List (v@(Symbol "defparameter") : args) -> apply env v args
   List (v@(Symbol "defvar") : args) -> apply env v args
   List (v@(Symbol "quote") : args) -> apply env v args
-  List (v@(Symbol _) : args) -> evalList args >>= apply env v
+  List (v@(Symbol _) : args) -> evalList env args >>= apply env v
+  List (l@List{} : args) -> evalList env args >>= apply env l
   List (v : _) -> err [errEval, errInvalidFn, show' v]
   Symbol sym -> lookupSymbol env sym
   v          -> pure (env, v)
- where
-  evalList xs = mapM ((snd <$>) . eval env) xs
-  lookupSymbol e x = case e %? x of
-    Just v  -> pure (e, v)
-    Nothing -> err [errEval, errVoidSymbolVar, x]
 
 -- |
 apply :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
@@ -150,6 +147,13 @@ apply env e args = case e of
   _                     -> err [errEval, errNotAllowed]
 
 
+evalList :: Env -> [Sexp] -> RE [Sexp]
+evalList env = mapM ((snd <$>) . eval env)
+
+lookupSymbol :: M.Map String Sexp -> String -> RE (Env, Sexp)
+lookupSymbol e x = case e %? x of
+  Just v  -> pure (e, v)
+  Nothing -> err [errEval, errVoidSymbolVar, x]
 
 symbolp :: Sexp -> Sexp
 symbolp = \case
@@ -205,6 +209,18 @@ f'defvar env e args = binary e args >>= \(a, b) -> do
   defvar k a = case env %? k of
     Just _  -> env
     Nothing -> env %+ (k, a)
+
+-- | let
+f'let :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'let env e args = case args of
+  (bind@List{} : rest) -> do
+    env' <- let'bind env bind
+    eval env' (List rest)
+  _ -> undefined
+
+let'bind :: Env -> Sexp -> RE Env
+let'bind = undefined
+
 
 -- | list
 f'list :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
