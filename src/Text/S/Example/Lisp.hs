@@ -111,14 +111,15 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 -- |
 eval :: Env -> Sexp -> RE (Env, Sexp)
 eval env e = case e of
-  Quote v -> pure (env, v)
-  List [] -> pure (env, NIL)
+  Quote  v   -> pure (env, v)
+  List   []  -> pure (env, NIL)
+  List (v@(Symbol "defparameter") : args) -> apply env v args
   List (v@(Symbol "defvar") : args) -> apply env v args
   List (v@(Symbol "quote") : args) -> apply env v args
   List (v@(Symbol _) : args) -> evalList args >>= apply env v
   List (v : _) -> err [errEval, errInvalidFn, show' v]
   Symbol sym -> lookupSymbol env sym
-  v -> pure (env, v)
+  v          -> pure (env, v)
  where
   evalList xs = mapM ((snd <$>) . eval env) xs
   lookupSymbol e x = case e %? x of
@@ -128,24 +129,25 @@ eval env e = case e of
 -- |
 apply :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 apply env e args = case e of
-  Symbol "symbolp" -> f'symbolp env e args
-  Symbol "numberp" -> f'numberp env e args
-  Symbol "stringp" -> f'stringp env e args
-  Symbol "listp"   -> f'listp env e args
-  Symbol "defvar"  -> f'defvar env e args
-  Symbol "list"    -> f'list env e args
-  Symbol "quote"   -> f'quote env e args
-  Symbol "+"       -> f'add env e args
-  Symbol "-"       -> f'sub env e args
-  Symbol "*"       -> f'mul env e args
-  Symbol "/"       -> f'div env e args
-  Symbol "mod"     -> f'mod env e args
-  Symbol "expt"    -> f'expt env e args
-  Symbol "sqrt"    -> f'sqrt env e args
-  Symbol "1+"      -> f'1p env e args
-  Symbol "1-"      -> f'1m env e args
-  Symbol sym       -> err [errEval, errVoidSymbolFn, sym]
-  _                -> err [errEval, errNotAllowed]
+  Symbol "symbolp"      -> f'symbolp env e args
+  Symbol "numberp"      -> f'numberp env e args
+  Symbol "stringp"      -> f'stringp env e args
+  Symbol "listp"        -> f'listp env e args
+  Symbol "defvar"       -> f'defvar env e args
+  Symbol "defparameter" -> f'defparameter env e args
+  Symbol "list"         -> f'list env e args
+  Symbol "quote"        -> f'quote env e args
+  Symbol "+"            -> f'add env e args
+  Symbol "-"            -> f'sub env e args
+  Symbol "*"            -> f'mul env e args
+  Symbol "/"            -> f'div env e args
+  Symbol "mod"          -> f'mod env e args
+  Symbol "expt"         -> f'expt env e args
+  Symbol "sqrt"         -> f'sqrt env e args
+  Symbol "1+"           -> f'1p env e args
+  Symbol "1-"           -> f'1m env e args
+  Symbol sym            -> err [errEval, errVoidSymbolFn, sym]
+  _                     -> err [errEval, errNotAllowed]
 
 
 
@@ -186,12 +188,23 @@ f'stringp env e args = (env, ) . stringp <$> unary e args
 f'listp :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 f'listp env e args = (env, ) . listp <$> unary e args
 
+-- | defparameter
+f'defparameter :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
+f'defparameter env e args = binary e args >>= \(a, b) -> do
+  case (a, b) of
+    (s@(Symbol v), a) -> pure (env %+ (v, a), s)
+    _                 -> err ["Not a symbol"]
+
 -- | defvar
 f'defvar :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
 f'defvar env e args = binary e args >>= \(a, b) -> do
   case (a, b) of
-    (s@(Symbol v), a) -> pure (env %+ (v, a), s)
+    (s@(Symbol v), a) -> pure (defvar v a, s)
     _                 -> err ["Not a symbol"]
+ where
+  defvar k a = case env %? k of
+    Just _  -> env
+    Nothing -> env %+ (k, a)
 
 -- | list
 f'list :: Env -> Sexp -> [Sexp] -> RE (Env, Sexp)
@@ -308,7 +321,7 @@ show' = \case
   Real      real    -> show real
   Symbol    symbol  -> symbol
   Keyword   keyword -> keyword
-  StringLit string  -> string
+  StringLit string  -> "\"" ++ string ++ "\""
   Quote     sexp    -> "'" ++ show' sexp
   Boolean bool | bool      -> "t"
                | otherwise -> "nil"
