@@ -51,7 +51,6 @@ type Env = M.Map String Sexp
 (%+) :: Ord k => M.Map k a -> (k, a) -> M.Map k a
 (%+) = flip (uncurry M.insert)
 
--- TODO: symbol and function don't share namespaces
 
 ----------
 -- Read
@@ -216,7 +215,7 @@ f'let env e args = case args of
   (bind@List{} : rest) -> do
     env' <- let'bind env bind
     eval env' (List rest)
-  _ -> undefined
+  _ -> err ["Malformed let"]
 
 let'bind :: Env -> Sexp -> RE Env
 let'bind = undefined
@@ -422,3 +421,8 @@ read'd s = case parse' sexp s of
   Ok ok (State stream _ _) | isEmpty stream -> pure ok
                            | otherwise      -> err [errRepl, errManySexp]
   Error state -> err [errRead, errParsing, "\n", TL.unpack (pretty state)]
+
+
+-- Deferred:
+-- symbol and function don't share namespaces
+-- |symbol name with space| = symbol\ name \with \space
