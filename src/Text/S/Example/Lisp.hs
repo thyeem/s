@@ -31,6 +31,7 @@ data Sexp = NIL
           | StringLit   String
           | Quote       Sexp
           | List        [Sexp]
+          | Seq         [Sexp]
           deriving (Eq, Ord)
 
 
@@ -111,12 +112,13 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 eval :: ST Sexp -> RE (ST Sexp)
 eval (env, e) = case e of
   Quote  q  -> pure (env, q)
+  Seq    es -> evalSeq env es
   List   [] -> pure (env, NIL)
+  List es@(Symbol "let" : _) -> apply env es
   List es@(Symbol "defparameter" : _) -> apply env es
   List es@(Symbol "defvar" : _) -> apply env es
   List es@(Symbol "quote" : _) -> apply env es
   List (e@Symbol{} : args) -> evalList env args >>= apply env . (e :)
-  List (List{} : args) -> evalList env args >>= apply env
   List (a : _) -> err [errEval, errInvalidFn, show' a]
   Symbol k  -> (env, ) <$> get k env
   a         -> pure (env, a)
@@ -124,6 +126,7 @@ eval (env, e) = case e of
 -- |
 apply :: Env -> [Sexp] -> RE (ST Sexp)
 apply env es@(e : _) = case e of
+  Symbol "let"          -> f'let env es
   Symbol "symbolp"      -> f'symbolp env es
   Symbol "numberp"      -> f'numberp env es
   Symbol "stringp"      -> f'stringp env es
@@ -149,6 +152,14 @@ apply _ _ = err [errEval, errNotAllowed]
 -- |
 evalList :: Env -> [Sexp] -> RE [Sexp]
 evalList env = mapM ((snd <$>) . curry eval env)
+
+-- |
+evalSeq :: Env -> [Sexp] -> RE (ST Sexp)
+evalSeq env es = case es of
+  [e       ] -> eval (env, e)
+  (e : rest) -> eval (env, e) >>= \(env', e') -> evalSeq env' rest
+  _          -> err [errEval, errNotAllowed]
+
 
 -- | predicate for symbol
 symbolp :: Sexp -> Sexp
@@ -211,8 +222,8 @@ f'defvar env es = binary es >>= \(a, b) -> do
 
 -- | let
 f'let :: Env -> [Sexp] -> RE (ST Sexp)
-f'let env (e : args) = case args of
-  (bind@List{} : rest) -> let'bind (local env) bind >>= eval . (, List rest)
+f'let env (_ : args) = case args of
+  (bind@List{} : rest) -> let'bind (local env) bind >>= eval . (, Seq rest)
   _                    -> err ["Malformed let"]
 f'let _ _ = err [errEval, errNotAllowed]
 
@@ -406,6 +417,7 @@ show' = \case
   Quote     sexp    -> "'" ++ show' sexp
   Boolean bool | bool      -> "t"
                | otherwise -> "nil"
+  Seq  seq  -> show' (List seq)
   List list -> case list of
     [] -> "nil"
     _  -> "(" <> unwords (show' <$> list) <> ")"
