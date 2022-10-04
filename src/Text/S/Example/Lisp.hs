@@ -133,10 +133,10 @@ apply env es@(e : _) = case e of
   Symbol "defparameter" -> f'defparameter (env, es)
   Symbol "list"         -> f'list (env, es)
   Symbol "quote"        -> f'quote (env, es)
-  Symbol "+"            -> f'add env es
-  Symbol "-"            -> f'sub env es
-  Symbol "*"            -> f'mul env es
-  Symbol "/"            -> f'div env es
+  Symbol "+"            -> f'add (env, es)
+  Symbol "-"            -> f'sub (env, es)
+  Symbol "*"            -> f'mul (env, es)
+  Symbol "/"            -> f'div (env, es)
   Symbol "mod"          -> f'mod (env, es)
   Symbol "expt"         -> f'expt (env, es)
   Symbol "sqrt"         -> f'sqrt (env, es)
@@ -247,20 +247,20 @@ f'quote :: ST [Sexp] -> RE (ST Sexp)
 f'quote = unary
 
 -- | (+)
-f'add :: Env -> [Sexp] -> RE (ST Sexp)
-f'add env es = (env, ) <$> fold (f'calb (+)) es
+f'add :: ST [Sexp] -> RE (ST Sexp)
+f'add = fold (f'calb (+))
 
 -- | (-)
-f'sub :: Env -> [Sexp] -> RE (ST Sexp)
-f'sub env es = (env, ) <$> fold (f'calb (-)) es
+f'sub :: ST [Sexp] -> RE (ST Sexp)
+f'sub = fold (f'calb (-))
 
 -- | (*)
-f'mul :: Env -> [Sexp] -> RE (ST Sexp)
-f'mul env es = (env, ) <$> fold (f'calb (*)) es
+f'mul :: ST [Sexp] -> RE (ST Sexp)
+f'mul = fold (f'calb (*))
 
 -- | (/)
-f'div :: Env -> [Sexp] -> RE (ST Sexp)
-f'div env es = (env, ) <$> fold (f'calb (/)) es
+f'div :: ST [Sexp] -> RE (ST Sexp)
+f'div = fold (f'calb (/))
 
 -- | (%) or mod
 f'mod :: ST [Sexp] -> RE (ST Sexp)
@@ -276,11 +276,11 @@ f'sqrt s = unary s >>= modify (f'calb (*) (Real 1) >=> f'calu sqrt)
 
 -- | (1+)
 f'1p :: ST [Sexp] -> RE (ST Sexp)
-f'1p s = unary s >>= modify (f'calu (+ 1))
+f'1p s = unary s >>= eval >>= modify (f'calu (+ 1))
 
 -- | (1-)
 f'1m :: ST [Sexp] -> RE (ST Sexp)
-f'1m s = unary s >>= modify (f'calu (subtract 1))
+f'1m s = unary s >>= eval >>= modify (f'calu (subtract 1))
 
 -- | unary arithmetic operator builder
 f'calu
@@ -304,12 +304,13 @@ f'calb op x y = case (x, y) of
   _                -> err [errEval, errNotAllowed]
 
 -- | fold list args using the given binary function
-fold :: (Sexp -> Sexp -> RE Sexp) -> [Sexp] -> RE Sexp
-fold f (e : args) = case args of
-  (x : xs) -> foldM f x xs
-  []       -> case e of
-    Symbol "+" -> pure (Int 0)
-    Symbol "*" -> pure (Int 1)
+fold :: (Sexp -> Sexp -> RE Sexp) -> ST [Sexp] -> RE (ST Sexp)
+fold f s@(_, e : args) = case args of
+  (_ : _) -> put args s >>= evalList >>= \q@(_, es) ->
+    foldM f (head es) (tail es) >>= flip put q
+  [] -> case e of
+    Symbol "+" -> put (Int 0) s
+    Symbol "*" -> put (Int 1) s
     _          -> err [errEval, errWrongNargs, show' e, show 0]
 fold _ _ = err [errEval, errNotAllowed]
 
@@ -439,7 +440,7 @@ show' = \case
   Seq  seq  -> show' (List seq)
   List list -> case list of
     [] -> "nil"
-    _  -> "(" <> unwords (show' <$> list) <> ")"
+    _  -> "(" ++ unwords (show' <$> list) ++ ")"
 
 
 deriving instance Show Sexp
