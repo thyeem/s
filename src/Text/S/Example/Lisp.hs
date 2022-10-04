@@ -113,25 +113,25 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 -- | EVAL
 eval :: ST Sexp -> RE (ST Sexp)
 eval s@(env, e) = case e of
-  Quote  a                 -> apply env [a]
-  Seq    es                -> evalSeq (env, es)
+  Quote  a                 -> put a s
   Symbol k                 -> find k s
-  List   []                -> pure (env, NIL)
+  Seq    es                -> put es s >>= evalSeq
+  List   []                -> put NIL s
   List   es@(Symbol{} : _) -> apply env es
   List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
-  a                        -> pure (env, a)
+  a                        -> put a s
 
 -- |
 apply :: Env -> [Sexp] -> RE (ST Sexp)
 apply env es@(e : _) = case e of
-  Symbol "let*"         -> f'let (env, es)
+  Symbol "let*"         -> f'letq (env, es)
   Symbol "symbolp"      -> f'symbolp (env, es)
   Symbol "numberp"      -> f'numberp (env, es)
   Symbol "stringp"      -> f'stringp (env, es)
   Symbol "listp"        -> f'listp (env, es)
   Symbol "defvar"       -> f'defvar (env, es)
   Symbol "defparameter" -> f'defparameter (env, es)
-  Symbol "list"         -> f'list env es
+  Symbol "list"         -> f'list (env, es)
   Symbol "quote"        -> f'quote (env, es)
   Symbol "+"            -> f'add env es
   Symbol "-"            -> f'sub env es
@@ -145,30 +145,6 @@ apply env es@(e : _) = case e of
   Symbol k              -> err [errEval, errVoidSymbolFn, k]
   _                     -> err [errEval, errNotAllowed]
 apply _ _ = err [errEval, errNotAllowed]
-
-
--- |
-evalSeq :: ST [Sexp] -> RE (ST Sexp)
-evalSeq s@(_, es) = case es of
-  [e       ] -> put e s >>= eval
-  (e : rest) -> put e s >>= eval >>= put rest >>= evalSeq
-  _          -> err [errEval, "evalSeq"]
-
--- |
-evalList :: ST [Sexp] -> RE (ST [Sexp])
-evalList = go []
- where
-  go r s@(env, es) = case es of
-    (e : rest) -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
-    []         -> put (reverse r) s
-
--- |
-bindSeq :: ST Sexp -> RE (ST Sexp)
-bindSeq s@(env, e) = case e of
-  List (List [Symbol k, a] : rest) ->
-    set'lenv (k, a) s >>= put (List rest) >>= bindSeq
-  List [] -> pure s
-  _       -> err ["Malformed: let'bind"]
 
 
 -- | predicate for symbol
@@ -229,21 +205,43 @@ f'defvar s = binary s >>= get >>= \case
     Nothing -> set'env (k, a) q
 
 -- | let
-f'let :: ST [Sexp] -> RE (ST Sexp)
-f'let s@(_, _ : args) = case args of
+f'letq :: ST [Sexp] -> RE (ST Sexp)
+f'letq s@(_, _ : args) = case args of
   (l@List{} : rest)
     | null rest
     -> put NIL s
     | otherwise
     -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
-  _ -> err ["Malformed: f'let"]
-f'let _ = err [errEval, errNotAllowed]
+  _ -> err [errEval, errMalformed, "let*"]
+f'letq _ = err [errEval, errNotAllowed]
 
+-- |
+evalSeq :: ST [Sexp] -> RE (ST Sexp)
+evalSeq s@(_, es) = case es of
+  [e       ] -> put e s >>= eval
+  (e : rest) -> put e s >>= eval >>= put rest >>= evalSeq
+  _          -> err [errEval, errMalformed, "sequence"]
+
+-- |
+evalList :: ST [Sexp] -> RE (ST [Sexp])
+evalList = go []
+ where
+  go r s@(env, es) = case es of
+    (e : rest) -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
+    []         -> put (reverse r) s
+
+-- |
+bindSeq :: ST Sexp -> RE (ST Sexp)
+bindSeq s@(env, e) = case e of
+  List (List [Symbol k, a] : rest) ->
+    set'lenv (k, a) s >>= put (List rest) >>= bindSeq
+  List [] -> pure s
+  _       -> err [errEval, errMalformed, "bindings"]
 
 -- | list
-f'list :: Env -> [Sexp] -> RE (ST Sexp)
-f'list env (_ : args) = pure (env, List args)
-f'list _   _          = err [errEval, errNotAllowed]
+f'list :: ST [Sexp] -> RE (ST Sexp)
+f'list s@(_, _ : args) = put args s >>= evalList >>= modify (pure . List)
+f'list _               = err [errEval, errNotAllowed]
 
 -- | quote
 f'quote :: ST [Sexp] -> RE (ST Sexp)
@@ -474,11 +472,14 @@ errWrongTargs = "Wrong type arguments:"
 errNotSymbol :: String
 errNotSymbol = "Not a symbol:"
 
+errMalformed :: String
+errMalformed = "Malformed:"
+
 errManySexp :: String
 errManySexp = "More than one sexp in input"
 
 errParsing :: String
-errParsing = "Found error during parsing"
+errParsing = "Occurred error during parsing"
 
 errNotAllowed :: String
 errNotAllowed = "Operation not allowed"
@@ -524,3 +525,4 @@ read'd s = case parse' sexp s of
 -- symbol and function don't share namespaces
 -- |symbol name with space| = symbol\ name \with \space
 -- multiline REPL input (completion available)
+-- case-insensitive
