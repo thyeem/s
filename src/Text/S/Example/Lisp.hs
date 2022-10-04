@@ -112,39 +112,39 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 ----------
 -- | EVAL
 eval :: ST Sexp -> RE (ST Sexp)
-eval s@(env, e) = case e of
+eval s@(_, e) = case e of
   Quote  a                 -> put a s
   Symbol k                 -> find k s
   Seq    es                -> put es s >>= evalSeq
   List   []                -> put NIL s
-  List   es@(Symbol{} : _) -> apply env es
+  List   es@(Symbol{} : _) -> put es s >>= apply
   List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
   a                        -> put a s
 
 -- |
-apply :: Env -> [Sexp] -> RE (ST Sexp)
-apply env es@(e : _) = case e of
-  Symbol "let*"         -> f'letq (env, es)
-  Symbol "symbolp"      -> f'symbolp (env, es)
-  Symbol "numberp"      -> f'numberp (env, es)
-  Symbol "stringp"      -> f'stringp (env, es)
-  Symbol "listp"        -> f'listp (env, es)
-  Symbol "defvar"       -> f'defvar (env, es)
-  Symbol "defparameter" -> f'defparameter (env, es)
-  Symbol "list"         -> f'list (env, es)
-  Symbol "quote"        -> f'quote (env, es)
-  Symbol "+"            -> f'add (env, es)
-  Symbol "-"            -> f'sub (env, es)
-  Symbol "*"            -> f'mul (env, es)
-  Symbol "/"            -> f'div (env, es)
-  Symbol "mod"          -> f'mod (env, es)
-  Symbol "expt"         -> f'expt (env, es)
-  Symbol "sqrt"         -> f'sqrt (env, es)
-  Symbol "1+"           -> f'1p (env, es)
-  Symbol "1-"           -> f'1m (env, es)
+apply :: ST [Sexp] -> RE (ST Sexp)
+apply s@(_, e : _) = case e of
+  Symbol "let*"         -> f'letq s
+  Symbol "symbolp"      -> f'symbolp s
+  Symbol "numberp"      -> f'numberp s
+  Symbol "stringp"      -> f'stringp s
+  Symbol "listp"        -> f'listp s
+  Symbol "defvar"       -> f'defvar s
+  Symbol "defparameter" -> f'defparameter s
+  Symbol "list"         -> f'list s
+  Symbol "quote"        -> f'quote s
+  Symbol "+"            -> f'add s
+  Symbol "-"            -> f'sub s
+  Symbol "*"            -> f'mul s
+  Symbol "/"            -> f'div s
+  Symbol "mod"          -> f'mod s
+  Symbol "expt"         -> f'expt s
+  Symbol "sqrt"         -> f'sqrt s
+  Symbol "1+"           -> f'1p s
+  Symbol "1-"           -> f'1m s
   Symbol k              -> err [errEval, errVoidSymbolFn, k]
   _                     -> err [errEval, errNotAllowed]
-apply _ _ = err [errEval, errNotAllowed]
+apply _ = err [errEval, errNotAllowed]
 
 
 -- | predicate for symbol
