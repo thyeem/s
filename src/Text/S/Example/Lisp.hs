@@ -112,22 +112,18 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 -- |
 eval :: ST Sexp -> RE (ST Sexp)
 eval (env, e) = case e of
-  Quote  q  -> pure (env, q)
-  Seq    es -> evalSeq env es
-  List   [] -> pure (env, NIL)
-  List es@(Symbol "let" : _) -> apply env es
-  List es@(Symbol "defparameter" : _) -> apply env es
-  List es@(Symbol "defvar" : _) -> apply env es
-  List es@(Symbol "quote" : _) -> apply env es
-  List (e@Symbol{} : args) -> evalList env args >>= apply env . (e :)
-  List (a : _) -> err [errEval, errInvalidFn, show' a]
-  Symbol k  -> (env, ) <$> get k env
-  a         -> pure (env, a)
+  Quote  a                 -> pure (env, a)
+  Seq    es                -> evalSeq env es
+  Symbol k                 -> find k env
+  List   []                -> pure (env, NIL)
+  List   es@(Symbol{} : _) -> apply env es
+  List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
+  a                        -> pure (env, a)
 
 -- |
 apply :: Env -> [Sexp] -> RE (ST Sexp)
 apply env es@(e : _) = case e of
-  Symbol "let"          -> f'let env es
+  Symbol "let*"         -> f'let env es
   Symbol "symbolp"      -> f'symbolp env es
   Symbol "numberp"      -> f'numberp env es
   Symbol "stringp"      -> f'stringp env es
@@ -135,7 +131,7 @@ apply env es@(e : _) = case e of
   Symbol "defvar"       -> f'defvar env es
   Symbol "defparameter" -> f'defparameter env es
   Symbol "list"         -> f'list env es
-  Symbol "quote"        -> f'quote env es
+  Symbol "quote"        -> f'quote (env, es)
   Symbol "+"            -> f'add env es
   Symbol "-"            -> f'sub env es
   Symbol "*"            -> f'mul env es
@@ -151,16 +147,15 @@ apply _ _ = err [errEval, errNotAllowed]
 
 
 -- |
-evalList :: Env -> [Sexp] -> RE [Sexp]
-evalList env = mapM ((snd <$>) . curry eval env)
-
--- |
 evalSeq :: Env -> [Sexp] -> RE (ST Sexp)
-evalSeq env es = case es of
+evalSeq env = \case
   [e       ] -> eval (env, e)
   (e : rest) -> eval (env, e) >>= \(env', e') -> evalSeq env' rest
-  _          -> err [errEval, errNotAllowed]
+  _          -> err [errEval, "evalSeq"]
+-- |
 
+evalList :: Env -> [Sexp] -> RE [Sexp]
+evalList env = mapM ((snd <$>) . curry eval env)
 
 -- | predicate for symbol
 symbolp :: Sexp -> Sexp
@@ -188,8 +183,8 @@ listp = \case
   _      -> NIL
 
 -- | symbolp
-f'symbolp :: Env -> [Sexp] -> RE (ST Sexp)
-f'symbolp env es = (env, ) . symbolp <$> unary es
+f'symbolp :: ST [Sexp] -> RE (ST Sexp)
+f'symbolp s = unary s >>= \(env, e) -> pure (env, symbolp e)
 
 -- | numberp
 f'numberp :: Env -> [Sexp] -> RE (ST Sexp)
@@ -208,14 +203,14 @@ f'defparameter :: Env -> [Sexp] -> RE (ST Sexp)
 f'defparameter env es = binary es >>= \(a, b) -> do
   case (a, b) of
     (s@(Symbol v), a) -> (, s) <$> set'g (v, a) env
-    _                 -> err ["Not a symbol"]
+    _                 -> err [errEval, "Not a symbol"]
 
 -- | defvar
 f'defvar :: Env -> [Sexp] -> RE (ST Sexp)
 f'defvar env es = binary es >>= \(a, b) -> do
   case (a, b) of
     (s@(Symbol v), a) -> (, s) <$> defvar v a
-    _                 -> err ["Not a symbol"]
+    _                 -> err [errEval, "Not a symbol"]
  where
   defvar k a = case M.lookup k (env'g env) of
     Just _  -> pure env
@@ -224,17 +219,18 @@ f'defvar env es = binary es >>= \(a, b) -> do
 -- | let
 f'let :: Env -> [Sexp] -> RE (ST Sexp)
 f'let env (_ : args) = case args of
-  (bind@List{} : rest) ->
-    let'bind (local env) bind >>= eval . (, Seq rest) <&> global env
-  _ -> err ["Malformed let"]
+  (l@List{} : rest)
+    | null rest -> pure (env, NIL)
+    | otherwise -> let'bind (local env) l >>= eval . (, Seq rest) <&> global env
+  _ -> err ["Malformed: f'let"]
 f'let _ _ = err [errEval, errNotAllowed]
 
 let'bind :: Env -> Sexp -> RE Env
-let'bind env bind = case bind of
+let'bind env = \case
   List (List [Symbol s, a] : rest) ->
     set'l (s, a) env >>= flip let'bind (List rest)
   List [] -> pure env
-  _       -> err ["Malformed let-binding"]
+  _       -> err ["Malformed: let'bind"]
 
 
 -- | list
@@ -243,8 +239,8 @@ f'list env (_ : args) = pure (env, List args)
 f'list _   _          = err [errEval, errNotAllowed]
 
 -- | quote
-f'quote :: Env -> [Sexp] -> RE (ST Sexp)
-f'quote env es = (env, ) <$> unary es
+f'quote :: ST [Sexp] -> RE (ST Sexp)
+f'quote = unary
 
 -- | (+)
 f'add :: Env -> [Sexp] -> RE (ST Sexp)
@@ -283,7 +279,7 @@ f'1p env es = (env, ) <$> (unary es >>= f'calu (+ 1))
 f'1m :: Env -> [Sexp] -> RE (ST Sexp)
 f'1m env es = (env, ) <$> (unary es >>= f'calu (subtract 1))
 
--- |
+-- | unary arithmetic operator builder
 f'calu
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
 f'calu f = \case
@@ -291,7 +287,7 @@ f'calu f = \case
   Real a -> pure . Real . f $ a
   _      -> err [errEval, errNotAllowed]
 
--- |
+-- | binary arithmetic operator builder
 f'calb
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
   -> (Sexp, Sexp)
@@ -315,16 +311,16 @@ fold _ _ = err [errEval, errNotAllowed]
 
 
 -- | creates functions to control a function's number of arguments
-arity :: (Int -> Bool) -> [Sexp] -> RE [Sexp]
-arity pred (e : args)
+arity :: (Int -> Bool) -> ST [Sexp] -> RE (ST [Sexp])
+arity pred (env, e : args)
   | pred nargs = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
-  | otherwise  = pure args
+  | otherwise  = pure (env, args)
   where nargs = length args
 arity _ _ = err [errEval, errNotAllowed]
 
 -- | guard for arguments of unary functions
-unary :: [Sexp] -> RE Sexp
-unary es = head <$> arity (/= 1) es
+unary :: ST [Sexp] -> RE (ST Sexp)
+unary s = arity (/= 1) s >>= \(env, e) -> pure (env, head e)
 
 -- | guard for arguments of binary functions
 binary :: [Sexp] -> RE (Sexp, Sexp)
@@ -357,6 +353,9 @@ put's e' (env, e) = (env, e')
 
 put'e :: Env -> ST a -> ST a
 put'e env' (env, e) = (env', e)
+
+find :: String -> Env -> RE (ST Sexp)
+find key env = (env, ) <$> get key env
 
 ----------
 -- Env
@@ -392,13 +391,13 @@ set'g (k, e) env@Env {..} = pure (env { env'g = M.insert k e env'g })
 set'l :: (String, Sexp) -> Env -> RE Env
 set'l (k, e) env@Env {..} = pure (env { env'l = M.insert k e env'l })
 
--- | when going into local scope
+-- | when going into local-scope
 local :: Env -> Env
 local env@Env {..} = env { env'g = env'l <> env'g, env'l = M.empty }
 
--- | when getting out from local scope
+-- | when getting out from local-scope
 global :: Env -> ST a -> ST a
-global g@Env{} (l@Env{}, e) = (g { env'g = env'g l }, e)
+global g@Env{} (l@Env{}, a) = (g { env'g = env'g l }, a)
 
 
 ----------
@@ -461,7 +460,7 @@ errManySexp :: String
 errManySexp = "More than one sexp in input"
 
 errParsing :: String
-errParsing = "Occurred error during parsing"
+errParsing = "Found error during parsing"
 
 errNotAllowed :: String
 errNotAllowed = "Operation not allowed"
@@ -506,3 +505,4 @@ read'd s = case parse' sexp s of
 -- Deferred:
 -- symbol and function don't share namespaces
 -- |symbol name with space| = symbol\ name \with \space
+-- multiline REPL input (completion available)
