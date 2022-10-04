@@ -124,7 +124,7 @@ eval s@(env, e) = case e of
 -- |
 apply :: Env -> [Sexp] -> RE (ST Sexp)
 apply env es@(e : _) = case e of
-  Symbol "let*"         -> f'let env es
+  Symbol "let*"         -> f'let (env, es)
   Symbol "symbolp"      -> f'symbolp (env, es)
   Symbol "numberp"      -> f'numberp (env, es)
   Symbol "stringp"      -> f'stringp (env, es)
@@ -149,19 +149,26 @@ apply _ _ = err [errEval, errNotAllowed]
 
 -- |
 evalSeq :: ST [Sexp] -> RE (ST Sexp)
-evalSeq (env, es) = case es of
-  [e       ] -> eval (env, e)
-  (e : rest) -> eval (env, e) >>= \(env', _) -> evalSeq (env', rest)
+evalSeq s@(_, es) = case es of
+  [e       ] -> put e s >>= eval
+  (e : rest) -> put e s >>= eval >>= put rest >>= evalSeq
   _          -> err [errEval, "evalSeq"]
 
 -- |
 evalList :: ST [Sexp] -> RE (ST [Sexp])
 evalList = go []
  where
-  go r (env, es) = do
-    case es of
-      (e : rest) -> eval (env, e) >>= \(env', e') -> go (e' : r) (env', rest)
-      []         -> pure (env, reverse r)
+  go r s@(env, es) = case es of
+    (e : rest) -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
+    []         -> put (reverse r) s
+
+-- |
+bindSeq :: ST Sexp -> RE (ST Sexp)
+bindSeq s@(env, e) = case e of
+  List (List [Symbol k, a] : rest) ->
+    set'lenv (k, a) s >>= put (List rest) >>= bindSeq
+  List [] -> pure s
+  _       -> err ["Malformed: let'bind"]
 
 
 -- | predicate for symbol
@@ -208,35 +215,29 @@ f'listp s = unary s >>= modify (pure . listp)
 -- | defparameter
 f'defparameter :: ST [Sexp] -> RE (ST Sexp)
 f'defparameter s = binary s >>= get >>= \case
-  (e@(Symbol k), a) -> (, s) <$> set'genv (k, a) env
+  (e@(Symbol k), a) -> put e s >>= set'env (k, a)
   (x           , _) -> err [errEval, errNotSymbol, show' x]
 
 -- | defvar
-f'defvar :: Env -> [Sexp] -> RE (ST Sexp)
-f'defvar env es = binary es >>= \(a, b) -> do
-  case (a, b) of
-    (s@(Symbol v), a) -> (, s) <$> defvar v a
-    _                 -> err [errEval, errNotSymbol]
+f'defvar :: ST [Sexp] -> RE (ST Sexp)
+f'defvar s = binary s >>= get >>= \case
+  (e@(Symbol k), a) -> put e s >>= defvar (k, a)
+  (x           , _) -> err [errEval, errNotSymbol, show' x]
  where
-  defvar k a = case M.lookup k (env'g env) of
-    Just _  -> pure env
-    Nothing -> set'genv (k, a) env
+  defvar (k, a) q@(env, _) = case M.lookup k (env'g env) of
+    Just v  -> pure (env, v)
+    Nothing -> set'env (k, a) q
 
 -- | let
-f'let :: Env -> [Sexp] -> RE (ST Sexp)
-f'let env (_ : args) = case args of
+f'let :: ST [Sexp] -> RE (ST Sexp)
+f'let s@(_, _ : args) = case args of
   (l@List{} : rest)
-    | null rest -> pure (env, NIL)
-    | otherwise -> let'bind (local env) l >>= eval . (, Seq rest) <&> global env
+    | null rest
+    -> put NIL s
+    | otherwise
+    -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
   _ -> err ["Malformed: f'let"]
-f'let _ _ = err [errEval, errNotAllowed]
-
-let'bind :: Env -> Sexp -> RE Env
-let'bind env = \case
-  List (List [Symbol s, a] : rest) ->
-    set'lenv (s, a) env >>= flip let'bind (List rest)
-  List [] -> pure env
-  _       -> err ["Malformed: let'bind"]
+f'let _ = err [errEval, errNotAllowed]
 
 
 -- | list
@@ -341,23 +342,36 @@ evenary = arity even
 ----------
 -- State
 ----------
--- |
+-- | definition of EVAL-state
+-- during the evaluation process, each evaluation step has one of
+-- these states and eventually collapsed into a S-exp value
 type ST a = (Env, a)
 
+-- | get the result value from the state
 get :: ST a -> RE a
 get = pure . snd
 
-put :: a -> ST a -> RE (ST a)
+-- | set the given reuslt value to the state
+put :: a -> ST b -> RE (ST a)
 put x (env, _) = pure (env, x)
 
+-- | transforms the old state to a new state with the given functions
 modify :: (a -> RE b) -> ST a -> RE (ST b)
 modify f (env, e) = f e <&> (env, )
+
+-- | get the env from the state
+get' :: ST a -> RE Env
+get' = pure . fst
+
+-- | set the given env to the state
+put' :: Env -> ST a -> RE (ST a)
+put' env (_, x) = pure (env, x)
 
 
 ----------
 -- Env
 ----------
--- |
+-- | SLISP environment
 data Env = Env
   { env'g :: M.Map String Sexp
   , env'l :: M.Map String Sexp
@@ -369,36 +383,35 @@ init'env :: Env
 init'env = Env M.empty M.empty
 
 -- |
+set'env :: (String, Sexp) -> ST a -> RE (ST a)
+set'env (k, e) s@(env@Env {..}, _) | M.member k env'l = set'lenv (k, e) s
+                                   | otherwise        = set'genv (k, e) s
+
+-- |
+set'genv :: (String, Sexp) -> ST a -> RE (ST a)
+set'genv (k, e) s@(env@Env {..}, _) =
+  put' (env { env'g = M.insert k e env'g }) s
+
+-- |
+set'lenv :: (String, Sexp) -> ST a -> RE (ST a)
+set'lenv (k, e) s@(env@Env {..}, _) =
+  put' (env { env'l = M.insert k e env'l }) s
+
+-- | when going into local-scope
+local :: ST a -> RE (ST a)
+local s@(env@Env {..}, _) =
+  put' (env { env'g = env'l <> env'g, env'l = M.empty }) s
+
+-- | when getting out from local-scope
+global :: ST b -> ST a -> RE (ST a)
+global (g@Env{}, _) s@(l@Env{}, a) = put' (g { env'g = env'g l }) s
+
+-- | find stored S-exp values with symbol keys
 find :: String -> ST Sexp -> RE (ST Sexp)
 find k s@(env, _) = case match of
   Just v  -> put v s
   Nothing -> err [errEval, errVoidSymbolVar, k]
   where match = M.lookup k (env'l env) <|> M.lookup k (env'g env)
-
--- |
-get'env :: ST a -> RE Env
-get'env (env, _) = pure env
-
--- |
-set'env :: (String, Sexp) -> Env -> RE Env
-set'env (k, e) env@Env {..} | M.member k env'l = set'lenv (k, e) env
-                            | otherwise        = set'genv (k, e) env
-
--- |
-set'genv :: (String, Sexp) -> Env -> RE Env
-set'genv (k, e) env@Env {..} = pure (env { env'g = M.insert k e env'g })
-
--- |
-set'lenv :: (String, Sexp) -> Env -> RE Env
-set'lenv (k, e) env@Env {..} = pure (env { env'l = M.insert k e env'l })
-
--- | when going into local-scope
-local :: Env -> Env
-local env@Env {..} = env { env'g = env'l <> env'g, env'l = M.empty }
-
--- | when getting out from local-scope
-global :: Env -> ST a -> ST a
-global g@Env{} (l@Env{}, a) = (g { env'g = env'g l }, a)
 
 
 ----------
