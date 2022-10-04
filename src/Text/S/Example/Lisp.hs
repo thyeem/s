@@ -169,6 +169,7 @@ stringp = \case
 -- | predicate for string list
 listp :: Sexp -> Sexp
 listp = \case
+  NIL    -> Boolean True
   List{} -> Boolean True
   _      -> NIL
 
@@ -178,31 +179,29 @@ f'symbolp s = unary s >>= modify (pure . symbolp)
 
 -- | numberp
 f'numberp :: ST [Sexp] -> RE (ST Sexp)
-f'numberp s = unary s >>= modify (pure . numberp)
+f'numberp s = unary s >>= eval >>= modify (pure . numberp)
 
 -- | stringp
 f'stringp :: ST [Sexp] -> RE (ST Sexp)
-f'stringp s = unary s >>= modify (pure . stringp)
+f'stringp s = unary s >>= eval >>= modify (pure . stringp)
 
 -- | stringp
 f'listp :: ST [Sexp] -> RE (ST Sexp)
-f'listp s = unary s >>= modify (pure . listp)
+f'listp s = unary s >>= eval >>= modify (pure . listp)
 
 -- | defparameter
 f'defparameter :: ST [Sexp] -> RE (ST Sexp)
 f'defparameter s = binary s >>= get >>= \case
-  (e@(Symbol k), a) -> put e s >>= set'env (k, a)
-  (x           , _) -> err [errEval, errNotSymbol, show' x]
+  (e@(Symbol k), a) ->
+    put a s >>= eval >>= \(env, a') -> set'env (k, a') (env, e)
+  (x, _) -> err [errEval, errNotSymbol, show' x]
 
 -- | defvar
 f'defvar :: ST [Sexp] -> RE (ST Sexp)
 f'defvar s = binary s >>= get >>= \case
-  (e@(Symbol k), a) -> put e s >>= defvar (k, a)
-  (x           , _) -> err [errEval, errNotSymbol, show' x]
- where
-  defvar (k, a) q@(env, _) = case M.lookup k (env'g env) of
-    Just v  -> pure (env, v)
-    Nothing -> set'env (k, a) q
+  (e@(Symbol k), a) ->
+    put a s >>= eval >>= \(env, a') -> set'env' (k, a') (env, e)
+  (x, _) -> err [errEval, errNotSymbol, show' x]
 
 -- | let
 f'letq :: ST [Sexp] -> RE (ST Sexp)
@@ -384,6 +383,12 @@ init'env = Env M.empty M.empty
 set'env :: (String, Sexp) -> ST a -> RE (ST a)
 set'env (k, e) s@(env@Env {..}, _) | M.member k env'l = set'lenv (k, e) s
                                    | otherwise        = set'genv (k, e) s
+
+-- | the same as `set'env`, but putting value only when no key
+set'env' :: (String, Sexp) -> ST a -> RE (ST a)
+set'env' (k, a) s@(env, _) = case M.lookup k (env'g env) of
+  Just _  -> pure s
+  Nothing -> set'env (k, a) s
 
 -- |
 set'genv :: (String, Sexp) -> ST a -> RE (ST a)
