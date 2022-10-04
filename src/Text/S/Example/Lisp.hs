@@ -10,7 +10,9 @@
 module Text.S.Example.Lisp where
 
 import           Control.Applicative            ( (<|>) )
-import           Control.Monad                  ( foldM )
+import           Control.Monad                  ( (>=>)
+                                                , foldM
+                                                )
 import           Control.Monad.IO.Class         ( MonadIO )
 import           Data.Fixed                     ( mod' )
 import           Data.Functor                   ( (<&>) )
@@ -20,7 +22,6 @@ import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 import           System.Console.Haskeline
 import           Text.S
-
 
 -- | S-exp AST
 data Sexp = NIL
@@ -109,12 +110,12 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 ----------
 -- Eval
 ----------
--- |
+-- | EVAL
 eval :: ST Sexp -> RE (ST Sexp)
-eval (env, e) = case e of
-  Quote  a                 -> pure (env, a)
-  Seq    es                -> evalSeq env es
-  Symbol k                 -> find k env
+eval s@(env, e) = case e of
+  Quote  a                 -> apply env [a]
+  Seq    es                -> evalSeq (env, es)
+  Symbol k                 -> find k s
   List   []                -> pure (env, NIL)
   List   es@(Symbol{} : _) -> apply env es
   List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
@@ -124,38 +125,44 @@ eval (env, e) = case e of
 apply :: Env -> [Sexp] -> RE (ST Sexp)
 apply env es@(e : _) = case e of
   Symbol "let*"         -> f'let env es
-  Symbol "symbolp"      -> f'symbolp env es
-  Symbol "numberp"      -> f'numberp env es
-  Symbol "stringp"      -> f'stringp env es
-  Symbol "listp"        -> f'listp env es
-  Symbol "defvar"       -> f'defvar env es
-  Symbol "defparameter" -> f'defparameter env es
+  Symbol "symbolp"      -> f'symbolp (env, es)
+  Symbol "numberp"      -> f'numberp (env, es)
+  Symbol "stringp"      -> f'stringp (env, es)
+  Symbol "listp"        -> f'listp (env, es)
+  Symbol "defvar"       -> f'defvar (env, es)
+  Symbol "defparameter" -> f'defparameter (env, es)
   Symbol "list"         -> f'list env es
   Symbol "quote"        -> f'quote (env, es)
   Symbol "+"            -> f'add env es
   Symbol "-"            -> f'sub env es
   Symbol "*"            -> f'mul env es
   Symbol "/"            -> f'div env es
-  Symbol "mod"          -> f'mod env es
-  Symbol "expt"         -> f'expt env es
-  Symbol "sqrt"         -> f'sqrt env es
-  Symbol "1+"           -> f'1p env es
-  Symbol "1-"           -> f'1m env es
+  Symbol "mod"          -> f'mod (env, es)
+  Symbol "expt"         -> f'expt (env, es)
+  Symbol "sqrt"         -> f'sqrt (env, es)
+  Symbol "1+"           -> f'1p (env, es)
+  Symbol "1-"           -> f'1m (env, es)
   Symbol k              -> err [errEval, errVoidSymbolFn, k]
   _                     -> err [errEval, errNotAllowed]
 apply _ _ = err [errEval, errNotAllowed]
 
 
 -- |
-evalSeq :: Env -> [Sexp] -> RE (ST Sexp)
-evalSeq env = \case
+evalSeq :: ST [Sexp] -> RE (ST Sexp)
+evalSeq (env, es) = case es of
   [e       ] -> eval (env, e)
-  (e : rest) -> eval (env, e) >>= \(env', e') -> evalSeq env' rest
+  (e : rest) -> eval (env, e) >>= \(env', _) -> evalSeq (env', rest)
   _          -> err [errEval, "evalSeq"]
--- |
 
-evalList :: Env -> [Sexp] -> RE [Sexp]
-evalList env = mapM ((snd <$>) . curry eval env)
+-- |
+evalList :: ST [Sexp] -> RE (ST [Sexp])
+evalList = go []
+ where
+  go r (env, es) = do
+    case es of
+      (e : rest) -> eval (env, e) >>= \(env', e') -> go (e' : r) (env', rest)
+      []         -> pure (env, reverse r)
+
 
 -- | predicate for symbol
 symbolp :: Sexp -> Sexp
@@ -184,37 +191,36 @@ listp = \case
 
 -- | symbolp
 f'symbolp :: ST [Sexp] -> RE (ST Sexp)
-f'symbolp s = unary s >>= \(env, e) -> pure (env, symbolp e)
+f'symbolp s = unary s >>= modify (pure . symbolp)
 
 -- | numberp
-f'numberp :: Env -> [Sexp] -> RE (ST Sexp)
-f'numberp env es = (env, ) . numberp <$> unary es
+f'numberp :: ST [Sexp] -> RE (ST Sexp)
+f'numberp s = unary s >>= modify (pure . numberp)
 
 -- | stringp
-f'stringp :: Env -> [Sexp] -> RE (ST Sexp)
-f'stringp env es = (env, ) . stringp <$> unary es
+f'stringp :: ST [Sexp] -> RE (ST Sexp)
+f'stringp s = unary s >>= modify (pure . stringp)
 
 -- | stringp
-f'listp :: Env -> [Sexp] -> RE (ST Sexp)
-f'listp env es = (env, ) . listp <$> unary es
+f'listp :: ST [Sexp] -> RE (ST Sexp)
+f'listp s = unary s >>= modify (pure . listp)
 
 -- | defparameter
-f'defparameter :: Env -> [Sexp] -> RE (ST Sexp)
-f'defparameter env es = binary es >>= \(a, b) -> do
-  case (a, b) of
-    (s@(Symbol v), a) -> (, s) <$> set'g (v, a) env
-    _                 -> err [errEval, "Not a symbol"]
+f'defparameter :: ST [Sexp] -> RE (ST Sexp)
+f'defparameter s = binary s >>= get >>= \case
+  (e@(Symbol k), a) -> (, s) <$> set'genv (k, a) env
+  (x           , _) -> err [errEval, errNotSymbol, show' x]
 
 -- | defvar
 f'defvar :: Env -> [Sexp] -> RE (ST Sexp)
 f'defvar env es = binary es >>= \(a, b) -> do
   case (a, b) of
     (s@(Symbol v), a) -> (, s) <$> defvar v a
-    _                 -> err [errEval, "Not a symbol"]
+    _                 -> err [errEval, errNotSymbol]
  where
   defvar k a = case M.lookup k (env'g env) of
     Just _  -> pure env
-    Nothing -> set'g (k, a) env
+    Nothing -> set'genv (k, a) env
 
 -- | let
 f'let :: Env -> [Sexp] -> RE (ST Sexp)
@@ -228,7 +234,7 @@ f'let _ _ = err [errEval, errNotAllowed]
 let'bind :: Env -> Sexp -> RE Env
 let'bind env = \case
   List (List [Symbol s, a] : rest) ->
-    set'l (s, a) env >>= flip let'bind (List rest)
+    set'lenv (s, a) env >>= flip let'bind (List rest)
   List [] -> pure env
   _       -> err ["Malformed: let'bind"]
 
@@ -244,40 +250,39 @@ f'quote = unary
 
 -- | (+)
 f'add :: Env -> [Sexp] -> RE (ST Sexp)
-f'add env es = (env, ) <$> fold (curry (f'calb (+))) es
+f'add env es = (env, ) <$> fold (f'calb (+)) es
 
 -- | (-)
 f'sub :: Env -> [Sexp] -> RE (ST Sexp)
-f'sub env es = (env, ) <$> fold (curry (f'calb (-))) es
+f'sub env es = (env, ) <$> fold (f'calb (-)) es
 
 -- | (*)
 f'mul :: Env -> [Sexp] -> RE (ST Sexp)
-f'mul env es = (env, ) <$> fold (curry (f'calb (*))) es
+f'mul env es = (env, ) <$> fold (f'calb (*)) es
 
 -- | (/)
 f'div :: Env -> [Sexp] -> RE (ST Sexp)
-f'div env es = (env, ) <$> fold (curry (f'calb (/))) es
+f'div env es = (env, ) <$> fold (f'calb (/)) es
 
 -- | (%) or mod
-f'mod :: Env -> [Sexp] -> RE (ST Sexp)
-f'mod env es = (env, ) <$> (binary es >>= f'calb mod')
+f'mod :: ST [Sexp] -> RE (ST Sexp)
+f'mod s = binary s >>= modify (uncurry (f'calb mod'))
 
 -- | expt
-f'expt :: Env -> [Sexp] -> RE (ST Sexp)
-f'expt env es = (env, ) <$> (binary es >>= f'calb (**))
+f'expt :: ST [Sexp] -> RE (ST Sexp)
+f'expt s = binary s >>= modify (uncurry (f'calb (**)))
 
 -- | sqrt
-f'sqrt :: Env -> [Sexp] -> RE (ST Sexp)
-f'sqrt env es =
-  (env, ) <$> (unary es >>= (f'calb (*) . (, Real 1)) >>= f'calu sqrt)
+f'sqrt :: ST [Sexp] -> RE (ST Sexp)
+f'sqrt s = unary s >>= modify (f'calb (*) (Real 1) >=> f'calu sqrt)
 
 -- | (1+)
-f'1p :: Env -> [Sexp] -> RE (ST Sexp)
-f'1p env es = (env, ) <$> (unary es >>= f'calu (+ 1))
+f'1p :: ST [Sexp] -> RE (ST Sexp)
+f'1p s = unary s >>= modify (f'calu (+ 1))
 
 -- | (1-)
-f'1m :: Env -> [Sexp] -> RE (ST Sexp)
-f'1m env es = (env, ) <$> (unary es >>= f'calu (subtract 1))
+f'1m :: ST [Sexp] -> RE (ST Sexp)
+f'1m s = unary s >>= modify (f'calu (subtract 1))
 
 -- | unary arithmetic operator builder
 f'calu
@@ -290,9 +295,10 @@ f'calu f = \case
 -- | binary arithmetic operator builder
 f'calb
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
-  -> (Sexp, Sexp)
+  -> Sexp
+  -> Sexp
   -> RE Sexp
-f'calb op = \case
+f'calb op x y = case (x, y) of
   (Int  a, Int b ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
   (Int  a, Real b) -> pure . Real $ fromIntegral a `op` b
   (Real a, Int b ) -> pure . Real $ a `op` fromIntegral b
@@ -310,29 +316,25 @@ fold f (e : args) = case args of
 fold _ _ = err [errEval, errNotAllowed]
 
 
--- | creates functions to control a function's number of arguments
+-- | creates functions to control function's number of arguments
 arity :: (Int -> Bool) -> ST [Sexp] -> RE (ST [Sexp])
-arity pred (env, e : args)
-  | pred nargs = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
-  | otherwise  = pure (env, args)
+arity p (env, e : args)
+  | not (p nargs) = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
+  | otherwise     = pure (env, args)
   where nargs = length args
 arity _ _ = err [errEval, errNotAllowed]
 
 -- | guard for arguments of unary functions
 unary :: ST [Sexp] -> RE (ST Sexp)
-unary s = arity (/= 1) s >>= \(env, e) -> pure (env, head e)
+unary s = arity (== 1) s >>= \(env, e) -> pure (env, head e)
 
 -- | guard for arguments of binary functions
-binary :: [Sexp] -> RE (Sexp, Sexp)
-binary es@(e : args) = x >>= \a -> y >>= \b -> pure (a, b)
- where
-  g = arity (/= 2) es
-  x = head <$> g
-  y = head . tail <$> g
-binary _ = err [errEval, errNotAllowed]
+binary :: ST [Sexp] -> RE (ST (Sexp, Sexp))
+binary s = g >>= \(env, es) -> pure (env, (head es, head . tail $ es))
+  where g = arity (== 2) s
 
 -- | guard for arguments of even-ary(pairwise) functions
-evenary :: [Sexp] -> RE [Sexp]
+evenary :: ST [Sexp] -> RE (ST [Sexp])
 evenary = arity even
 
 
@@ -342,20 +344,15 @@ evenary = arity even
 -- |
 type ST a = (Env, a)
 
-get's :: ST a -> a
-get's = snd
+get :: ST a -> RE a
+get = pure . snd
 
-get'e :: ST a -> Env
-get'e = fst
+put :: a -> ST a -> RE (ST a)
+put x (env, _) = pure (env, x)
 
-put's :: a -> ST a -> ST a
-put's e' (env, e) = (env, e')
+modify :: (a -> RE b) -> ST a -> RE (ST b)
+modify f (env, e) = f e <&> (env, )
 
-put'e :: Env -> ST a -> ST a
-put'e env' (env, e) = (env', e)
-
-find :: String -> Env -> RE (ST Sexp)
-find key env = (env, ) <$> get key env
 
 ----------
 -- Env
@@ -372,24 +369,28 @@ init'env :: Env
 init'env = Env M.empty M.empty
 
 -- |
-get :: String -> Env -> RE Sexp
-get k env = case match of
-  Just v  -> pure v
+find :: String -> ST Sexp -> RE (ST Sexp)
+find k s@(env, _) = case match of
+  Just v  -> put v s
   Nothing -> err [errEval, errVoidSymbolVar, k]
   where match = M.lookup k (env'l env) <|> M.lookup k (env'g env)
 
 -- |
-set :: (String, Sexp) -> Env -> RE Env
-set (k, e) env@Env {..} | M.member k env'l = set'l (k, e) env
-                        | otherwise        = set'g (k, e) env
+get'env :: ST a -> RE Env
+get'env (env, _) = pure env
 
 -- |
-set'g :: (String, Sexp) -> Env -> RE Env
-set'g (k, e) env@Env {..} = pure (env { env'g = M.insert k e env'g })
+set'env :: (String, Sexp) -> Env -> RE Env
+set'env (k, e) env@Env {..} | M.member k env'l = set'lenv (k, e) env
+                            | otherwise        = set'genv (k, e) env
 
 -- |
-set'l :: (String, Sexp) -> Env -> RE Env
-set'l (k, e) env@Env {..} = pure (env { env'l = M.insert k e env'l })
+set'genv :: (String, Sexp) -> Env -> RE Env
+set'genv (k, e) env@Env {..} = pure (env { env'g = M.insert k e env'g })
+
+-- |
+set'lenv :: (String, Sexp) -> Env -> RE Env
+set'lenv (k, e) env@Env {..} = pure (env { env'l = M.insert k e env'l })
 
 -- | when going into local-scope
 local :: Env -> Env
@@ -403,10 +404,11 @@ global g@Env{} (l@Env{}, a) = (g { env'g = env'g l }, a)
 ----------
 -- Print
 ----------
--- |
+-- | PRINT
 print' :: MonadIO m => Sexp -> InputT m ()
 print' = outputStrLn . show'
 
+-- | stringifies S-expression
 show' :: Sexp -> String
 show' = \case
   NIL               -> "nil"
@@ -424,9 +426,9 @@ show' = \case
     _  -> "(" <> unwords (show' <$> list) <> ")"
 
 
-deriving instance Pretty Sexp
-
 deriving instance Show Sexp
+
+deriving instance Pretty Sexp
 
 
 err :: [String] -> RE a
@@ -456,6 +458,9 @@ errWrongNargs = "Wrong number of arguments:"
 errWrongTargs :: String
 errWrongTargs = "Wrong type arguments:"
 
+errNotSymbol :: String
+errNotSymbol = "Not a symbol:"
+
 errManySexp :: String
 errManySexp = "More than one sexp in input"
 
@@ -483,8 +488,8 @@ sl = runInputT (defaultSettings { historyFile }) (loop init'env normal)
       Just []    -> loop env normal
       Just ";;;" -> loop env debug
       Just input -> case reader (fromString input) >>= curry eval env of
-        Left  err          -> outputStrLn err >> loop env mode
-        Right (env', expr) -> printer expr >> loop env' mode
+        Left  err       -> outputStrLn err >> loop env mode
+        Right (env', e) -> printer e >> loop env' mode
 
 
 ----------
