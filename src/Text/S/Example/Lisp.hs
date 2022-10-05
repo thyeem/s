@@ -1,6 +1,6 @@
 {-# Language DeriveAnyClass #-}
+{-# Language FlexibleInstances #-}
 {-# Language LambdaCase #-}
-{-# Language NamedFieldPuns #-}
 {-# Language OverloadedStrings #-}
 {-# Language RankNTypes #-}
 {-# Language RecordWildCards #-}
@@ -10,9 +10,7 @@
 module Text.S.Example.Lisp where
 
 import           Control.Applicative            ( (<|>) )
-import           Control.Monad                  ( (>=>)
-                                                , foldM
-                                                )
+import           Control.Monad                  ( foldM )
 import           Control.Monad.IO.Class         ( MonadIO )
 import           Data.Fixed                     ( mod' )
 import           Data.Functor                   ( (<&>) )
@@ -21,13 +19,15 @@ import           Data.String                    ( fromString )
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 import           System.Console.Haskeline
+import           System.Directory               ( getHomeDirectory )
+import           System.FilePath                ( (</>) )
 import           Text.S
 
 -- | S-exp AST
 data Sexp = NIL
           | Boolean     Bool
           | Int         Integer
-          | Real        Double
+          | Float       Double
           | Symbol      String
           | Keyword     String
           | StringLit   String
@@ -56,7 +56,7 @@ sexp :: Parser Sexp
 sexp = between
   jump
   jump
-  (choice [nil, str, bool, real, int, quote, key, sym, vec, form])
+  (choice [nil, str, bool, flt, int, quote, key, sym, vec, form])
 
 -- | skips whitespaces and line/block comments
 jump :: Parser ()
@@ -78,9 +78,9 @@ bool = Boolean <$> (symbol "t" <* end $> True)
 int :: Parser Sexp
 int = Int <$> integer <* end
 
--- | real number
-real :: Parser Sexp
-real = Real <$> float <* end
+-- | non-integer
+flt :: Parser Sexp
+flt = Float <$> float <* end
 
 -- | symbol
 sym :: Parser Sexp
@@ -112,7 +112,7 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 ----------
 -- | EVAL
 eval :: ST Sexp -> RE (ST Sexp)
-eval s@(_, e) = case e of
+eval s = get s >>= \case
   Quote  a                 -> put a s
   Symbol k                 -> find k s
   Seq    es                -> put es s >>= evalSeq
@@ -123,12 +123,15 @@ eval s@(_, e) = case e of
 
 -- |
 apply :: ST [Sexp] -> RE (ST Sexp)
-apply s@(_, e : _) = case e of
-  Symbol "let*"         -> f'letq s
+apply s = modify (pure . head) s >>= get >>= \case
+  Symbol "let*"         -> f'let' s
+  -- Symbol "let"          -> f'let s
+  -- Symbol "setq"         -> f'setq s
   Symbol "symbolp"      -> f'symbolp s
   Symbol "numberp"      -> f'numberp s
   Symbol "stringp"      -> f'stringp s
   Symbol "listp"        -> f'listp s
+  Symbol "symbol-value" -> f'symbolValue s
   Symbol "defvar"       -> f'defvar s
   Symbol "defparameter" -> f'defparameter s
   Symbol "list"         -> f'list s
@@ -139,80 +142,21 @@ apply s@(_, e : _) = case e of
   Symbol "/"            -> f'div s
   Symbol "mod"          -> f'mod s
   Symbol "expt"         -> f'expt s
+  Symbol "exp"          -> f'exp s
+  Symbol "log"          -> f'log s
   Symbol "sqrt"         -> f'sqrt s
+  Symbol "abs"          -> f'abs s
+  Symbol "sin"          -> f'sin s
+  Symbol "cos"          -> f'cos s
+  Symbol "tan"          -> f'tan s
+  Symbol "sinh"         -> f'sinh s
+  Symbol "cosh"         -> f'cosh s
+  Symbol "tanh"         -> f'tanh s
   Symbol "1+"           -> f'1p s
   Symbol "1-"           -> f'1m s
+  Symbol "float"        -> f'float s
   Symbol k              -> err [errEval, errVoidSymbolFn, k]
-  _                     -> err [errEval, errNotAllowed]
-apply _ = err [errEval, errNotAllowed]
-
-
--- | predicate for symbol
-symbolp :: Sexp -> Sexp
-symbolp = \case
-  Symbol{} -> Boolean True
-  _        -> NIL
-
--- | predicate for number
-numberp :: Sexp -> Sexp
-numberp = \case
-  Int{}  -> Boolean True
-  Real{} -> Boolean True
-  _      -> NIL
-
--- | predicate for string literal
-stringp :: Sexp -> Sexp
-stringp = \case
-  StringLit{} -> Boolean True
-  _           -> NIL
-
--- | predicate for string list
-listp :: Sexp -> Sexp
-listp = \case
-  NIL    -> Boolean True
-  List{} -> Boolean True
-  _      -> NIL
-
--- | symbolp
-f'symbolp :: ST [Sexp] -> RE (ST Sexp)
-f'symbolp s = unary s >>= modify (pure . symbolp)
-
--- | numberp
-f'numberp :: ST [Sexp] -> RE (ST Sexp)
-f'numberp s = unary s >>= eval >>= modify (pure . numberp)
-
--- | stringp
-f'stringp :: ST [Sexp] -> RE (ST Sexp)
-f'stringp s = unary s >>= eval >>= modify (pure . stringp)
-
--- | stringp
-f'listp :: ST [Sexp] -> RE (ST Sexp)
-f'listp s = unary s >>= eval >>= modify (pure . listp)
-
--- | defparameter
-f'defparameter :: ST [Sexp] -> RE (ST Sexp)
-f'defparameter s = binary s >>= get >>= \case
-  (e@(Symbol k), a) ->
-    put a s >>= eval >>= \(env, a') -> set'env (k, a') (env, e)
-  (x, _) -> err [errEval, errNotSymbol, show' x]
-
--- | defvar
-f'defvar :: ST [Sexp] -> RE (ST Sexp)
-f'defvar s = binary s >>= get >>= \case
-  (e@(Symbol k), a) ->
-    put a s >>= eval >>= \(env, a') -> set'env' (k, a') (env, e)
-  (x, _) -> err [errEval, errNotSymbol, show' x]
-
--- | let
-f'letq :: ST [Sexp] -> RE (ST Sexp)
-f'letq s@(_, _ : args) = case args of
-  (l@List{} : rest)
-    | null rest
-    -> put NIL s
-    | otherwise
-    -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
-  _ -> err [errEval, errMalformed, "let*"]
-f'letq _ = err [errEval, errNotAllowed]
+  a                     -> err [errEval, errNotAllowed, "apply"]
 
 -- |
 evalSeq :: ST [Sexp] -> RE (ST Sexp)
@@ -233,62 +177,138 @@ evalList = go []
 bindSeq :: ST Sexp -> RE (ST Sexp)
 bindSeq s@(env, e) = case e of
   List (List [Symbol k, a] : rest) ->
-    set'lenv (k, a) s >>= put (List rest) >>= bindSeq
+    set'lenv k a s >>= put (List rest) >>= bindSeq
   List [] -> pure s
   _       -> err [errEval, errMalformed, "bindings"]
 
+-- | symbolp
+f'symbolp :: ST [Sexp] -> RE (ST Sexp)
+f'symbolp s = f'pred s $ \case
+  Symbol{} -> Boolean True
+  _        -> NIL
+
+-- | numberp
+f'numberp :: ST [Sexp] -> RE (ST Sexp)
+f'numberp s = f'pred s $ \case
+  Int{}   -> Boolean True
+  Float{} -> Boolean True
+  _       -> NIL
+
+-- | stringp
+f'stringp :: ST [Sexp] -> RE (ST Sexp)
+f'stringp s = f'pred s $ \case
+  StringLit{} -> Boolean True
+  _           -> NIL
+
+-- | listp
+f'listp :: ST [Sexp] -> RE (ST Sexp)
+f'listp s = f'pred s $ \case
+  NIL    -> Boolean True
+  List{} -> Boolean True
+  _      -> NIL
+
+-- | predicate builder
+f'pred :: ST [Sexp] -> (Sexp -> Sexp) -> RE (ST Sexp)
+f'pred s p = g'unary s >>= eval >>= modify (pure . p)
+
 -- | list
 f'list :: ST [Sexp] -> RE (ST Sexp)
-f'list s@(_, _ : args) = put args s >>= evalList >>= modify (pure . List)
-f'list _               = err [errEval, errNotAllowed]
+f'list s = g'args s >>= evalList >>= modify (pure . List)
 
 -- | quote
 f'quote :: ST [Sexp] -> RE (ST Sexp)
-f'quote = unary
+f'quote = g'unary
+
+-- |
+-- map' :: (ST a -> RE (ST b)) -> ST [a] -> RE (ST [b])
+-- map' f s = mapM
+
+
+-- | float
+f'float :: ST [Sexp] -> RE (ST Sexp)
+f'float s = g'unary s >>= g'float
 
 -- | (+)
 f'add :: ST [Sexp] -> RE (ST Sexp)
-f'add = fold (f'calb (+))
+f'add s = g'args s >>= evalList >>= fold (f'calb (+)) ("+", Int 0)
 
 -- | (-)
 f'sub :: ST [Sexp] -> RE (ST Sexp)
-f'sub = fold (f'calb (-))
+f'sub s = g'args s >>= evalList >>= fold (f'calb (-)) ("-", NIL)
 
 -- | (*)
 f'mul :: ST [Sexp] -> RE (ST Sexp)
-f'mul = fold (f'calb (*))
+f'mul s = g'args s >>= evalList >>= fold (f'calb (*)) ("*", Int 1)
 
 -- | (/)
 f'div :: ST [Sexp] -> RE (ST Sexp)
-f'div = fold (f'calb (/))
+f'div s = g'args s >>= evalList >>= fold (f'calb (/)) ("/", NIL)
 
 -- | (%) or mod
 f'mod :: ST [Sexp] -> RE (ST Sexp)
-f'mod s = binary s >>= modify (uncurry (f'calb mod'))
+f'mod s =
+  g'binary s >>= evalList >>= g'tuple >>= modify (uncurry (f'calb mod'))
 
 -- | expt
 f'expt :: ST [Sexp] -> RE (ST Sexp)
-f'expt s = binary s >>= modify (uncurry (f'calb (**)))
+f'expt s =
+  g'binary s >>= evalList >>= g'tuple >>= modify (uncurry (f'calb (**)))
+
+-- | exp
+f'exp :: ST [Sexp] -> RE (ST Sexp)
+f'exp s = g'unary s >>= g'float >>= modify (f'calu exp)
+
+-- | log
+f'log :: ST [Sexp] -> RE (ST Sexp)
+f'log s = g'unary s >>= g'float >>= modify (f'calu log)
 
 -- | sqrt
 f'sqrt :: ST [Sexp] -> RE (ST Sexp)
-f'sqrt s = unary s >>= modify (f'calb (*) (Real 1) >=> f'calu sqrt)
+f'sqrt s = g'unary s >>= g'float >>= modify (f'calu sqrt)
+
+-- | sin
+f'sin :: ST [Sexp] -> RE (ST Sexp)
+f'sin s = g'unary s >>= g'float >>= modify (f'calu sin)
+
+-- | cos
+f'cos :: ST [Sexp] -> RE (ST Sexp)
+f'cos s = g'unary s >>= g'float >>= modify (f'calu cos)
+
+-- | tan
+f'tan :: ST [Sexp] -> RE (ST Sexp)
+f'tan s = g'unary s >>= g'float >>= modify (f'calu tan)
+
+-- | sinh
+f'sinh :: ST [Sexp] -> RE (ST Sexp)
+f'sinh s = g'unary s >>= g'float >>= modify (f'calu sinh)
+
+-- | cosh
+f'cosh :: ST [Sexp] -> RE (ST Sexp)
+f'cosh s = g'unary s >>= g'float >>= modify (f'calu cosh)
+
+-- | tanh
+f'tanh :: ST [Sexp] -> RE (ST Sexp)
+f'tanh s = g'unary s >>= g'float >>= modify (f'calu tanh)
+
+-- | abs
+f'abs :: ST [Sexp] -> RE (ST Sexp)
+f'abs s = g'unary s >>= modify (f'calu abs)
 
 -- | (1+)
 f'1p :: ST [Sexp] -> RE (ST Sexp)
-f'1p s = unary s >>= eval >>= modify (f'calu (+ 1))
+f'1p s = g'unary s >>= eval >>= modify (f'calu (+ 1))
 
 -- | (1-)
 f'1m :: ST [Sexp] -> RE (ST Sexp)
-f'1m s = unary s >>= eval >>= modify (f'calu (subtract 1))
+f'1m s = g'unary s >>= eval >>= modify (f'calu (subtract 1))
 
 -- | unary arithmetic operator builder
 f'calu
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
 f'calu f = \case
-  Int  a -> pure . Int . floor . f $ fromIntegral a
-  Real a -> pure . Real . f $ a
-  _      -> err [errEval, errNotAllowed]
+  Int   a -> pure . Int . floor . f $ fromIntegral a
+  Float a -> pure . Float . f $ a
+  a       -> err [errEval, errNotAllowed, "f'calu"]
 
 -- | binary arithmetic operator builder
 f'calb
@@ -297,44 +317,112 @@ f'calb
   -> Sexp
   -> RE Sexp
 f'calb op x y = case (x, y) of
-  (Int  a, Int b ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
-  (Int  a, Real b) -> pure . Real $ fromIntegral a `op` b
-  (Real a, Int b ) -> pure . Real $ a `op` fromIntegral b
-  (Real a, Real b) -> pure . Real $ a `op` b
-  _                -> err [errEval, errNotAllowed]
+  (Int   a, Int b  ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
+  (Int   a, Float b) -> pure . Float $ fromIntegral a `op` b
+  (Float a, Int b  ) -> pure . Float $ a `op` fromIntegral b
+  (Float a, Float b) -> pure . Float $ a `op` b
+  _                  -> err [errEval, errNotAllowed, "f'calb"]
 
 -- | fold list args using the given binary function
-fold :: (Sexp -> Sexp -> RE Sexp) -> ST [Sexp] -> RE (ST Sexp)
-fold f s@(_, e : args) = case args of
-  (_ : _) -> put args s >>= evalList >>= \q@(_, es) ->
-    foldM f (head es) (tail es) >>= flip put q
-  [] -> case e of
-    Symbol "+" -> put (Int 0) s
-    Symbol "*" -> put (Int 1) s
-    _          -> err [errEval, errWrongNargs, show' e, show 0]
-fold _ _ = err [errEval, errNotAllowed]
+fold
+  :: (Sexp -> Sexp -> RE Sexp) -> (String, Sexp) -> ST [Sexp] -> RE (ST Sexp)
+fold f (o, def) s = get s >>= \case
+  (x : xs) -> put xs s >>= modify (foldM f x)
+  []       -> case def of
+    NIL -> err [errEval, errWrongNargs, o ++ ",", show 0]
+    a   -> put a s
 
+-- | symbol-value
+f'symbolValue :: ST [Sexp] -> RE (ST Sexp)
+f'symbolValue s = g'unary s >>= eval >>= g'symbol >>= eval
 
--- | creates functions to control function's number of arguments
+-- | defparameter
+f'defparameter :: ST [Sexp] -> RE (ST Sexp)
+f'defparameter s = g'binary s >>= get >>= \case
+  [e@(Symbol k), a] -> put a s >>= eval >>= \(env, a') -> set'env k a' (env, e)
+  x                 -> err [errEval, errNotSymbol, show' . head $ x]
+
+-- | defvar
+f'defvar :: ST [Sexp] -> RE (ST Sexp)
+f'defvar s = g'binary s >>= get >>= \case
+  [e@(Symbol k), a] ->
+    put a s >>= eval >>= \(env, a') -> set'env' k a' (env, e)
+  x -> err [errEval, errNotSymbol, show' . head $ x]
+
+-- | let*
+f'let' :: ST [Sexp] -> RE (ST Sexp)
+f'let' s = g'args s >>= get >>= \case
+  (l@List{} : rest)
+    | null rest
+    -> put NIL s
+    | otherwise
+    -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
+  _ -> err [errEval, errMalformed, "let*"]
+
+-- | builds functions to control function's number of arguments
 arity :: (Int -> Bool) -> ST [Sexp] -> RE (ST [Sexp])
-arity p (env, e : args)
+arity p s@(_, e : args)
   | not (p nargs) = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
-  | otherwise     = pure (env, args)
+  | otherwise     = put args s
   where nargs = length args
-arity _ _ = err [errEval, errNotAllowed]
+arity _ a = err [errEval, errNotAllowed, "arity"]
 
--- | guard for arguments of unary functions
-unary :: ST [Sexp] -> RE (ST Sexp)
-unary s = arity (== 1) s >>= \(env, e) -> pure (env, head e)
+-- | gets arguments only
+g'args :: ST [Sexp] -> RE (ST [Sexp])
+g'args = arity (>= 0)
 
--- | guard for arguments of binary functions
-binary :: ST [Sexp] -> RE (ST (Sexp, Sexp))
-binary s = g >>= \(env, es) -> pure (env, (head es, head . tail $ es))
-  where g = arity (== 2) s
+-- | guard for unary function's arguments
+g'unary :: ST [Sexp] -> RE (ST Sexp)
+g'unary s = arity (== 1) s >>= modify (pure . head)
 
--- | guard for arguments of even-ary(pairwise) functions
-evenary :: ST [Sexp] -> RE (ST [Sexp])
-evenary = arity even
+-- | guard for binary function's arguments
+g'binary :: ST [Sexp] -> RE (ST [Sexp])
+g'binary = arity (== 2)
+
+-- | guard for even-ary(pairwise) function's arguments
+g'evenary :: ST [Sexp] -> RE (ST [Sexp])
+g'evenary = arity even
+
+-- | guard for tuple state: transforms the result value into a tuple
+g'tuple :: ST [Sexp] -> RE (ST (Sexp, Sexp))
+g'tuple s = g'binary s >>= \(_, [x, y]) -> put (x, y) s
+
+-- | guard for symbol argument
+g'symbol :: ST Sexp -> RE (ST Sexp)
+g'symbol s@(_, e) = case e of
+  Symbol{} -> pure s
+  a        -> err [errEval, errNotSymbol, show' a]
+
+-- | guard for number argument
+g'number :: ST Sexp -> RE (ST Sexp)
+g'number s@(_, e) = case e of
+  Int{}   -> pure s
+  Float{} -> pure s
+  a       -> err [errEval, errNotNumber, show' a]
+
+g'string :: ST Sexp -> RE (ST Sexp)
+g'string s@(_, e) = case e of
+  StringLit{} -> pure s
+  a           -> err [errEval, errNotString, show' a]
+
+g'list :: ST Sexp -> RE (ST Sexp)
+g'list s@(_, e) = case e of
+  List{} -> pure s
+  a      -> err [errEval, errNotList, show' a]
+
+-- | ensures that the state is an integer s-exp
+g'int :: ST Sexp -> RE (ST Sexp)
+g'int s = g'number s >>= get >>= \case
+  i@Int{} -> put i s
+  Float r -> put (Int . floor $ r) s
+  a       -> err [errEval, errNotInteger, show' a]
+
+-- | ensures that the state is a float s-exp
+g'float :: ST Sexp -> RE (ST Sexp)
+g'float s = g'number s >>= get >>= \case
+  Int i     -> put (Float . fromIntegral $ i) s
+  r@Float{} -> put r s
+  a         -> err [errEval, errNotFloat, show' a]
 
 
 ----------
@@ -365,6 +453,10 @@ get' = pure . fst
 put' :: Env -> ST a -> RE (ST a)
 put' env (_, x) = pure (env, x)
 
+-- |
+
+-- instance {-# OVERLAPPING #-} Functor ((,) Env)  where
+  -- fmap f (env, e) = (env, f e)
 
 ----------
 -- Env
@@ -381,25 +473,23 @@ init'env :: Env
 init'env = Env M.empty M.empty
 
 -- |
-set'env :: (String, Sexp) -> ST a -> RE (ST a)
-set'env (k, e) s@(env@Env {..}, _) | M.member k env'l = set'lenv (k, e) s
-                                   | otherwise        = set'genv (k, e) s
+set'env :: String -> Sexp -> ST a -> RE (ST a)
+set'env k e s@(env@Env {..}, _) | M.member k env'l = set'lenv k e s
+                                | otherwise        = set'genv k e s
 
 -- | the same as `set'env`, but putting value only when no key
-set'env' :: (String, Sexp) -> ST a -> RE (ST a)
-set'env' (k, a) s@(env, _) = case M.lookup k (env'g env) of
+set'env' :: String -> Sexp -> ST a -> RE (ST a)
+set'env' k a s@(env, _) = case M.lookup k (env'g env) of
   Just _  -> pure s
-  Nothing -> set'env (k, a) s
+  Nothing -> set'env k a s
 
 -- |
-set'genv :: (String, Sexp) -> ST a -> RE (ST a)
-set'genv (k, e) s@(env@Env {..}, _) =
-  put' (env { env'g = M.insert k e env'g }) s
+set'genv :: String -> Sexp -> ST a -> RE (ST a)
+set'genv k e s@(env@Env {..}, _) = put' (env { env'g = M.insert k e env'g }) s
 
 -- |
-set'lenv :: (String, Sexp) -> ST a -> RE (ST a)
-set'lenv (k, e) s@(env@Env {..}, _) =
-  put' (env { env'l = M.insert k e env'l }) s
+set'lenv :: String -> Sexp -> ST a -> RE (ST a)
+set'lenv k e s@(env@Env {..}, _) = put' (env { env'l = M.insert k e env'l }) s
 
 -- | when going into local-scope
 local :: ST a -> RE (ST a)
@@ -430,7 +520,7 @@ show' :: Sexp -> String
 show' = \case
   NIL               -> "nil"
   Int       intger  -> show intger
-  Real      real    -> show real
+  Float     float   -> show float
   Symbol    symbol  -> symbol
   Keyword   keyword -> keyword
   StringLit string  -> "\"" ++ string ++ "\""
@@ -478,6 +568,21 @@ errWrongTargs = "Wrong type arguments:"
 errNotSymbol :: String
 errNotSymbol = "Not a symbol:"
 
+errNotNumber :: String
+errNotNumber = "Not a number:"
+
+errNotString :: String
+errNotString = "Not a string:"
+
+errNotInteger :: String
+errNotInteger = "Not an integer:"
+
+errNotFloat :: String
+errNotFloat = "Not a float:"
+
+errNotList :: String
+errNotList = "Not a list:"
+
 errMalformed :: String
 errMalformed = "Malformed:"
 
@@ -488,7 +593,7 @@ errParsing :: String
 errParsing = "Occurred error during parsing"
 
 errNotAllowed :: String
-errNotAllowed = "Operation not allowed"
+errNotAllowed = "Operation not allowed:"
 
 
 ----------
@@ -496,18 +601,21 @@ errNotAllowed = "Operation not allowed"
 ----------
 -- | repl for SLISP
 sl :: IO ()
-sl = runInputT (defaultSettings { historyFile }) (loop init'env normal)
+sl = do
+  historyFile <- getHomeDirectory <&> (</> ".slisp")
+  runInputT (defaultSettings { historyFile = Just historyFile })
+            (loop init'env normal)
  where
-  normal      = (read', print')
-  debug       = (read'd, print'd)
-  historyFile = Just "/tmp/slisp.hist"
+  normal = (read', print')
+  debug  = (read'd, print'd)
   loop env mode@(reader, printer) = do
-    input <- getInputLine "SLISP> "
-    case input of
-      Nothing    -> pure ()
-      Just []    -> loop env normal
-      Just ";;;" -> loop env debug
-      Just input -> case reader (fromString input) >>= curry eval env of
+    s <- getInputLine "SLISP> "
+    case s of
+      Nothing   -> pure ()
+      Just []   -> loop env normal
+      Just ";;" -> loop env debug
+      -- Just ";" -> loop env multiline
+      Just s    -> case reader (fromString s) >>= curry eval env of
         Left  err       -> outputStrLn err >> loop env mode
         Right (env', e) -> printer e >> loop env' mode
 
