@@ -12,7 +12,9 @@ module Text.S.Example.Lisp where
 import           Control.Applicative            ( (<|>)
                                                 , liftA2
                                                 )
-import           Control.Monad                  ( foldM )
+import           Control.Monad                  ( (>=>)
+                                                , foldM
+                                                )
 import           Control.Monad.IO.Class         ( MonadIO )
 import           Data.Fixed                     ( mod' )
 import           Data.Functor                   ( (<&>) )
@@ -24,6 +26,7 @@ import           System.Console.Haskeline
 import           System.Directory               ( getHomeDirectory )
 import           System.FilePath                ( (</>) )
 import           Text.S
+
 
 -- | S-exp AST
 data Sexp = NIL
@@ -125,43 +128,40 @@ eval s = get s >>= \case
 
 -- |
 apply :: ST [Sexp] -> RE (ST Sexp)
-apply s =
-  get s
-    >>= \case
-          Symbol "let*"         -> f'let' s
-          -- Symbol "let"          -> f'let s
-          -- Symbol "setq"         -> f'setq s
-          Symbol "symbolp"      -> f'symbolp s
-          Symbol "numberp"      -> f'numberp s
-          Symbol "stringp"      -> f'stringp s
-          Symbol "listp"        -> f'listp s
-          Symbol "symbol-value" -> f'symbolValue s
-          Symbol "defvar"       -> f'defvar s
-          Symbol "defparameter" -> f'defparameter s
-          Symbol "list"         -> f'list s
-          Symbol "quote"        -> f'quote s
-          Symbol "+"            -> f'add s
-          Symbol "-"            -> f'sub s
-          Symbol "*"            -> f'mul s
-          Symbol "/"            -> f'div s
-          Symbol "mod"          -> f'mod s
-          Symbol "expt"         -> f'expt s
-          Symbol "exp"          -> f'exp s
-          Symbol "log"          -> f'log s
-          Symbol "sqrt"         -> f'sqrt s
-          Symbol "abs"          -> f'abs s
-          Symbol "sin"          -> f'sin s
-          Symbol "cos"          -> f'cos s
-          Symbol "tan"          -> f'tan s
-          Symbol "sinh"         -> f'sinh s
-          Symbol "cosh"         -> f'cosh s
-          Symbol "tanh"         -> f'tanh s
-          Symbol "1+"           -> f'1p s
-          Symbol "1-"           -> f'1m s
-          Symbol "float"        -> f'float s
-          Symbol k              -> err [errEval, errVoidSymbolFn, k]
-          a                     -> err [errEval, errNotAllowed, "apply"]
-    .   head
+apply s = head' s >>= get >>= \case
+  -- Symbol "let"          -> f'let s
+  -- Symbol "setq"         -> f'setq s
+  Symbol "let*"         -> f'let' s
+  Symbol "symbolp"      -> f'symbolp s
+  Symbol "numberp"      -> f'numberp s
+  Symbol "stringp"      -> f'stringp s
+  Symbol "listp"        -> f'listp s
+  Symbol "symbol-value" -> f'symbolValue s
+  Symbol "defvar"       -> f'defvar s
+  Symbol "defparameter" -> f'defparameter s
+  Symbol "list"         -> f'list s
+  Symbol "quote"        -> f'quote s
+  Symbol "+"            -> f'add s
+  Symbol "-"            -> f'sub s
+  Symbol "*"            -> f'mul s
+  Symbol "/"            -> f'div s
+  Symbol "mod"          -> f'mod s
+  Symbol "expt"         -> f'expt s
+  Symbol "exp"          -> f'exp s
+  Symbol "log"          -> f'log s
+  Symbol "sqrt"         -> f'sqrt s
+  Symbol "abs"          -> f'abs s
+  Symbol "sin"          -> f'sin s
+  Symbol "cos"          -> f'cos s
+  Symbol "tan"          -> f'tan s
+  Symbol "sinh"         -> f'sinh s
+  Symbol "cosh"         -> f'cosh s
+  Symbol "tanh"         -> f'tanh s
+  Symbol "1+"           -> f'1p s
+  Symbol "1-"           -> f'1m s
+  Symbol "float"        -> f'float s
+  Symbol k              -> err [errEval, errVoidSymbolFn, k]
+  a                     -> err [errEval, errNotAllowed, "apply"]
 
 -- |
 evalSeq :: ST [Sexp] -> RE (ST Sexp)
@@ -188,37 +188,33 @@ bindSeq s@(env, e) = case e of
 
 -- | symbolp
 f'symbolp :: ST [Sexp] -> RE (ST Sexp)
-f'symbolp s = f'pred s $ \case
+f'symbolp s = pred' s $ \case
   Symbol{} -> Boolean True
   _        -> NIL
 
 -- | numberp
 f'numberp :: ST [Sexp] -> RE (ST Sexp)
-f'numberp s = f'pred s $ \case
+f'numberp s = pred' s $ \case
   Int{}   -> Boolean True
   Float{} -> Boolean True
   _       -> NIL
 
 -- | stringp
 f'stringp :: ST [Sexp] -> RE (ST Sexp)
-f'stringp s = f'pred s $ \case
+f'stringp s = pred' s $ \case
   StringLit{} -> Boolean True
   _           -> NIL
 
 -- | listp
 f'listp :: ST [Sexp] -> RE (ST Sexp)
-f'listp s = f'pred s $ \case
+f'listp s = pred' s $ \case
   NIL    -> Boolean True
   List{} -> Boolean True
   _      -> NIL
 
--- | predicate builder
-f'pred :: ST [Sexp] -> (Sexp -> Sexp) -> RE (ST Sexp)
-f'pred s p = g'unary s >>= eval >>= modify (pure . p)
-
 -- | list
 f'list :: ST [Sexp] -> RE (ST Sexp)
-f'list s = g'args s >>= evalList >>= modify (pure . List)
+f'list s = g'nary s >>= evalList >>= modify (pure . List)
 
 -- | quote
 f'quote :: ST [Sexp] -> RE (ST Sexp)
@@ -230,115 +226,79 @@ f'float s = g'unary s >>= g'float
 
 -- | (+)
 f'add :: ST [Sexp] -> RE (ST Sexp)
-f'add s = g'args s >>= evalList >>= map' g'number >>= fold' (f'calb (+)) "+"
+f'add = nfold g'number (calb (+)) "+"
 
 -- | (-)
 f'sub :: ST [Sexp] -> RE (ST Sexp)
-f'sub s = g'args s >>= evalList >>= map' g'number >>= fold' (f'calb (-)) "-"
+f'sub = nfold g'number (calb (-)) "-"
 
 -- | (*)
 f'mul :: ST [Sexp] -> RE (ST Sexp)
-f'mul s = g'args s >>= evalList >>= map' g'number >>= fold' (f'calb (*)) "*"
+f'mul = nfold g'number (calb (*)) "*"
 
 -- | (/)
 f'div :: ST [Sexp] -> RE (ST Sexp)
-f'div s = g'args s >>= evalList >>= map' g'number >>= fold' (f'calb (/)) "/"
+f'div = nfold g'number (calb (/)) "/"
 
 -- | (%) or mod
 f'mod :: ST [Sexp] -> RE (ST Sexp)
-f'mod s = g'binary s >>= evalList >>= map' g'number >>= g'tuple >>= modify
-  (uncurry (f'calb mod'))
+f'mod = binary g'number (modify (uncurry (calb mod')))
 
 -- | expt
 f'expt :: ST [Sexp] -> RE (ST Sexp)
-f'expt s = g'binary s >>= evalList >>= map' g'number >>= g'tuple >>= modify
-  (uncurry (f'calb (**)))
+f'expt = binary g'number (modify (uncurry (calb (**))))
 
 -- | exp
 f'exp :: ST [Sexp] -> RE (ST Sexp)
-f'exp s = g'unary s >>= eval >>= g'float >>= modify (f'calu exp)
+f'exp = unary g'float (modify (calu exp))
 
 -- | log
 f'log :: ST [Sexp] -> RE (ST Sexp)
-f'log s = g'unary s >>= eval >>= g'float >>= modify (f'calu log)
+f'log = unary g'float (modify (calu log))
 
 -- | sqrt
 f'sqrt :: ST [Sexp] -> RE (ST Sexp)
-f'sqrt s = g'unary s >>= eval >>= g'float >>= modify (f'calu sqrt)
+f'sqrt = unary g'float (modify (calu sqrt))
 
 -- | sin
 f'sin :: ST [Sexp] -> RE (ST Sexp)
-f'sin s = g'unary s >>= eval >>= g'float >>= modify (f'calu sin)
+f'sin = unary g'float (modify (calu sin))
 
 -- | cos
 f'cos :: ST [Sexp] -> RE (ST Sexp)
-f'cos s = g'unary s >>= eval >>= g'float >>= modify (f'calu cos)
+f'cos = unary g'float (modify (calu cos))
 
 -- | tan
 f'tan :: ST [Sexp] -> RE (ST Sexp)
-f'tan s = g'unary s >>= eval >>= g'float >>= modify (f'calu tan)
+f'tan = unary g'float (modify (calu tan))
 
 -- | sinh
 f'sinh :: ST [Sexp] -> RE (ST Sexp)
-f'sinh s = g'unary s >>= eval >>= g'float >>= modify (f'calu sinh)
+f'sinh = unary g'float (modify (calu sinh))
 
 -- | cosh
 f'cosh :: ST [Sexp] -> RE (ST Sexp)
-f'cosh s = g'unary s >>= eval >>= g'float >>= modify (f'calu cosh)
+f'cosh = unary g'float (modify (calu cosh))
 
 -- | tanh
 f'tanh :: ST [Sexp] -> RE (ST Sexp)
-f'tanh s = g'unary s >>= eval >>= g'float >>= modify (f'calu tanh)
+f'tanh = unary g'float (modify (calu tanh))
 
 -- | abs
 f'abs :: ST [Sexp] -> RE (ST Sexp)
-f'abs s = g'unary s >>= eval >>= modify (f'calu abs)
+f'abs = unary pure (modify (calu abs))
 
 -- | (1+)
 f'1p :: ST [Sexp] -> RE (ST Sexp)
-f'1p s = g'unary s >>= eval >>= modify (f'calu (+ 1))
+f'1p = unary pure (modify (calu (+ 1)))
 
 -- | (1-)
 f'1m :: ST [Sexp] -> RE (ST Sexp)
-f'1m s = g'unary s >>= eval >>= modify (f'calu (subtract 1))
-
--- | Unary arithmetic operator builder
-f'calu
-  :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
-f'calu f = \case
-  Int   a -> pure . Int . floor . f $ fromIntegral a
-  Float a -> pure . Float . f $ a
-  a       -> err [errEval, errNotAllowed, "f'calu"]
-
--- | Binary arithmetic operator builder
-f'calb
-  :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
-  -> Sexp
-  -> Sexp
-  -> RE Sexp
-f'calb op x y = case (x, y) of
-  (Int   a, Int b  ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
-  (Int   a, Float b) -> pure . Float $ fromIntegral a `op` b
-  (Float a, Int b  ) -> pure . Float $ a `op` fromIntegral b
-  (Float a, Float b) -> pure . Float $ a `op` b
-  _                  -> err [errEval, errNotAllowed, "f'calb"]
-
--- | Fold arguments of a S-exp list using the given binary function
-fold' :: (Sexp -> Sexp -> RE Sexp) -> String -> ST [Sexp] -> RE (ST Sexp)
-fold' f o s = get s >>= \case
-  [] -> case o of
-    "+" -> put (Int 0) s
-    "*" -> put (Int 1) s
-    _   -> err [errEval, errNoArgs, o]
-  [x] -> case o of
-    "-" -> put x s >>= modify (f (Int 0))
-    "/" -> put x s >>= modify (f (Int 1))
-    _   -> put x s
-  (x : xs) -> put xs s >>= modify (foldM f x)
+f'1m = unary pure (modify (calu (subtract 1)))
 
 -- | symbol-value
 f'symbolValue :: ST [Sexp] -> RE (ST Sexp)
-f'symbolValue s = g'unary s >>= eval >>= g'symbol >>= eval
+f'symbolValue = unary g'symbol eval
 
 -- | defparameter
 f'defparameter :: ST [Sexp] -> RE (ST Sexp)
@@ -355,13 +315,76 @@ f'defvar s = g'binary s >>= get >>= \case
 
 -- | let*
 f'let' :: ST [Sexp] -> RE (ST Sexp)
-f'let' s = g'args s >>= get >>= \case
+f'let' s = g'nary s >>= get >>= \case
   (l@List{} : rest)
     | null rest
     -> put NIL s
     | otherwise
     -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
   _ -> err [errEval, errMalformed, "let*"]
+
+-- | Predicate builder
+pred' :: ST [Sexp] -> (Sexp -> Sexp) -> RE (ST Sexp)
+pred' s p = g'unary s >>= eval >>= modify (pure . p)
+
+-- | Unary arithmetic operator builder
+calu
+  :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
+calu f = \case
+  Int   a -> pure . Int . floor . f $ fromIntegral a
+  Float a -> pure . Float . f $ a
+  a       -> err [errEval, errNotAllowed, "calu"]
+
+-- | Binary arithmetic operator builder
+calb
+  :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
+  -> Sexp
+  -> Sexp
+  -> RE Sexp
+calb op x y = case (x, y) of
+  (Int   a, Int b  ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
+  (Int   a, Float b) -> pure . Float $ fromIntegral a `op` b
+  (Float a, Int b  ) -> pure . Float $ a `op` fromIntegral b
+  (Float a, Float b) -> pure . Float $ a `op` b
+  _                  -> err [errEval, errNotAllowed, "calb"]
+
+-- | Unary function builder
+unary
+  :: (ST Sexp -> RE (ST Sexp))
+  -> (ST Sexp -> RE (ST Sexp))
+  -> ST [Sexp]
+  -> RE (ST Sexp)
+unary g f = g'unary >=> eval >=> g >=> f
+
+-- | Binary function builder
+binary
+  :: (ST Sexp -> RE (ST Sexp))
+  -> (ST (Sexp, Sexp) -> RE (ST Sexp))
+  -> ST [Sexp]
+  -> RE (ST Sexp)
+binary g f = g'binary >=> evalList >=> map' g >=> g'tuple >=> f
+
+-- | N-fold function builder
+nfold
+  :: (ST Sexp -> RE (ST Sexp))
+  -> (Sexp -> Sexp -> RE Sexp)
+  -> String
+  -> ST [Sexp]
+  -> RE (ST Sexp)
+nfold g f label = g'nary >=> evalList >=> map' g >=> fold' f label
+
+-- | Fold arguments of a S-exp list using the given binary function
+fold' :: (Sexp -> Sexp -> RE Sexp) -> String -> ST [Sexp] -> RE (ST Sexp)
+fold' f o s = get s >>= \case
+  [] -> case o of
+    "+" -> put (Int 0) s
+    "*" -> put (Int 1) s
+    _   -> err [errEval, errNoArgs, o]
+  [x] -> case o of
+    "-" -> put x s >>= modify (f (Int 0))
+    "/" -> put x s >>= modify (f (Int 1))
+    _   -> put x s
+  (x : xs) -> put xs s >>= modify (foldM f x)
 
 -- | Build functions to control function's number of arguments
 arity :: (Int -> Bool) -> ST [Sexp] -> RE (ST [Sexp])
@@ -371,9 +394,9 @@ arity p s@(_, e : args)
   where nargs = length args
 arity _ a = err [errEval, errNotAllowed, "arity"]
 
--- | Get arguments only
-g'args :: ST [Sexp] -> RE (ST [Sexp])
-g'args = arity (>= 0)
+-- | Get the n-ary function's arguments
+g'nary :: ST [Sexp] -> RE (ST [Sexp])
+g'nary = arity (const True)
 
 -- | Guard for unary function's arguments
 g'unary :: ST [Sexp] -> RE (ST Sexp)
@@ -391,7 +414,13 @@ g'evenary = arity even
 g'tuple :: ST [Sexp] -> RE (ST (Sexp, Sexp))
 g'tuple = \case
   s@(_, [x, y]) -> put (x, y) s
-  _             -> err [""]
+  a             -> err [errEval, errWrongNargs]
+
+-- | Guard for non-empty S-exp list
+g'notNull :: String -> ST [a] -> RE (ST [a])
+g'notNull caller s = get s >>= \case
+  [] -> err [errEval, errNoArgs, caller]
+  _  -> pure s
 
 -- | Guard for symbol argument
 g'symbol :: ST Sexp -> RE (ST Sexp)
@@ -431,7 +460,6 @@ g'float s = g'number s >>= get >>= \case
   r@Float{} -> put r s
   a         -> err [errEval, errNotFloat, show' a]
 
-
 ----------
 -- State
 ----------
@@ -459,6 +487,14 @@ get' = pure . fst
 -- | Set the given env to the state
 put' :: Env -> ST a -> RE (ST a)
 put' env (_, x) = pure (env, x)
+
+-- | Not partial function for state
+head' :: ST [a] -> RE (ST a)
+head' s = g'notNull "head'" s >>= modify (pure . head)
+
+-- | Not partial function for state
+tail' :: ST [a] -> RE (ST [a])
+tail' s = g'notNull "tail'" s >>= modify (pure . tail)
 
 -- | Map the state result to an action.
 -- This map is only valid when the result has multiple value, i.e., a list
@@ -576,10 +612,7 @@ errWrongNargs :: String
 errWrongNargs = "Wrong number of arguments:"
 
 errNoArgs :: String
-errNoArgs = "No arguments:"
-
-errWrongTargs :: String
-errWrongTargs = "Wrong type arguments:"
+errNoArgs = "No arguments, nothing to apply:"
 
 errNotSymbol :: String
 errNotSymbol = "Not a symbol:"
