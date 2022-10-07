@@ -230,28 +230,28 @@ f'float s = g'unary s >>= g'float
 
 -- | (+)
 f'add :: ST [Sexp] -> RE (ST Sexp)
-f'add s = g'args s >>= evalList >>= mapM' g'number >>= fold (f'calb (+)) "+"
+f'add s = g'args s >>= evalList >>= map' g'number >>= fold' (f'calb (+)) "+"
 
 -- | (-)
 f'sub :: ST [Sexp] -> RE (ST Sexp)
-f'sub s = g'args s >>= evalList >>= mapM' g'number >>= fold (f'calb (-)) "-"
+f'sub s = g'args s >>= evalList >>= map' g'number >>= fold' (f'calb (-)) "-"
 
 -- | (*)
 f'mul :: ST [Sexp] -> RE (ST Sexp)
-f'mul s = g'args s >>= evalList >>= mapM' g'number >>= fold (f'calb (*)) "*"
+f'mul s = g'args s >>= evalList >>= map' g'number >>= fold' (f'calb (*)) "*"
 
 -- | (/)
 f'div :: ST [Sexp] -> RE (ST Sexp)
-f'div s = g'args s >>= evalList >>= mapM' g'number >>= fold (f'calb (/)) "/"
+f'div s = g'args s >>= evalList >>= map' g'number >>= fold' (f'calb (/)) "/"
 
 -- | (%) or mod
 f'mod :: ST [Sexp] -> RE (ST Sexp)
-f'mod s = g'binary s >>= evalList >>= mapM' g'number >>= g'tuple >>= modify
+f'mod s = g'binary s >>= evalList >>= map' g'number >>= g'tuple >>= modify
   (uncurry (f'calb mod'))
 
 -- | expt
 f'expt :: ST [Sexp] -> RE (ST Sexp)
-f'expt s = g'binary s >>= evalList >>= mapM' g'number >>= g'tuple >>= modify
+f'expt s = g'binary s >>= evalList >>= map' g'number >>= g'tuple >>= modify
   (uncurry (f'calb (**)))
 
 -- | exp
@@ -324,18 +324,17 @@ f'calb op x y = case (x, y) of
   _                  -> err [errEval, errNotAllowed, "f'calb"]
 
 -- | Fold arguments of a S-exp list using the given binary function
-fold :: (Sexp -> Sexp -> RE Sexp) -> String -> ST [Sexp] -> RE (ST Sexp)
-fold f o s = get s >>= \case
+fold' :: (Sexp -> Sexp -> RE Sexp) -> String -> ST [Sexp] -> RE (ST Sexp)
+fold' f o s = get s >>= \case
   [] -> case o of
-    "+" -> put (acc o) s
-    "*" -> put (acc o) s
+    "+" -> put (Int 0) s
+    "*" -> put (Int 1) s
     _   -> err [errEval, errNoArgs, o]
-  xs -> put xs s >>= modify (foldM f (acc o))
- where
-  acc = \case
-    "*" -> Int 1
-    "/" -> Int 1
-    _   -> Int 0
+  [x] -> case o of
+    "-" -> put x s >>= modify (f (Int 0))
+    "/" -> put x s >>= modify (f (Int 1))
+    _   -> put x s
+  (x : xs) -> put xs s >>= modify (foldM f x)
 
 -- | symbol-value
 f'symbolValue :: ST [Sexp] -> RE (ST Sexp)
@@ -463,8 +462,8 @@ put' env (_, x) = pure (env, x)
 
 -- | Map the state result to an action.
 -- This map is only valid when the result has multiple value, i.e., a list
-mapM' :: (ST a -> RE (ST a)) -> ST [a] -> RE (ST [a])
-mapM' f s@(env, es) = mapM f (sequence s) >>= put' env . sequence'
+map' :: (ST a -> RE (ST a)) -> ST [a] -> RE (ST [a])
+map' f s@(env, es) = mapM f (sequence s) >>= put' env . sequence'
  where
   sequence' xs = (init'env, go [] xs)
   go r = \case
