@@ -129,14 +129,14 @@ eval s = get s >>= \case
 -- |
 apply :: ST [Sexp] -> RE (ST Sexp)
 apply s = head' s >>= get >>= \case
-  -- Symbol "let"          -> f'let s
-  -- Symbol "setq"         -> f'setq s
   Symbol "let*"         -> f'let' s
+  Symbol "let"          -> f'let s
   Symbol "symbolp"      -> f'symbolp s
   Symbol "numberp"      -> f'numberp s
   Symbol "stringp"      -> f'stringp s
   Symbol "listp"        -> f'listp s
   Symbol "symbol-value" -> f'symbolValue s
+  -- Symbol "setq"         -> f'setq s
   Symbol "defvar"       -> f'defvar s
   Symbol "defparameter" -> f'defparameter s
   Symbol "list"         -> f'list s
@@ -163,14 +163,14 @@ apply s = head' s >>= get >>= \case
   Symbol k              -> err [errEval, errVoidSymbolFn, k]
   a                     -> err [errEval, errNotAllowed, "apply"]
 
--- |
+-- | evaluate a sequence
 evalSeq :: ST [Sexp] -> RE (ST Sexp)
 evalSeq s@(_, es) = case es of
   [e       ] -> put e s >>= eval
   (e : rest) -> put e s >>= eval >>= put rest >>= evalSeq
-  _          -> err [errEval, errMalformed, "sequence"]
+  []         -> put NIL s
 
--- |
+-- | evaluate a list
 evalList :: ST [Sexp] -> RE (ST [Sexp])
 evalList = go []
  where
@@ -178,13 +178,14 @@ evalList = go []
     (e : rest) -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
     []         -> put (reverse r) s
 
--- |
+-- | bind sequence
 bindSeq :: ST Sexp -> RE (ST Sexp)
-bindSeq s@(env, e) = case e of
+bindSeq s = get s >>= \case
   List (List [Symbol k, a] : rest) ->
-    set'lenv k a s >>= put (List rest) >>= bindSeq
+    -- set'lenv k a s >>= put (List rest) >>= bindSeq
+    put a s >>= eval >>= set'lenv k a >>= put (List rest) >>= bindSeq
   List [] -> pure s
-  _       -> err [errEval, errMalformed, "bindings"]
+  a       -> err [errEval, errMalformed, show' a]
 
 -- | symbolp
 f'symbolp :: ST [Sexp] -> RE (ST Sexp)
@@ -322,6 +323,16 @@ f'let' s = g'nary s >>= get >>= \case
     | otherwise
     -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
   _ -> err [errEval, errMalformed, "let*"]
+
+-- | let
+f'let :: ST [Sexp] -> RE (ST Sexp)
+f'let s = g'nary s >>= get >>= \case
+  (l@List{} : rest)
+    | null rest
+    -> put NIL s
+    | otherwise
+    -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
+  _ -> err [errEval, errMalformed, "let"]
 
 -- | Predicate builder
 pred' :: ST [Sexp] -> (Sexp -> Sexp) -> RE (ST Sexp)
@@ -488,11 +499,11 @@ get' = pure . fst
 put' :: Env -> ST a -> RE (ST a)
 put' env (_, x) = pure (env, x)
 
--- | Not partial function for state
+-- | Head function for the state when the state result is a list
 head' :: ST [a] -> RE (ST a)
 head' s = g'notNull "head'" s >>= modify (pure . head)
 
--- | Not partial function for state
+-- | Tail function for the state when the state result is a list
 tail' :: ST [a] -> RE (ST [a])
 tail' s = g'notNull "tail'" s >>= modify (pure . tail)
 
