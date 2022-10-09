@@ -163,14 +163,14 @@ apply s = head' s >>= get >>= \case
   Symbol k              -> err [errEval, errVoidSymbolFn, k]
   a                     -> err [errEval, errNotAllowed, "apply"]
 
--- | evaluate a sequence
+-- | Evaluate a sequence
 evalSeq :: ST [Sexp] -> RE (ST Sexp)
 evalSeq s@(_, es) = case es of
   [e       ] -> put e s >>= eval
   (e : rest) -> put e s >>= eval >>= put rest >>= evalSeq
   []         -> put NIL s
 
--- | evaluate a list
+-- | Evaluate a list
 evalList :: ST [Sexp] -> RE (ST [Sexp])
 evalList = go []
  where
@@ -178,12 +178,19 @@ evalList = go []
     (e : rest) -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
     []         -> put (reverse r) s
 
--- | bind sequence
+-- | Parallelly bind a sequence (let)
 bindSeq :: ST Sexp -> RE (ST Sexp)
 bindSeq s = get s >>= \case
   List (List [Symbol k, a] : rest) ->
-    -- set'lenv k a s >>= put (List rest) >>= bindSeq
-    put a s >>= eval >>= set'lenv k a >>= put (List rest) >>= bindSeq
+    put a s >>= eval >>= set'lenv k >>= put (List rest) >>= bindSeq
+  List [] -> pure s
+  a       -> err [errEval, errMalformed, show' a]
+
+-- | Sequentially bind a sequence (let*)
+bindSeq' :: ST Sexp -> RE (ST Sexp)
+bindSeq' s = get s >>= \case
+  List (List [Symbol k, a] : rest) ->
+    put a s >>= eval >>= set'lenv k >>= put (List rest) >>= bindSeq
   List [] -> pure s
   a       -> err [errEval, errMalformed, show' a]
 
@@ -304,25 +311,14 @@ f'symbolValue = unary g'symbol eval
 -- | defparameter
 f'defparameter :: ST [Sexp] -> RE (ST Sexp)
 f'defparameter s = g'binary s >>= get >>= \case
-  [e@(Symbol k), a] -> put a s >>= eval >>= \(env, a') -> set'env k a' (env, e)
+  [e@(Symbol k), a] -> put a s >>= eval >>= set'env k >>= put e
   x                 -> err [errEval, errNotSymbol, show' . head $ x]
 
 -- | defvar
 f'defvar :: ST [Sexp] -> RE (ST Sexp)
 f'defvar s = g'binary s >>= get >>= \case
-  [e@(Symbol k), a] ->
-    put a s >>= eval >>= \(env, a') -> set'env' k a' (env, e)
-  x -> err [errEval, errNotSymbol, show' . head $ x]
-
--- | let*
-f'let' :: ST [Sexp] -> RE (ST Sexp)
-f'let' s = g'nary s >>= get >>= \case
-  (l@List{} : rest)
-    | null rest
-    -> put NIL s
-    | otherwise
-    -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
-  _ -> err [errEval, errMalformed, "let*"]
+  [e@(Symbol k), a] -> put a s >>= eval >>= set'env' k >>= put e
+  x                 -> err [errEval, errNotSymbol, show' . head $ x]
 
 -- | let
 f'let :: ST [Sexp] -> RE (ST Sexp)
@@ -333,6 +329,16 @@ f'let s = g'nary s >>= get >>= \case
     | otherwise
     -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
   _ -> err [errEval, errMalformed, "let"]
+
+-- | let*
+f'let' :: ST [Sexp] -> RE (ST Sexp)
+f'let' s = g'nary s >>= get >>= \case
+  (l@List{} : rest)
+    | null rest
+    -> put NIL s
+    | otherwise
+    -> put l s >>= local >>= bindSeq' >>= put (Seq rest) >>= eval >>= global s
+  _ -> err [errEval, errMalformed, "let*"]
 
 -- | Predicate builder
 pred' :: ST [Sexp] -> (Sexp -> Sexp) -> RE (ST Sexp)
@@ -533,23 +539,23 @@ init'env :: Env
 init'env = Env mempty mempty
 
 -- |
-set'env :: String -> Sexp -> ST a -> RE (ST a)
-set'env k e s@(env@Env {..}, _) | M.member k env'l = set'lenv k e s
-                                | otherwise        = set'genv k e s
+set'env :: String -> ST Sexp -> RE (ST Sexp)
+set'env k s@(env@Env {..}, _) | M.member k env'l = set'lenv k s
+                              | otherwise        = set'genv k s
 
 -- | The same as `set'env`, but putting value only when no key
-set'env' :: String -> Sexp -> ST a -> RE (ST a)
-set'env' k a s@(env, _) = case M.lookup k (env'g env) of
+set'env' :: String -> ST Sexp -> RE (ST Sexp)
+set'env' k s@(env, _) = case M.lookup k (env'g env) of
   Just _  -> pure s
-  Nothing -> set'env k a s
+  Nothing -> set'env k s
 
 -- |
-set'genv :: String -> Sexp -> ST a -> RE (ST a)
-set'genv k e s@(env@Env {..}, _) = put' (env { env'g = M.insert k e env'g }) s
+set'genv :: String -> ST Sexp -> RE (ST Sexp)
+set'genv k s@(env@Env {..}, e) = put' (env { env'g = M.insert k e env'g }) s
 
 -- |
-set'lenv :: String -> Sexp -> ST a -> RE (ST a)
-set'lenv k e s@(env@Env {..}, _) = put' (env { env'l = M.insert k e env'l }) s
+set'lenv :: String -> ST Sexp -> RE (ST Sexp)
+set'lenv k s@(env@Env {..}, e) = put' (env { env'l = M.insert k e env'l }) s
 
 -- | When going into local-scope
 local :: ST a -> RE (ST a)
