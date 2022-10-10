@@ -148,7 +148,7 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 eval :: ST Sexp -> RE (ST Sexp)
 eval s = get s >>= \case
   Quote  a                 -> put a s
-  Symbol k                 -> find k s
+  Symbol k                 -> from'env k s
   Seq    es                -> put es s >>= evalSeq
   List   []                -> put NIL s
   List   es@(Symbol{} : _) -> put es s >>= apply
@@ -584,6 +584,23 @@ set'genv k s@(env@Env {..}, e) = put' (env { env'g = M.insert k e env'g }) s
 set'lenv :: String -> ST Sexp -> RE (ST Sexp)
 set'lenv k s@(env@Env {..}, e) = put' (env { env'l = M.insert k e env'l }) s
 
+-- | Get S-exp value from the state by a symbol key
+from'env :: String -> ST Sexp -> RE (ST Sexp)
+from'env k s = from'lenv k s <|> from'genv k s
+
+-- | Get S-exp value from the state global-env by a symbol key
+from'genv :: String -> ST Sexp -> RE (ST Sexp)
+from'genv k s@(env@Env {..}, _) = case M.lookup k env'g of
+  Just v  -> put v s
+  Nothing -> err [errEval, errVoidSymbolVar, k]
+
+-- | Get S-exp value from the state local-env by a symbol key
+from'lenv :: String -> ST Sexp -> RE (ST Sexp)
+from'lenv k s@(env@Env {..}, _) = case M.lookup k env'l of
+  Just v  -> put v s
+  Nothing -> err [errEval, errVoidSymbolVar, k]
+
+
 -- | When going into local-scope
 local :: ST a -> RE (ST a)
 local s@(env@Env {..}, _) =
@@ -593,19 +610,7 @@ local s@(env@Env {..}, _) =
 global :: ST b -> ST a -> RE (ST a)
 global (g@Env{}, _) s@(l@Env{}, a) = put' (g { env'g = env'g l }) s
 
--- | Find the S-exp value with the symbol key in the state
-find :: String -> ST Sexp -> RE (ST Sexp)
-find k s@(env, _) = case match of
-  Just v  -> put v s
-  Nothing -> err [errEval, errVoidSymbolVar, k]
-  where match = M.lookup k (env'l env) <|> M.lookup k (env'g env)
 
--- | Find the S-exp value with the symbol key using only the global Env
-find' :: String -> ST Sexp -> RE (ST Sexp)
-find' k s@(env, _) = case match of
-  Just v  -> put v s
-  Nothing -> err [errEval, errVoidSymbolVar, k]
-  where match = M.lookup k (env'g env)
 
 ----------
 -- Print
