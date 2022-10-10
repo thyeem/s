@@ -22,10 +22,39 @@ import qualified Data.Map                      as M
 import           Data.String                    ( fromString )
 import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
-import           System.Console.Haskeline
+import           System.Console.Haskeline       ( InputT
+                                                , Settings(historyFile)
+                                                , defaultSettings
+                                                , getInputLine
+                                                , outputStrLn
+                                                , runInputT
+                                                )
 import           System.Directory               ( getHomeDirectory )
 import           System.FilePath                ( (</>) )
-import           Text.S
+import           Text.S.Combinator              ( between
+                                                , choice
+                                                , many
+                                                )
+import           Text.S.Internal                ( ($>)
+                                                , Parser
+                                                , Pretty(pretty)
+                                                , Result(Error, Ok)
+                                                , State(State)
+                                                , Stream(isEmpty)
+                                                , Text
+                                                , parse'
+                                                , try
+                                                , void
+                                                )
+import           Text.S.Language                ( lispdef )
+import           Text.S.Lexeme                  ( float
+                                                , gap
+                                                , identifier
+                                                , integer
+                                                , skips
+                                                , stringLit
+                                                , symbol
+                                                )
 
 
 -- | S-exp AST
