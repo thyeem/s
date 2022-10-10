@@ -158,8 +158,8 @@ eval s = get s >>= \case
 -- |
 apply :: ST [Sexp] -> RE (ST Sexp)
 apply s = head' s >>= get >>= \case
-  Symbol "let*"         -> f'let' s
   Symbol "let"          -> f'let s
+  Symbol "let*"         -> f'let' s
   Symbol "symbolp"      -> f'symbolp s
   Symbol "numberp"      -> f'numberp s
   Symbol "stringp"      -> f'stringp s
@@ -207,19 +207,17 @@ evalList = go []
     (e : rest) -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
     []         -> put (reverse r) s
 
--- | Parallelly bind a sequence (let)
+-- | Parallelly bind a sequence (let-like)
 bindSeq :: ST Sexp -> RE (ST Sexp)
 bindSeq s = get s >>= \case
-  List (List [Symbol k, a] : rest) ->
-    put a s >>= eval >>= set'lenv k >>= put (List rest) >>= bindSeq
-  List [] -> pure s
-  a       -> err [errEval, errMalformed, show' a]
+  List es@(a : _) -> undefined
+  a               -> err [errEval, errMalformed, show' a]
 
--- | Sequentially bind a sequence (let*)
+-- | Sequentially bind a sequence (let*-like)
 bindSeq' :: ST Sexp -> RE (ST Sexp)
 bindSeq' s = get s >>= \case
   List (List [Symbol k, a] : rest) ->
-    put a s >>= eval >>= set'lenv k >>= put (List rest) >>= bindSeq
+    put a s >>= eval >>= set'lenv k >>= put (List rest) >>= bindSeq'
   List [] -> pure s
   a       -> err [errEval, errMalformed, show' a]
 
@@ -545,9 +543,9 @@ tail' s = g'notNull "tail'" s >>= modify (pure . tail)
 -- | Map the state result to an action.
 -- This map is only valid when the result has multiple value, i.e., a list
 map' :: (ST a -> RE (ST a)) -> ST [a] -> RE (ST [a])
-map' f s@(env, es) = mapM f (sequence s) >>= put' env . sequence'
+map' f s@(env, es) = mapM f (sequence s) >>= sequence' >>= put' env
  where
-  sequence' xs = (init'env, go [] xs)
+  sequence' xs = put (go [] xs) init'env
   go r = \case
     []              -> reverse r
     ((_, e) : rest) -> go (e : r) rest
@@ -564,8 +562,8 @@ data Env = Env
   deriving Show
 
 -- |
-init'env :: Env
-init'env = Env mempty mempty
+init'env :: ST Sexp
+init'env = (Env mempty mempty, NIL)
 
 -- |
 set'env :: String -> ST Sexp -> RE (ST Sexp)
@@ -595,13 +593,19 @@ local s@(env@Env {..}, _) =
 global :: ST b -> ST a -> RE (ST a)
 global (g@Env{}, _) s@(l@Env{}, a) = put' (g { env'g = env'g l }) s
 
--- | find stored S-exp values with symbol keys
+-- | Find the S-exp value with the symbol key in the state
 find :: String -> ST Sexp -> RE (ST Sexp)
 find k s@(env, _) = case match of
   Just v  -> put v s
   Nothing -> err [errEval, errVoidSymbolVar, k]
   where match = M.lookup k (env'l env) <|> M.lookup k (env'g env)
 
+-- | Find the S-exp value with the symbol key using only the global Env
+find' :: String -> ST Sexp -> RE (ST Sexp)
+find' k s@(env, _) = case match of
+  Just v  -> put v s
+  Nothing -> err [errEval, errVoidSymbolVar, k]
+  where match = M.lookup k (env'g env)
 
 ----------
 -- Print
@@ -703,16 +707,16 @@ sl = do
  where
   normal = (read', print')
   debug  = (read'd, print'd)
-  loop env mode@(reader, printer) = do
-    s <- getInputLine "SLISP> "
-    case s of
+  loop s mode@(reader, printer) = do
+    input <- getInputLine "SLISP> "
+    case input of
       Nothing   -> pure ()
-      Just []   -> loop env normal
-      Just ";;" -> loop env debug
+      Just []   -> loop s normal
+      Just ";;" -> loop s debug
       -- Just ";" -> loop env multiline
-      Just s    -> case reader (fromString s) >>= curry eval env of
-        Left  err       -> outputStrLn err >> loop env mode
-        Right (env', e) -> printer e >> loop env' mode
+      Just str  -> case reader (fromString str) >>= flip put s >>= eval of
+        Left  err       -> outputStrLn err >> loop s mode
+        Right s'@(_, e) -> printer e >> loop s' mode
 
 
 ----------
