@@ -207,13 +207,22 @@ evalList = go []
     (e : rest) -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
     []         -> put (reverse r) s
 
--- | Parallelly bind a sequence (let-like)
+-- | Parallelly bind a sequence (let)
 bindSeq :: ST Sexp -> RE (ST Sexp)
-bindSeq s = get s >>= \case
-  List es@(a : _) -> undefined
-  a               -> err [errEval, errMalformed, show' a]
+bindSeq s@(env, _) = get s >>= \case
+  List (List [Symbol k, a] : rest) ->
+    put a s
+      >>= g'nokey'lenv k
+      >>= xlocal
+      >>= eval
+      >>= global s
+      >>= set'lenv k
+      >>= put (List rest)
+      >>= bindSeq
+  List [] -> pure s
+  a       -> err [errEval, errMalformed, show' a]
 
--- | Sequentially bind a sequence (let*-like)
+-- | Sequentially bind a sequence (let*)
 bindSeq' :: ST Sexp -> RE (ST Sexp)
 bindSeq' s = get s >>= \case
   List (List [Symbol k, a] : rest) ->
@@ -337,35 +346,38 @@ f'symbolValue = unary g'symbol eval
 
 -- | defparameter
 f'defparameter :: ST [Sexp] -> RE (ST Sexp)
-f'defparameter s = g'binary s >>= get >>= \case
-  [e@(Symbol k), a] -> put a s >>= eval >>= set'env k >>= put e
-  x                 -> err [errEval, errNotSymbol, show' . head $ x]
+f'defparameter = defvar set'env
 
 -- | defvar
 f'defvar :: ST [Sexp] -> RE (ST Sexp)
-f'defvar s = g'binary s >>= get >>= \case
-  [e@(Symbol k), a] -> put a s >>= eval >>= set'env' k >>= put e
-  x                 -> err [errEval, errNotSymbol, show' . head $ x]
+f'defvar = defvar set'env'undef
 
 -- | let
 f'let :: ST [Sexp] -> RE (ST Sexp)
-f'let s = g'nary s >>= get >>= \case
-  (l@List{} : rest)
-    | null rest
-    -> put NIL s
-    | otherwise
-    -> put l s >>= local >>= bindSeq >>= put (Seq rest) >>= eval >>= global s
-  _ -> err [errEval, errMalformed, "let"]
+f'let = deflet bindSeq "let"
 
 -- | let*
 f'let' :: ST [Sexp] -> RE (ST Sexp)
-f'let' s = g'nary s >>= get >>= \case
+f'let' = deflet bindSeq' "let*"
+
+-- | let-function builder
+deflet :: (ST Sexp -> RE (ST Sexp)) -> String -> ST [Sexp] -> RE (ST Sexp)
+deflet f o s = g'nary s >>= get >>= \case
   (l@List{} : rest)
-    | null rest
-    -> put NIL s
-    | otherwise
-    -> put l s >>= local >>= bindSeq' >>= put (Seq rest) >>= eval >>= global s
-  _ -> err [errEval, errMalformed, "let*"]
+    | null rest -> put NIL s
+    | otherwise ->  put l s
+    >>= local
+    >>= f
+    >>= put (Seq rest)
+    >>= eval
+    >>= global s
+  _ -> err [errEval, errMalformed, o]
+
+-- | defvar-function builder
+defvar :: (String -> ST Sexp -> RE (ST Sexp)) -> ST [Sexp] -> RE (ST Sexp)
+defvar f s = g'binary s >>= get >>= \case
+  [e@(Symbol k), a] -> put a s >>= eval >>= f k >>= put e
+  x                 -> err [errEval, errNotSymbol, show' . head $ x]
 
 -- | Predicate builder
 pred' :: ST [Sexp] -> (Sexp -> Sexp) -> RE (ST Sexp)
@@ -504,6 +516,13 @@ g'float s = g'number s >>= get >>= \case
   r@Float{} -> put r s
   a         -> err [errEval, errNotFloat, show' a]
 
+-- | Ensure that the given key is not defined in the local env
+g'nokey'lenv :: String -> ST Sexp -> RE (ST Sexp)
+g'nokey'lenv k s@(Env {..}, _) = case M.lookup k env'l of
+  Just _  -> err [errEval, errDupSymbol, k]
+  Nothing -> pure s
+
+
 ----------
 -- State
 ----------
@@ -567,14 +586,8 @@ init'env = (Env mempty mempty, NIL)
 
 -- |
 set'env :: String -> ST Sexp -> RE (ST Sexp)
-set'env k s@(env@Env {..}, _) | M.member k env'l = set'lenv k s
-                              | otherwise        = set'genv k s
-
--- | The same as `set'env`, but putting value only when no key
-set'env' :: String -> ST Sexp -> RE (ST Sexp)
-set'env' k s@(env, _) = case M.lookup k (env'g env) of
-  Just _  -> pure s
-  Nothing -> set'env k s
+set'env k s@(Env {..}, _) | M.member k env'l = set'lenv k s
+                          | otherwise        = set'genv k s
 
 -- |
 set'genv :: String -> ST Sexp -> RE (ST Sexp)
@@ -584,22 +597,27 @@ set'genv k s@(env@Env {..}, e) = put' (env { env'g = M.insert k e env'g }) s
 set'lenv :: String -> ST Sexp -> RE (ST Sexp)
 set'lenv k s@(env@Env {..}, e) = put' (env { env'l = M.insert k e env'l }) s
 
+-- | The same as `set'env`, but set only when keys are not defined
+set'env'undef :: String -> ST Sexp -> RE (ST Sexp)
+set'env'undef k s@(Env {..}, _) = case M.lookup k env'g of
+  Just _  -> pure s
+  Nothing -> set'env k s
+
 -- | Get S-exp value from the state by a symbol key
 from'env :: String -> ST Sexp -> RE (ST Sexp)
 from'env k s = from'lenv k s <|> from'genv k s
 
 -- | Get S-exp value from the state global-env by a symbol key
 from'genv :: String -> ST Sexp -> RE (ST Sexp)
-from'genv k s@(env@Env {..}, _) = case M.lookup k env'g of
+from'genv k s@(Env {..}, _) = case M.lookup k env'g of
   Just v  -> put v s
   Nothing -> err [errEval, errVoidSymbolVar, k]
 
 -- | Get S-exp value from the state local-env by a symbol key
 from'lenv :: String -> ST Sexp -> RE (ST Sexp)
-from'lenv k s@(env@Env {..}, _) = case M.lookup k env'l of
+from'lenv k s@(Env {..}, _) = case M.lookup k env'l of
   Just v  -> put v s
   Nothing -> err [errEval, errVoidSymbolVar, k]
-
 
 -- | When going into local-scope
 local :: ST a -> RE (ST a)
@@ -610,6 +628,9 @@ local s@(env@Env {..}, _) =
 global :: ST b -> ST a -> RE (ST a)
 global (g@Env{}, _) s@(l@Env{}, a) = put' (g { env'g = env'g l }) s
 
+-- | Deactivate local env and use only global env
+xlocal :: ST a -> RE (ST a)
+xlocal s@(env@Env {..}, _) = put' (env { env'l = mempty }) s
 
 
 ----------
@@ -692,6 +713,9 @@ errMalformed = "Malformed:"
 
 errManySexp :: String
 errManySexp = "More than one sexp in input"
+
+errDupSymbol :: String
+errDupSymbol = "Duplicated symbol key:"
 
 errParsing :: String
 errParsing = "Occurred error during parsing"
