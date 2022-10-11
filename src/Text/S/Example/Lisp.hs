@@ -159,6 +159,7 @@ eval s = get s >>= \case
 -- |
 apply :: ST [Sexp] -> RE (ST Sexp)
 apply s = head' s >>= get >>= \case
+  Symbol "atom"         -> f'atom s
   Symbol "symbolp"      -> f'symbolp s
   Symbol "numberp"      -> f'numberp s
   Symbol "stringp"      -> f'stringp s
@@ -175,6 +176,10 @@ apply s = head' s >>= get >>= \case
   Symbol "list"         -> f'list s
   Symbol "quote"        -> f'quote s
   Symbol "float"        -> f'float s
+  Symbol "nth"          -> f'nth s
+  Symbol "first"        -> f'first s
+  Symbol "second"       -> f'second s
+  Symbol "third"        -> f'third s
   Symbol "+"            -> f'add s
   Symbol "-"            -> f'sub s
   Symbol "*"            -> f'mul s
@@ -208,8 +213,8 @@ evalList :: ST [Sexp] -> RE (ST [Sexp])
 evalList = go []
  where
   go r s@(env, es) = case es of
-    (e : rest) -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
-    []         -> put (reverse r) s
+    e : rest -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
+    []       -> put (reverse r) s
 
 -- | Parallelly bind a sequence (let)
 bindPar :: ST [Sexp] -> RE (ST [Sexp])
@@ -224,10 +229,10 @@ bindPar s = get s >>= \case
       >>= set'lenv k
       >>= put rest
       >>= bindPar
-  (x@List{} : _) -> err [errEval, errMalformed, show' x]
-  (Quote e@(Symbol k) : rest) ->
+  x@List{} : _ -> err [errEval, errMalformed, show' x]
+  Quote e@(Symbol k) : rest ->
     put e s >>= from'genv k >>= put (List [e, e] : rest) >>= bindPar
-  (a : rest) -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindPar
+  a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindPar
 
 -- | Sequentially bind a sequence (let*)
 bindSeq :: ST [Sexp] -> RE (ST [Sexp])
@@ -235,10 +240,19 @@ bindSeq s = get s >>= \case
   [] -> pure s
   (List [Symbol k, a] : rest) ->
     put a s >>= eval >>= set'lenv k >>= put rest >>= bindSeq
-  (x@List{} : _) -> err [errEval, errMalformed, show' x]
-  (Quote e@(Symbol k) : rest) ->
+  x@List{} : _ -> err [errEval, errMalformed, show' x]
+  Quote e@(Symbol k) : rest ->
     put e s >>= from'genv k >>= put (List [e, e] : rest) >>= bindSeq
-  (a : rest) -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindSeq
+  a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindSeq
+
+-- | atom
+f'atom :: ST [Sexp] -> RE (ST Sexp)
+f'atom s = pred' s $ \case
+  List{}       -> NIL
+  Seq{}        -> NIL
+  Quote List{} -> NIL
+  Quote Seq{}  -> NIL
+  _            -> Boolean True
 
 -- | symbolp
 f'symbolp :: ST [Sexp] -> RE (ST Sexp)
@@ -318,6 +332,33 @@ f'setq s = undefined
 f'setf :: ST [Sexp] -> RE (ST Sexp)
 f'setf s = undefined
 
+-- | nth
+f'nth :: ST [Sexp] -> RE (ST Sexp)
+f'nth s = g'binary s >>= \t@(_, [i, l]) ->
+  put i t >>= eval >>= g'int >>= get >>= \(Int i) ->
+    put l t >>= nth (fromIntegral i)
+
+-- |
+f'first :: ST [Sexp] -> RE (ST Sexp)
+f'first s = g'unary s >>= nth 0
+
+-- |
+f'second :: ST [Sexp] -> RE (ST Sexp)
+f'second s = g'unary s >>= nth 1
+
+-- |
+f'third :: ST [Sexp] -> RE (ST Sexp)
+f'third s = g'unary s >>= nth 2
+
+-- |
+nth :: Int -> ST Sexp -> RE (ST Sexp)
+nth i s = eval s >>= get >>= \case
+  List l -> case drop i l of
+    []    -> put NIL s
+    x : _ -> put x s
+  a -> err [errEval, errMalformed, show' a]
+
+
 -- | (+)
 f'add :: ST [Sexp] -> RE (ST Sexp)
 f'add = nfold g'number (calb (+)) "+"
@@ -393,10 +434,9 @@ f'1m = unary pure (modify (calu (subtract 1)))
 -- | let-function builder
 deflet :: (ST [Sexp] -> RE (ST [Sexp])) -> String -> ST [Sexp] -> RE (ST Sexp)
 deflet f o s = g'nary s >>= get >>= \case
-  (Quote e@Symbol{} : rest) ->
-    put (List [List [e, NIL]] : rest) s >>= deflet f o
-  (Quote (List a) : rest) -> put (List [List a] : rest) s >>= deflet f o
-  (List a : rest) ->
+  Quote e@Symbol{} : rest -> put (List [List [e, NIL]] : rest) s >>= deflet f o
+  Quote (List a)   : rest -> put (List [List a] : rest) s >>= deflet f o
+  List a : rest ->
     put a s >>= local >>= f >>= put (Seq rest) >>= eval >>= global s
   _ -> err [errEval, errMalformed, o]
 
@@ -550,7 +590,7 @@ g'float s = g'number s >>= get >>= \case
 -- | Ensure that the given key is not defined in the local env
 g'nokey'lenv :: String -> ST Sexp -> RE (ST Sexp)
 g'nokey'lenv k s@(Env {..}, _) = case M.lookup k env'l of
-  Just _  -> err [errEval, errDupSymbol, k]
+  Just _  -> err [errEval, errManySymbol, k]
   Nothing -> pure s
 
 
@@ -665,7 +705,7 @@ xlocal s@(env@Env {..}, _) = put' (env { env'l = mempty }) s
 
 -- |
 from'lenv' :: ST Sexp -> RE (ST Sexp)
-from'lenv' s = g'symbol s >>= \q@(Env {..}, Symbol k) ->
+from'lenv' s = g'symbol s >>= \t@(Env {..}, Symbol k) ->
   case M.lookup k env'l of
     Just v  -> put v s
     Nothing -> err [errEval, errVoidSymbolVar, k]
@@ -751,8 +791,8 @@ errMalformed = "Malformed:"
 errManySexp :: String
 errManySexp = "More than one or malformed sexp in input"
 
-errDupSymbol :: String
-errDupSymbol = "Duplicated symbol key:"
+errManySymbol :: String
+errManySymbol = "Occurred variable more than once:"
 
 errParsing :: String
 errParsing = "Occurred error during parsing"
