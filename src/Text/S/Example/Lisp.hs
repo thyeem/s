@@ -5,13 +5,12 @@
 {-# Language RankNTypes #-}
 {-# Language RecordWildCards #-}
 {-# Language StandaloneDeriving #-}
+{-# Language TypeApplications #-}
 {-# Language TupleSections #-}
 
 module Text.S.Example.Lisp where
 
-import           Control.Applicative            ( (<|>)
-                                                , liftA2
-                                                )
+import           Control.Applicative            ( (<|>) )
 import           Control.Monad                  ( (>=>)
                                                 , foldM
                                                 )
@@ -20,7 +19,6 @@ import           Data.Fixed                     ( mod' )
 import           Data.Functor                   ( (<&>) )
 import qualified Data.Map                      as M
 import           Data.String                    ( fromString )
-import qualified Data.Text                     as T
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Vector                   as V
 import           System.Console.Haskeline       ( InputT
@@ -49,7 +47,7 @@ import           Text.S.Internal                ( ($>)
                                                 , void
                                                 )
 import           Text.S.Language                ( lispdef )
-import           Text.S.Lexeme                  ( float
+import           Text.S.Lexeme                  ( floatB
                                                 , gap
                                                 , identifier
                                                 , integer
@@ -97,7 +95,7 @@ sexp :: Parser Sexp
 sexp = between
   jump
   jump
-  (choice [nil, str, bool, flt, int, quote, key, sym, cons, vec, form])
+  (choice [nil, str, bool, float, int, quote, key, sym, cons, vec, form])
 
 -- | Skip whitespaces and line/block comments
 jump :: Parser ()
@@ -120,8 +118,8 @@ int :: Parser Sexp
 int = Int <$> integer <* option "" (symbol ".") <* end
 
 -- | Non-integer
-flt :: Parser Sexp
-flt = Float <$> float <* end
+float :: Parser Sexp
+float = Float <$> floatB <* end
 
 -- | Symbol
 sym :: Parser Sexp
@@ -373,20 +371,20 @@ apply s = head' s >>= get >>= \case
   Symbol "symbol-value"          -> f'symbolValue s
   Symbol "symbol-plist"          -> undefined
   Symbol k                       -> err [errEval, errVoidSymbolFn, k]
-  a                              -> err [errEval, errNotAllowed, "apply"]
+  _                              -> err [errEval, errNotAllowed, "apply"]
 
 
 -- | set
 f'set :: ST [Sexp] -> RE (ST Sexp)
-f'set s = undefined
+f'set _ = undefined
 
 -- | setq
 f'setq :: ST [Sexp] -> RE (ST Sexp)
-f'setq s = undefined
+f'setq _ = undefined
 
 -- | setf
 f'setf :: ST [Sexp] -> RE (ST Sexp)
-f'setf s = undefined
+f'setf _ = undefined
 
 -- | let
 f'let :: ST [Sexp] -> RE (ST Sexp)
@@ -613,7 +611,7 @@ g'evenary = arity even
 g'tuple :: ST [Sexp] -> RE (ST (Sexp, Sexp))
 g'tuple = \case
   s@(_, [x, y]) -> put (x, y) s
-  a             -> err [errEval, errWrongNargs]
+  a             -> err [errEval, errWrongNargs, show . length $ a]
 
 -- | Guard for non-empty S-exp list
 g'notNull :: String -> ST [a] -> RE (ST [a])
@@ -684,7 +682,7 @@ evalSeq s@(_, es) = case es of
 evalList :: ST [Sexp] -> RE (ST [Sexp])
 evalList = go []
  where
-  go r s@(env, es) = case es of
+  go r s@(_, es) = case es of
     e : rest -> put e s >>= eval >>= \(env', e') -> go (e' : r) (env', rest)
     []       -> put (reverse r) s
 
@@ -740,9 +738,9 @@ pred' s p = g'unary s >>= eval >>= modify (pure . p)
 calu
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
 calu f = \case
-  Int   a -> pure . Int . floor . f $ fromIntegral a
+  Int   a -> pure . Int . floor . f @Double . fromIntegral $ a
   Float a -> pure . Float . f $ a
-  a       -> err [errEval, errNotAllowed, "calu"]
+  _       -> err [errEval, errNotAllowed, "calu"]
 
 -- | Binary arithmetic operator builder
 calb
@@ -751,7 +749,8 @@ calb
   -> Sexp
   -> RE Sexp
 calb op x y = case (x, y) of
-  (Int   a, Int b  ) -> pure . Int . floor $ fromIntegral a `op` fromIntegral b
+  (Int a, Int b) ->
+    pure . Int . floor $ (op @Double) (fromIntegral a) (fromIntegral b)
   (Int   a, Float b) -> pure . Float $ fromIntegral a `op` b
   (Float a, Int b  ) -> pure . Float $ a `op` fromIntegral b
   (Float a, Float b) -> pure . Float $ a `op` b
@@ -798,10 +797,10 @@ fold' f o s = get s >>= \case
 -- | Build functions to control function's number of arguments
 arity :: (Int -> Bool) -> ST [Sexp] -> RE (ST [Sexp])
 arity p s@(_, e : args)
-  | not (p nargs) = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
-  | otherwise     = put args s
+  | p nargs   = put args s
+  | otherwise = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
   where nargs = length args
-arity _ a = err [errEval, errNotAllowed, "arity"]
+arity _ _ = err [errEval, errNoArgs, "arity"]
 
 -- |
 nth :: Int -> ST Sexp -> RE (ST Sexp)
@@ -851,7 +850,7 @@ tail' s = g'notNull "tail'" s >>= modify (pure . tail)
 -- | Map the state result to an action.
 -- This map is only valid when the result has multiple value, i.e., a list
 map' :: (ST a -> RE (ST a)) -> ST [a] -> RE (ST [a])
-map' f s@(env, es) = mapM f (sequence s) >>= sequence' >>= put' env
+map' f s@(env, _) = mapM f (sequence s) >>= sequence' >>= put' env
  where
   sequence' xs = put (go [] xs) init'env
   go r = \case
@@ -915,11 +914,11 @@ local s@(env@Env {..}, _) =
 
 -- | When getting out from local-scope
 global :: ST b -> ST a -> RE (ST a)
-global (g@Env{}, _) s@(l@Env{}, a) = put' (g { env'g = env'g l }) s
+global (g@Env{}, _) s@(l@Env{}, _) = put' (g { env'g = env'g l }) s
 
 -- | Deactivate local env and use only global env
 xlocal :: ST a -> RE (ST a)
-xlocal s@(env@Env {..}, _) = put' (env { env'l = mempty }) s
+xlocal s@(env@Env{}, _) = put' (env { env'l = mempty }) s
 
 
 ----------

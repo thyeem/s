@@ -15,10 +15,8 @@ module Text.S.Lexeme
   ) where
 
 import           Data.Char                      ( digitToInt
-                                                , isAlpha
                                                 , readLitChar
                                                 , toLower
-                                                , toUpper
                                                 )
 import           Data.List                      ( foldl'
                                                 , foldl1'
@@ -30,10 +28,6 @@ import           Text.S.Internal
 import           Text.S.Language
 
 import           Control.Applicative            ( liftA2 )
-import           Control.Monad                  ( MonadPlus(..)
-                                                , mzero
-                                                )
-import           Data.Maybe                     ( fromMaybe )
 
 -- |
 lexeme :: Stream s => ParserS s a -> ParserS s a
@@ -377,13 +371,13 @@ identifier def = do
   let remainder = defIdentifierName def
   found <- liftA2 (:) begin remainder
 
-  if isReserved found def
+  if isReserved found
     then fail $ unwords ["reserved identifier used:", show found]
     else skips def $> found
 
  where
-  isReserved name def | caseSensitive = S.member name set
-                      | otherwise     = S.member (lower name) set
+  isReserved name | caseSensitive = S.member name set
+                  | otherwise     = S.member (lower name) set
   lower         = (toLower <$>)
   caseSensitive = defCaseSensitive def
   reservedNames = defKeywords def
@@ -399,11 +393,11 @@ identifier def = do
 operator :: Stream s => LanguageDef s -> ParserS s String
 operator def = do
   op <- specials
-  if isReserved op def
+  if isReserved op
     then fail $ unwords ["reserved operator used:", show op]
     else skips def $> op
  where
-  isReserved o def = S.member o set
+  isReserved o = S.member o set
   set = S.fromList (defReservedOps def)
 {-# INLINABLE operator #-}
 

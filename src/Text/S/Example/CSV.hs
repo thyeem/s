@@ -11,14 +11,11 @@ import           Text.S                         ( (<|>)
                                                 , Pretty
                                                 , Stream
                                                 , between
-                                                , endBy
                                                 , eof
                                                 , eol
                                                 , many
                                                 , noneOf
                                                 , sepBy
-                                                , sepBy1
-                                                , skipOptional
                                                 , symbol
                                                 )
 

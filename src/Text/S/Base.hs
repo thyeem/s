@@ -16,7 +16,6 @@ module Text.S.Base
   ) where
 
 import           Control.Applicative            ( liftA2 )
-import           Control.Monad                  ( mapM )
 import           Data.Char                      ( isPunctuation
                                                 , isSymbol
                                                 )

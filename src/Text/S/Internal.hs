@@ -72,13 +72,10 @@ import           Data.Functor                   ( ($>)
 import           Data.List                      ( intercalate
                                                 , uncons
                                                 )
-import           Data.Proxy
 import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as TIO
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text.Lazy.IO             as TLIO
-import           GHC.Generics                   ( Generic )
-import           System.IO                      ( readFile )
 import           Text.Pretty.Simple             ( pShowNoColor )
 
 
@@ -277,7 +274,7 @@ infixr 0 <?>
 -- |
 label :: String -> ParserS s a -> ParserS s a
 label msg parser = ParserS $ \state@State{} fOk fError ->
-  let fError' s@State {..} = fError $ addMessage expected s
+  let fError' s@State{} = fError $ addMessage expected s
       expected = Expected . unwords $ ["->", "expected:", msg]
   in  runParser parser state fOk fError'
 {-# INLINE label #-}
@@ -403,8 +400,8 @@ try parser = ParserS $ \state fOk fError ->
 -- See also 'assert'
 --
 ahead :: ParserS s a -> ParserS s Bool
-ahead parser = ParserS $ \state fOk fError ->
-  let fOk' x _ = fOk True state
+ahead parser = ParserS $ \state fOk _ ->
+  let fOk' _ _ = fOk True state
       fError' _ = fOk False state
   in  runParser parser state fOk' fError'
 {-# INLINE ahead #-}
@@ -531,7 +528,7 @@ instance Show Message where
 
 
 instance Pretty Source where
-  pretty src@Source {..} = TL.unwords
+  pretty Source {..} = TL.unwords
     [ TL.pack sourceName
     , "(line"
     , TL.pack $ show sourceLine <> ","
@@ -545,7 +542,7 @@ instance {-# OVERLAPPING #-} Pretty Messages where
 
 
 instance (Show s, Pretty s) => Pretty (State s) where
-  pretty state@State {..} = TL.unlines
+  pretty State {..} = TL.unlines
     [pretty stateSource, pretty stateMesssages, "remains: ", pretty stateStream]
 
 

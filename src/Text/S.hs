@@ -18,7 +18,6 @@ module Text.S
   , module Text.S.Lexeme
   , module Text.S.Language
   , module Text.S.Expr
-  , module Text.S
   ) where
 
 import           Text.S.Base
