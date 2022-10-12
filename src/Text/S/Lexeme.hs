@@ -171,30 +171,137 @@ number :: Stream s => ParserS s Double
 number = float <|> (fromIntegral <$> integer)
 {-# INLINE number #-}
 
--- | Parses floating numbers (including scientific form)
+-- | Parses floating numbers including scientific notations.
+-- Every part in the coefficient is strictly included.
 --
--- >>> tt float  "3.1415926535e-8"
--- 3.1415926535e-8
+-- [strict 'floating'] or [strict 'scientific']
+--
+-- See also 'floating' and 'scientific''.
+--
+-- >>> tt float "3.1415926535e-5"
+-- 3.1415926535e-5
 --
 float :: Stream s => ParserS s Double
 float = scientific <|> floating
- where
-  scientific = read <$> liftA2 (<>) base exponent'
-  base       = show <$> (floating <|> fromIntegral <$> integer)
-  exponent'  = liftA2 (:) (oneOf "eE") (show <$> integer)
 {-# INLINE float #-}
 
--- | Parses floating number in format of @'decimals'.'decimals'@
--- (decimal + decimal-point(.) + decimal fractions)
+-- | Parses floating numbers including scientific notations.
+-- The coefficients in scientific format allow the omitted forms.
+-- The whole-number-part in floating form is optional.
 --
--- >>> tt floating  "3.1415926535"
+-- [permissive 'floating'] or [permissive 'scientific']
+--
+-- See also 'floatingA' and 'scientific''.
+--
+-- >>> tt floatA "3.e-5"
+-- 3.0e-5
+--
+floatA :: Stream s => ParserS s Double
+floatA = scientific' <|> floatingA
+{-# INLINE floatA #-}
+
+-- | Parses floating numbers including scientific notations.
+-- The coefficients in scientific format allow the omitted forms.
+-- The deciaml-point-part in floating form is optional.
+--
+-- [permissive 'floating'] or [permissive 'scientific']
+--
+-- See also 'floatingB' and 'scientific''.
+--
+-- >>> tt floatB ".1415926535e-5"
+-- 1.415926535e-6
+--
+floatB :: Stream s => ParserS s Double
+floatB = scientific' <|> floatingB
+{-# INLINE floatB #-}
+
+-- | Parses floating number in format of
+-- [whole-number] + [decimal-point(.)] + [decimal-part]
+--
+-- This is the most strict form and every part must be included.
+--
+-- >>> tt floating "3.1415926535"
 -- 3.1415926535
 --
 floating :: Stream s => ParserS s Double
-floating = read
-  <$> foldl1' (liftA2 (<>)) [sign, show <$> decimal, string ".", digits]
-  where sign = option mempty (string "-" <|> (string "+" $> mempty))
+floating = read <$> _floating digits digits
 {-# INLINE floating #-}
+
+-- | Parses floating number in format of
+-- [whole-number] + [decimal-point(.)] + [(optional) decimal-part]
+--
+-- This is the floating form with optional decimal part.
+--
+-- >>> tt floatingA "3."
+-- 3.0
+--
+floatingA :: Stream s => ParserS s Double
+floatingA = read <$> _floating digits (option "0" digits)
+{-# INLINE floatingA #-}
+
+-- | Parses floating number in format of
+-- [(optional) whole-number] + [decimal-point(.)] + [decimal-part]
+--
+-- This is the floating form with optional whole number part.
+--
+-- >>> tt floatingB ".1415926535"
+-- 0.1415926535
+--
+floatingB :: Stream s => ParserS s Double
+floatingB = read <$> _floating (option "0" digits) digits
+{-# INLINE floatingB #-}
+
+-- | Parser builder for several types of floating numbers
+_floating
+  :: Stream s => ParserS s String -> ParserS s String -> ParserS s String
+_floating wholeNumber decimalPart = foldl1'
+  (liftA2 (<>))
+  [sign, wholeNumber, string ".", decimalPart]
+  where sign = option mempty (string "-" <|> (string "+" $> mempty))
+{-# INLINE _floating #-}
+
+
+-- | Parses floating number in scientific notations of
+-- [strict coefficient] + [e or E] + [exponent]
+--
+-- Every part in the coefficient must be strict.
+--
+-- See 'floating'.
+--
+-- >>> tt scientific "2.7182818284E3"
+-- 2718.2818284
+--
+scientific :: Stream s => ParserS s Double
+scientific = read <$> _scientific (_floating digits digits)
+{-# INLINE scientific #-}
+
+-- | Parses floating number in scientific notations of
+-- [floating or int coefficient] + [e or E] + [exponent]
+--
+-- This allow the omitted forms in the coefficient with
+-- optional whole number parts or optional decimal parts.
+--
+-- >>> tt scientific' "2.E3"
+-- 2000.0
+--
+-- >>> tt scientific' ".7182818284E3"
+-- 718.2818284
+--
+scientific' :: Stream s => ParserS s Double
+scientific' =
+  read
+    <$> (_scientific (show <$> floatingA) <|> _scientific (show <$> floatingB))
+{-# INLINE scientific' #-}
+
+-- | Parser builder for several types of numbers in scientific format
+_scientific :: Stream s => ParserS s String -> ParserS s String
+_scientific flt = liftA2 (<>) coeff expt
+ where
+  coeff = flt <|> int
+  expt  = liftA2 (:) (oneOf "eE") int
+  int   = liftA2 (<>) sign digits
+  sign  = option mempty (string "-" <|> (string "+" $> mempty))
+
 
 -- | Remove any leading and trailing whitespaces when parsing with @p@
 --

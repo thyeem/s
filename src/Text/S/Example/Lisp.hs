@@ -121,7 +121,7 @@ int = Int <$> integer <* option "" (symbol ".") <* end
 
 -- | Non-integer
 flt :: Parser Sexp
-flt = Float <$> (option "0" (symbol ".") *> float <* end)
+flt = Float <$> float <* end
 
 -- | Symbol
 sym :: Parser Sexp
