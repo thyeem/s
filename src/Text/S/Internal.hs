@@ -50,6 +50,9 @@ module Text.S.Internal
   , t
   , tt
   , ts
+  , tf
+  , ttf
+  , tsf
   , unwrap
   , error'
   , CondExpr(..)
@@ -448,20 +451,38 @@ parseFile parser file = do
   let state = initState file stream
   return . parse parser $ state
 
--- | Tests parsers and its combinators with given stream
--- and then pretty-print the parse result.
-t :: (Stream s, Pretty a) => ParserS s a -> s -> IO ()
+-------------------------
+-- Tester for ParserS
+-------------------------
+-- | Tests parsers and its combinators with given stream, then print it.
+t :: (Stream s, Pretty s, Pretty a) => ParserS s a -> s -> IO ()
 t parser = pp . parse' parser
 
--- | The same as 't' but returns the parse result, 'Ok', or 'Error'
--- instead of pretty-printing it.
+-- | The same as 't' but returns the unwrapped parse result, 'Ok', or 'Error'
 tt :: Stream s => ParserS s a -> s -> a
 tt parser = unwrap . parse' parser
 
 -- | The same as 't' but returns 'Stream' @s@ only
--- instead of pretty-printing it.
 ts :: Stream s => ParserS s a -> s -> s
 ts parser = sOnly . parse' parser
+ where
+  sOnly (Ok _ (State s _ _)) = s
+  sOnly (Error state       ) = error' . show . stateMesssages $ state
+
+-- | Tests parsers and its combinators with the given file, then print it.
+-- The same as 't', but parse to test with files.
+tf :: Pretty a => FilePath -> ParserS Text a -> IO ()
+tf file parser = parseFile parser file >>= pp
+
+-- | The same as 'tf' but returns the unwrapped parse result, 'Ok', or 'Error'
+-- The same as 'tt', but parse to test with files.
+ttf :: FilePath -> ParserS Text a -> IO a
+ttf file parser = unwrap <$> parseFile parser file
+
+-- | The same as 'tf' but returns 'Stream' @s@ only
+-- The same as 'ts', but parse to test with files.
+tsf :: FilePath -> ParserS Text a -> IO Text
+tsf file parser = sOnly <$> parseFile parser file
  where
   sOnly (Ok _ (State s _ _)) = s
   sOnly (Error state       ) = error' . show . stateMesssages $ state
@@ -523,24 +544,12 @@ instance {-# OVERLAPPING #-} Pretty Messages where
   pretty msgs = TL.pack $ intercalate "\n\t" (show <$> msgs)
 
 
-instance Show s => Pretty (State s) where
+instance (Show s, Pretty s) => Pretty (State s) where
   pretty state@State {..} = TL.unlines
-    [ pretty stateSource
-    , pretty stateMesssages
-    , "remains: " <> TL.pack showStream
-    ]
-   where
-    stream = show stateStream
-    showStream | length stream < 200 = stream
-               | otherwise           = reduceStream stateStream 60
-
-    reduceStream stream n = intercalate
-      "\n\t"
-      [take n s, "", "... (omitted) ...", "", drop (length s - n) s]
-      where s = show stream
+    [pretty stateSource, pretty stateMesssages, "remains: ", pretty stateStream]
 
 
-instance (Show s, Pretty a) => Pretty (Result a s) where
+instance (Show s, Pretty s, Pretty a) => Pretty (Result a s) where
   pretty = \case
     Ok ok s -> TL.unlines [pretty ok <> "\n", pretty s]
     Error s -> TL.unlines ["Error\n", pretty s]
@@ -574,3 +583,7 @@ instance (Show a, Show b, Show c, Show d) => Pretty (a,b,c,d) where
 deriving instance Pretty Bool
 deriving instance Pretty Char
 deriving instance Pretty ()
+deriving instance Pretty Text
+deriving instance Pretty ByteString
+deriving instance Pretty LazyText
+deriving instance Pretty LazyByteString

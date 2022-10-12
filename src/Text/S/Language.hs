@@ -152,18 +152,17 @@ haskelldef = LanguageDef
 
 -- | Language definition of SLISP
 lispdef :: Stream s => LanguageDef s
-lispdef = LanguageDef
-  { defCaseSensitive     = True
-  , defCharLiteralMark   = fail "Not defined char-literal"
-  , defStringLiteralMark = string "\""
-  , defCommentBlockBegin = string "#|"
-  , defCommentBlockEnd   = string "|#"
-  , defCommentLine       = string ";"
-  , defIdentifierBegin   = noneOf "()'`\"; "
-  , defIdentifierName    = many $ noneOf "()'`\"; "
-  , defReservedOps       = ["(", ")", "#", "'", "`", "\"", ";", " "]
-  , defKeywords          = []
-  }
+lispdef = LanguageDef { defCaseSensitive     = True
+                      , defCharLiteralMark   = fail "Not defined char-literal"
+                      , defStringLiteralMark = string "\""
+                      , defCommentBlockBegin = string "#|"
+                      , defCommentBlockEnd   = string "|#"
+                      , defCommentLine       = string ";"
+                      , defIdentifierBegin   = noneOf " ()\",'`:;#|\\"
+                      , defIdentifierName    = many $ noneOf " ()\",'`:;#|\\"
+                      , defReservedOps       = ["?", "!", "[", "]", "{", "}"]
+                      , defKeywords          = []
+                      }
 
 -- | Language definition of Java
 javaDef :: Stream s => LanguageDef s

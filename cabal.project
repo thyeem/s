@@ -1,7 +1,1 @@
 packages: .
-with-compiler: ghc-8.10.7
-
--- when optimized build
--- optimization: 2
--- package *
-    -- ghc-options: -O2 -fexpose-all-unfoldings
