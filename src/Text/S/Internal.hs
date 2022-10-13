@@ -34,9 +34,7 @@ module Text.S.Internal
   , State(..)
   , initState
   , ParserS(..)
-  , ($>)
   , void
-  , (<|>)
   , (<?>)
   , label
   , stream
@@ -66,9 +64,7 @@ import           Control.Applicative            ( Alternative(..)
 import           Control.Monad                  ( MonadPlus(..) )
 import qualified Data.ByteString.Char8         as C
 import qualified Data.ByteString.Lazy.Char8    as CL
-import           Data.Functor                   ( ($>)
-                                                , void
-                                                )
+import           Data.Functor                   ( void )
 import           Data.List                      ( intercalate
                                                 , uncons
                                                 )

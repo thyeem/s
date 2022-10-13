@@ -13,6 +13,7 @@ module Text.S.Language
   ( module Text.S.Language
   ) where
 
+import           Control.Applicative            ( (<|>) )
 import           Text.S.Base
 import           Text.S.Combinator
 import           Text.S.Internal

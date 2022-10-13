@@ -20,6 +20,7 @@ module Text.S.Combinator
   ) where
 
 import           Control.Applicative            ( (<**>)
+                                                , (<|>)
                                                 , liftA2
                                                 )
 import           Control.Monad                  ( MonadPlus(..)
@@ -27,6 +28,7 @@ import           Control.Monad                  ( MonadPlus(..)
                                                 , replicateM_
                                                 )
 import           Data.Bifunctor                 ( first )
+import           Data.Functor                   ( ($>) )
 import           Data.List                      ( foldl' )
 import           Text.S.Internal
 

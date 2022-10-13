@@ -15,11 +15,13 @@ module Text.S.Base
   ( module Text.S.Base
   ) where
 
-import           Control.Applicative            ( liftA2 )
+import           Control.Applicative            ( (<|>)
+                                                , liftA2
+                                                )
 import           Data.Char                      ( isPunctuation
                                                 , isSymbol
                                                 )
-
+import           Data.Functor                   ( ($>) )
 import           Data.Maybe                     ( fromJust )
 import           Text.S.Combinator
 import           Text.S.Internal

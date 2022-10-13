@@ -1,5 +1,6 @@
 module Text.S.Example.Calc where
 
+import           Control.Applicative            ( (<|>) )
 import           Control.Monad.IO.Class         ( MonadIO )
 import qualified Data.Text.Lazy                as TL
 import           System.Console.Haskeline

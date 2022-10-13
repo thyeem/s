@@ -14,10 +14,14 @@ module Text.S.Lexeme
   ( module Text.S.Lexeme
   ) where
 
+import           Control.Applicative            ( (<|>)
+                                                , liftA2
+                                                )
 import           Data.Char                      ( digitToInt
                                                 , readLitChar
                                                 , toLower
                                                 )
+import           Data.Functor                   ( ($>) )
 import           Data.List                      ( foldl'
                                                 , foldl1'
                                                 )
@@ -27,7 +31,6 @@ import           Text.S.Combinator
 import           Text.S.Internal
 import           Text.S.Language
 
-import           Control.Applicative            ( liftA2 )
 
 -- |
 lexeme :: Stream s => ParserS s a -> ParserS s a
@@ -218,7 +221,7 @@ floatB = scientific' <|> floatingB
 -- 3.1415926535
 --
 floating :: Stream s => ParserS s Double
-floating = read <$> _floating digits digits
+floating = read <$> genFloating digits digits
 {-# INLINE floating #-}
 
 -- | Parses floating number in format of
@@ -230,7 +233,7 @@ floating = read <$> _floating digits digits
 -- 3.0
 --
 floatingA :: Stream s => ParserS s Double
-floatingA = read <$> _floating digits (option "0" digits)
+floatingA = read <$> genFloating digits (option "0" digits)
 {-# INLINE floatingA #-}
 
 -- | Parses floating number in format of
@@ -242,17 +245,17 @@ floatingA = read <$> _floating digits (option "0" digits)
 -- 0.1415926535
 --
 floatingB :: Stream s => ParserS s Double
-floatingB = read <$> _floating (option "0" digits) digits
+floatingB = read <$> genFloating (option "0" digits) digits
 {-# INLINE floatingB #-}
 
 -- | Parser builder for several types of floating numbers
-_floating
+genFloating
   :: Stream s => ParserS s String -> ParserS s String -> ParserS s String
-_floating wholeNumber decimalPart = foldl1'
+genFloating wholeNumber decimalPart = foldl1'
   (liftA2 (<>))
   [sign, wholeNumber, string ".", decimalPart]
   where sign = option mempty (string "-" <|> (string "+" $> mempty))
-{-# INLINE _floating #-}
+{-# INLINE genFloating #-}
 
 
 -- | Parses floating number in scientific notations of
@@ -266,7 +269,7 @@ _floating wholeNumber decimalPart = foldl1'
 -- 2718.2818284
 --
 scientific :: Stream s => ParserS s Double
-scientific = read <$> _scientific (_floating digits digits)
+scientific = read <$> genScientific (genFloating digits digits)
 {-# INLINE scientific #-}
 
 -- | Parses floating number in scientific notations of
@@ -284,12 +287,14 @@ scientific = read <$> _scientific (_floating digits digits)
 scientific' :: Stream s => ParserS s Double
 scientific' =
   read
-    <$> (_scientific (show <$> floatingA) <|> _scientific (show <$> floatingB))
+    <$> (   genScientific (genFloating digits (option "0" digits))
+        <|> genScientific (genFloating (option "0" digits) digits)
+        )
 {-# INLINE scientific' #-}
 
 -- | Parser builder for several types of numbers in scientific format
-_scientific :: Stream s => ParserS s String -> ParserS s String
-_scientific flt = liftA2 (<>) coeff expt
+genScientific :: Stream s => ParserS s String -> ParserS s String
+genScientific flt = liftA2 (<>) coeff expt
  where
   coeff = flt <|> int
   expt  = liftA2 (:) (oneOf "eE") int
@@ -413,13 +418,13 @@ charLit = charLit' def
 
 -- | The same as 'charLit', but this reads 'defCharLiteralMark' from 'LanguageDef'
 charLit' :: Stream s => LanguageDef s -> ParserS s Char
-charLit' = charLiteral . defCharLiteralMark
+charLit' = genCharLit . defCharLiteralMark
 {-# INLINABLE charLit' #-}
 
 -- | Character literal parser builder
-charLiteral :: Stream s => ParserS s String -> ParserS s Char
-charLiteral mark = between mark (mark <?> "end-of-char-literal") readChar
-{-# INLINABLE charLiteral #-}
+genCharLit :: Stream s => ParserS s String -> ParserS s Char
+genCharLit mark = between mark (mark <?> "end-of-char-literal") readChar
+{-# INLINABLE genCharLit #-}
 
 -- |
 readChar :: Stream s => ParserS s Char
@@ -445,16 +450,16 @@ stringLit = stringLit' def
 
 -- | The same as 'stringLit', but this reads 'defStringLiteralMark' from 'LanguageDef'.
 stringLit' :: Stream s => LanguageDef s -> ParserS s String
-stringLit' = stringLiteral . defStringLiteralMark
+stringLit' = genStringLit . defStringLiteralMark
 {-# INLINABLE stringLit' #-}
 
 -- | String literal parser builder
-stringLiteral :: Stream s => ParserS s String -> ParserS s String
-stringLiteral mark = concat
+genStringLit :: Stream s => ParserS s String -> ParserS s String
+genStringLit mark = concat
   <$> between mark (mark <?> "end-of-string-literal") (many character)
  where
   character = choice
     [ pure <$> noneOf "\\\"\0\n\r\t\b\v\f"
     , sequence [char '\\', oneOf "\\\"0nrtbvf"]
     ]
-{-# INLINABLE stringLiteral #-}
+{-# INLINABLE genStringLit #-}

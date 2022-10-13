@@ -15,6 +15,7 @@ module Text.S.Expr
 
 
 import           Control.Monad                  ( MonadPlus(mzero) )
+import           Data.Functor                   ( ($>) )
 import           Data.List                      ( foldl' )
 import           Text.S.Combinator
 import           Text.S.Internal
