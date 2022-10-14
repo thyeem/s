@@ -54,7 +54,6 @@ import           Text.S                         ( ParserS
                                                 , void
                                                 )
 
-
 -- | S-exp AST
 data Sexp = NIL
           | Boolean     Bool
@@ -62,20 +61,37 @@ data Sexp = NIL
           | Float       Double
           | Symbol      String
           | Keyword     String
-          | StringLit   String
+          | String      String
           | Quote       Sexp
           | Cons        Sexp Sexp
           | Seq         [Sexp]
           | List        [Sexp]
           | Vector      (V.Vector Sexp)
           | HashTable   (M.Map String Sexp)
-          | Fn          [Sexp]
-          | Macro       [Sexp]
-          deriving (Eq, Ord)
-
+          | Function    String Fn
+          | Macro       String Fn
 
 -- | Context of Result or Error
 type RE = Either String
+
+-- | Type for functions and macros
+type Fn = ST [Sexp] -> RE (ST Sexp)
+
+
+instance Eq Sexp where
+  NIL         == NIL                 = True
+  NIL         == Quote     NIL       = True
+  NIL         == List      []        = True
+  NIL         == Quote     (List []) = True
+  Boolean   a == Boolean   b         = a == b
+  Int       a == Int       b         = a == b
+  Float     a == Float     b         = a == b
+  Symbol    a == Symbol    b         = a == b
+  Keyword   a == Keyword   b         = a == b
+  String    a == String    b         = a == b
+  Vector    a == Vector    b         = a == b
+  HashTable a == HashTable b         = a == b
+  _           == _                   = False
 
 
 ----------
@@ -132,7 +148,7 @@ key = Keyword . (":" ++) <$> (symbol ":" *> identifier lispdef)
 
 -- | String Literal
 str :: Parser Sexp
-str = StringLit <$> stringLit
+str = String <$> stringLit
 
 -- | Quote
 quote :: Parser Sexp
@@ -159,7 +175,7 @@ form = List <$> between (symbol "(") (symbol ")") (many sexp)
 -- | EVAL
 eval :: ST Sexp -> RE (ST Sexp)
 eval s = get s >>= \case
-  Symbol k                 -> from'env k s
+  Symbol k                 -> from'venv k s
   Quote  (List [])         -> put NIL s
   Quote  a                 -> put a s
   List   []                -> put NIL s
@@ -170,66 +186,71 @@ eval s = get s >>= \case
   a                        -> put a s
 
 -- | Apply the function of symbol name to the given arguments
-apply :: ST [Sexp] -> RE (ST Sexp)
+apply :: Fn
 apply s = head' s >>= get >>= \case
-  Symbol "set"                   -> f'set s
-  Symbol "setq"                  -> f'setq s
-  Symbol "setf"                  -> f'setf s
-  Symbol "getf"                  -> f'getf s
-  Symbol "let"                   -> f'let s
-  Symbol "let*"                  -> f'let' s
-  Symbol "defparameter"          -> f'defparameter s
-  Symbol "defvar"                -> f'defvar s
-  Symbol "makeunbound"           -> undefined
-  Symbol "quote"                 -> f'quote s
-  Symbol "or"                    -> undefined
-  Symbol "not"                   -> undefined
-  Symbol "and"                   -> undefined
-  Symbol "="                     -> undefined
-  Symbol "/="                    -> undefined
-  Symbol "<"                     -> undefined
-  Symbol ">"                     -> undefined
-  Symbol "<="                    -> undefined
-  Symbol ">="                    -> undefined
-  Symbol "min"                   -> undefined
-  Symbol "max"                   -> undefined
-  Symbol "+"                     -> f'add s
-  Symbol "-"                     -> f'sub s
-  Symbol "*"                     -> f'mul s
-  Symbol "/"                     -> f'div s
-  Symbol "mod"                   -> f'mod s
-  -- DIVISION-BY-ZERO
+  Symbol k -> from'fenv k s >>= \(_, fn) -> fn s
+  a        -> err [errEval, errNotSymbol, show' a]
+
+-- | LISP built-in functions
+built'in :: [(String, Fn)]
+built'in =
+  [ ("set"                  , f'set)
+  , ("setq"                 , f'setq)
+  , ("setf"                 , f'setf)
+  , ("getf"                 , f'getf)
+  , ("let"                  , f'let)
+  , ("let*"                 , f'let')
+  , ("defparameter"         , f'defparameter)
+  , ("defvar"               , f'defvar)
+  , ("makeunbound"          , undefined)
+  , ("quote"                , f'quote)
+  , ("or"                   , undefined)
+  , ("not"                  , undefined)
+  , ("and"                  , undefined)
+  , ("="                    , undefined)
+  , ("/="                   , undefined)
+  , ("<"                    , undefined)
+  , (">"                    , undefined)
+  , ("<="                   , undefined)
+  , (">="                   , undefined)
+  , ("min"                  , undefined)
+  , ("max"                  , undefined)
+  , ("+"                    , f'add)
+  , ("-"                    , f'sub)
+  , ("*"                    , f'mul)
+  , ("/"                    , f'div)
+  , ("mod"                  , f'mod)
   -- numerator
   -- denominator
-  Symbol "rem"                   -> undefined
-  Symbol "expt"                  -> f'expt s
-  Symbol "sqrt"                  -> f'sqrt s
-  Symbol "exp"                   -> f'exp s
-  Symbol "log"                   -> f'log s
-  Symbol "sin"                   -> f'sin s
-  Symbol "cos"                   -> f'cos s
-  Symbol "tan"                   -> f'tan s
-  Symbol "asin"                  -> f'asin s
-  Symbol "acos"                  -> f'acos s
-  Symbol "atan"                  -> f'atan s
-  Symbol "truncate"              -> undefined
-  Symbol "round"                 -> undefined
-  Symbol "ceiling"               -> undefined
-  Symbol "floor"                 -> undefined
-  Symbol "float"                 -> f'float s
-  Symbol "abs"                   -> f'abs s
-  Symbol "signum"                -> undefined
-  Symbol "1+"                    -> f'1p s
-  Symbol "1-"                    -> f'1m s
+  , ("rem"                  , undefined)
+  , ("expt"                 , f'expt)
+  , ("sqrt"                 , f'sqrt)
+  , ("exp"                  , f'exp)
+  , ("log"                  , f'log)
+  , ("sin"                  , f'sin)
+  , ("cos"                  , f'cos)
+  , ("tan"                  , f'tan)
+  , ("asin"                 , f'asin)
+  , ("acos"                 , f'acos)
+  , ("atan"                 , f'atan)
+  , ("truncate"             , undefined)
+  , ("round"                , undefined)
+  , ("ceiling"              , undefined)
+  , ("floor"                , undefined)
+  , ("float"                , f'float)
+  , ("abs"                  , f'abs)
+  , ("signum"               , undefined)
+  , ("1+"                   , f'1p)
+  , ("1-"                   , f'1m)
   -- COMPLEX-NUMBER
   -- realpart #c
   -- imagpart #c
   -- phase #c
   -- abs #c
   -- conjugate #c
-  Symbol "random"                -> undefined
+  , ("random"               , undefined)
   -- (setq *random-state* n)
-  Symbol "ash"                   -> undefined
+  , ("ash"                  , undefined)
   -- logand
   -- logior
   -- logxor
@@ -238,293 +259,294 @@ apply s = head' s >>= get >>= \case
   -- #b1010
   -- #o52
   -- #x2a
-  Symbol "format"                -> undefined
+  , ("format"               , undefined)
   -- \\ \" LITERAL ESCAPE
-  Symbol "string="               -> undefined
-  Symbol "string<"               -> undefined
+  , ("string="              , undefined)
+  , ("string<"              , undefined)
   -- concatenate 'string 'list
-  Symbol "concatenate"           -> undefined
-  Symbol "string-downcase"       -> undefined
-  Symbol "string-upcase"         -> undefined
-  Symbol "string-capitalize"     -> undefined
-  Symbol "string-trim"           -> undefined
+  , ("concatenate"          , undefined)
+  , ("string-downcase"      , undefined)
+  , ("string-upcase"        , undefined)
+  , ("string-capitalize"    , undefined)
+  , ("string-trim"          , undefined)
   -- cl-ppcre:split
-  Symbol "reduce"                -> undefined
-  Symbol "length"                -> undefined
-  Symbol "search"                -> undefined
-  Symbol "subseq"                -> undefined
+  , ("reduce"               , undefined)
+  , ("length"               , undefined)
+  , ("search"               , undefined)
+  , ("subseq"               , undefined)
   -- CHARACTER LITERAL
   -- #\a #\space #\newline #\tab ..
-  Symbol "code-char"             -> undefined
-  Symbol "char-code"             -> undefined
-  Symbol "char"                  -> undefined
+  , ("code-char"            , undefined)
+  , ("char-code"            , undefined)
+  , ("char"                 , undefined)
   -- REGEX
-  Symbol "get-decoded-time"      -> undefined
-  Symbol "get-universal-time"    -> undefined
-  Symbol "decode-universal-time" -> undefined
-  Symbol "encode-universal-time" -> undefined
+  , ("get-decoded-time"     , undefined)
+  , ("get-universal-time"   , undefined)
+  , ("decode-universal-time", undefined)
+  , ("encode-universal-time", undefined)
   -- multiple-value-bind
-  Symbol "list"                  -> f'list s
-  Symbol "cons"                  -> f'cons s
-  Symbol "car"                   -> f'car s
-  Symbol "cdr"                   -> f'cdr s
-  Symbol "caar"                  -> f'caar s
-  Symbol "cadr"                  -> f'cadr s
-  Symbol "cdar"                  -> f'cdar s
-  Symbol "cddr"                  -> f'cddr s
-  Symbol "caaar"                 -> f'caaar s
-  Symbol "caadr"                 -> f'caadr s
-  Symbol "cadar"                 -> f'cadar s
-  Symbol "caddr"                 -> f'caddr s
-  Symbol "cdaar"                 -> f'cdaar s
-  Symbol "cdadr"                 -> f'cdadr s
-  Symbol "cddar"                 -> f'cddar s
-  Symbol "cdddr"                 -> f'cdddr s
-  Symbol "caaaar"                -> f'caaaar s
-  Symbol "caaadr"                -> f'caaadr s
-  Symbol "caadar"                -> f'caadar s
-  Symbol "caaddr"                -> f'caaddr s
-  Symbol "cadaar"                -> f'cadaar s
-  Symbol "cadadr"                -> f'cadadr s
-  Symbol "caddar"                -> f'caddar s
-  Symbol "cadddr"                -> f'cadddr s
-  Symbol "cdaaar"                -> f'cdaaar s
-  Symbol "cdaadr"                -> f'cdaadr s
-  Symbol "cdadar"                -> f'cdadar s
-  Symbol "cdaddr"                -> f'cdaddr s
-  Symbol "cddaar"                -> f'cddaar s
-  Symbol "cddadr"                -> f'cddadr s
-  Symbol "cdddar"                -> f'cdddar s
-  Symbol "cddddr"                -> f'cddddr s
-  Symbol "equal"                 -> undefined
-  Symbol "nth"                   -> f'nth s
-  Symbol "first"                 -> f'first s
-  Symbol "second"                -> f'second s
-  Symbol "third"                 -> f'third s
-  Symbol "fourth"                -> f'fourth s
-  Symbol "fifth"                 -> f'fifth s
-  Symbol "sixth"                 -> f'sixth s
-  Symbol "seventh"               -> f'seventh s
-  Symbol "eighth"                -> f'eighth s
-  Symbol "nineth"                -> f'nineth s
-  Symbol "tenth"                 -> f'tenth s
-  Symbol "rest"                  -> undefined
-  Symbol "position"              -> undefined
-  Symbol "append"                -> undefined
-  Symbol "nthcdr"                -> undefined
-  Symbol "butlast"               -> undefined
-  Symbol "reverse"               -> undefined
-  Symbol "sort"                  -> undefined
-  Symbol "remove-duplicates"     -> undefined
-  Symbol "member"                -> undefined
-  Symbol "mapcar"                -> undefined
-  Symbol "remove-if-not"         -> undefined
-  Symbol "dolist"                -> undefined
-  Symbol "every"                 -> undefined
-  Symbol "some"                  -> undefined
-  Symbol "push"                  -> undefined
-  Symbol "pop"                   -> undefined
-  Symbol "assoc"                 -> undefined
-  Symbol "vector"                -> undefined
-  Symbol "elt"                   -> undefined
-  Symbol "aref"                  -> undefined
-  Symbol "coerce"                -> undefined
-  Symbol "map"                   -> undefined
-  Symbol "make-hash-table"       -> undefined
-  Symbol "hash-table-count"      -> undefined
-  Symbol "get-hash"              -> undefined
-  Symbol "nth-value"             -> undefined
-  Symbol "remhash"               -> undefined
-  Symbol "maphash"               -> undefined
-  Symbol "defstruct"             -> undefined
-  Symbol "account-id"            -> undefined
+  , ("list"                 , f'list)
+  , ("cons"                 , f'cons)
+  , ("car"                  , f'car)
+  , ("cdr"                  , f'cdr)
+  , ("caar"                 , f'caar)
+  , ("cadr"                 , f'cadr)
+  , ("cdar"                 , f'cdar)
+  , ("cddr"                 , f'cddr)
+  , ("caaar"                , f'caaar)
+  , ("caadr"                , f'caadr)
+  , ("cadar"                , f'cadar)
+  , ("caddr"                , f'caddr)
+  , ("cdaar"                , f'cdaar)
+  , ("cdadr"                , f'cdadr)
+  , ("cddar"                , f'cddar)
+  , ("cdddr"                , f'cdddr)
+  , ("caaaar"               , f'caaaar)
+  , ("caaadr"               , f'caaadr)
+  , ("caadar"               , f'caadar)
+  , ("caaddr"               , f'caaddr)
+  , ("cadaar"               , f'cadaar)
+  , ("cadadr"               , f'cadadr)
+  , ("caddar"               , f'caddar)
+  , ("cadddr"               , f'cadddr)
+  , ("cdaaar"               , f'cdaaar)
+  , ("cdaadr"               , f'cdaadr)
+  , ("cdadar"               , f'cdadar)
+  , ("cdaddr"               , f'cdaddr)
+  , ("cddaar"               , f'cddaar)
+  , ("cddadr"               , f'cddadr)
+  , ("cdddar"               , f'cdddar)
+  , ("cddddr"               , f'cddddr)
+  , ("equal"                , undefined)
+  , ("nth"                  , f'nth)
+  , ("first"                , f'first)
+  , ("second"               , f'second)
+  , ("third"                , f'third)
+  , ("fourth"               , f'fourth)
+  , ("fifth"                , f'fifth)
+  , ("sixth"                , f'sixth)
+  , ("seventh"              , f'seventh)
+  , ("eighth"               , f'eighth)
+  , ("nineth"               , f'nineth)
+  , ("tenth"                , f'tenth)
+  , ("rest"                 , f'rest)
+  , ("position"             , undefined)
+  , ("append"               , undefined)
+  , ("nthcdr"               , undefined)
+  , ("butlast"              , undefined)
+  , ("reverse"              , undefined)
+  , ("sort"                 , undefined)
+  , ("remove-duplicates"    , undefined)
+  , ("member"               , undefined)
+  , ("mapcar"               , undefined)
+  , ("remove-if-not"        , undefined)
+  , ("dolist"               , undefined)
+  , ("every"                , undefined)
+  , ("some"                 , undefined)
+  , ("push"                 , undefined)
+  , ("pop"                  , undefined)
+  , ("assoc"                , undefined)
+  , ("vector"               , undefined)
+  , ("elt"                  , undefined)
+  , ("aref"                 , undefined)
+  , ("coerce"               , undefined)
+  , ("map"                  , undefined)
+  , ("make-hash-table"      , undefined)
+  , ("hash-table-count"     , undefined)
+  , ("get-hash"             , undefined)
+  , ("nth-value"            , undefined)
+  , ("remhash"              , undefined)
+  , ("maphash"              , undefined)
+  , ("defstruct"            , undefined)
+  , ("account-id"           , undefined)
   -- MULTIPLE-VALUES: 'skip
   -- defclass
   -- OBJECTS: 'skip
-  Symbol "defun"                 -> undefined
-  Symbol "lambda"                -> undefined
-  Symbol "progn"                 -> undefined
-  Symbol "prog1"                 -> undefined
-  Symbol "prog2"                 -> undefined
-  Symbol "loop"                  -> undefined
-  Symbol "do"                    -> undefined
-  Symbol "dotimes"               -> undefined
-  Symbol "if"                    -> undefined
-  Symbol "when"                  -> undefined
-  Symbol "cond"                  -> undefined
-  Symbol "error"                 -> undefined
+  , ("defun"                , undefined)
+  , ("lambda"               , undefined)
+  , ("progn"                , undefined)
+  , ("prog1"                , undefined)
+  , ("prog2"                , undefined)
+  , ("loop"                 , undefined)
+  , ("do"                   , undefined)
+  , ("dotimes"              , undefined)
+  , ("if"                   , undefined)
+  , ("when"                 , undefined)
+  , ("cond"                 , undefined)
+  , ("error"                , undefined)
   -- EXCEPTIONS: 'skip
   -- handler-case
   -- define-condition
   -- handler-bind
   -- unwind-protect
-  Symbol "open"                  -> undefined
-  Symbol "close"                 -> undefined
-  Symbol "with-open-file"        -> undefined
-  Symbol "read-line"             -> undefined
-  Symbol "load"                  -> undefined
+  , ("open"                 , undefined)
+  , ("close"                , undefined)
+  , ("with-open-file"       , undefined)
+  , ("read-line"            , undefined)
+  , ("load"                 , undefined)
   -- STREAM
   -- param: *standard-input*
   -- param: *standard-output*
   -- param: *error-output*
   -- make-string-input-stream
   -- make-string-output-stream
-  Symbol "eval"                  -> f'eval s
-  Symbol "apply"                 -> f'apply s
-  Symbol "defmacro"              -> undefined
-  Symbol "macroexpand"           -> undefined
-  Symbol "type-of"               -> undefined
-  Symbol "describe"              -> undefined
-  Symbol "atom"                  -> f'atom s
-  Symbol "symbolp"               -> f'symbolp s
-  Symbol "numberp"               -> f'numberp s
-  Symbol "integerp"              -> undefined
-  Symbol "rationalp"             -> undefined
-  Symbol "floatp"                -> undefined
-  Symbol "realp"                 -> undefined
-  Symbol "complexp"              -> undefined
-  Symbol "zerop"                 -> undefined
-  Symbol "stringp"               -> f'stringp s
-  Symbol "listp"                 -> f'listp s
-  Symbol "characterp"            -> undefined
-  Symbol "alpha-char-p"          -> undefined
-  Symbol "alphanumericp"         -> undefined
-  Symbol "digit-char-p"          -> undefined
-  Symbol "lower-case-p"          -> undefined
-  Symbol "upper-case-p"          -> undefined
-  Symbol "characterp"            -> undefined
-  Symbol "boundp"                -> f'boundp s
-  Symbol "vectorp"               -> undefined
-  Symbol "hash-table-p"          -> undefined
-  Symbol "account-p"             -> undefined
-  Symbol "macro-function"        -> undefined
-  Symbol "typep"                 -> undefined
-  Symbol "symbol-value"          -> f'symbolValue s
-  Symbol "symbol-plist"          -> undefined
-  Symbol k                       -> err [errEval, errVoidSymbolFn, k]
-  _                              -> err [errEval, errNotAllowed, "apply"]
+  , ("eval"                 , f'eval)
+  , ("apply"                , f'apply)
+  , ("defmacro"             , undefined)
+  , ("macroexpand"          , undefined)
+  , ("type-of"              , undefined)
+  , ("describe"             , undefined)
+  , ("atom"                 , f'atom)
+  , ("symbolp"              , f'symbolp)
+  , ("numberp"              , f'numberp)
+  , ("integerp"             , undefined)
+  , ("rationalp"            , undefined)
+  , ("floatp"               , undefined)
+  , ("realp"                , undefined)
+  , ("complexp"             , undefined)
+  , ("zerop"                , undefined)
+  , ("stringp"              , f'stringp)
+  , ("listp"                , f'listp)
+  , ("characterp"           , undefined)
+  , ("alpha-char-p"         , undefined)
+  , ("alphanumericp"        , undefined)
+  , ("digit-char-p"         , undefined)
+  , ("lower-case-p"         , undefined)
+  , ("upper-case-p"         , undefined)
+  , ("characterp"           , undefined)
+  , ("boundp"               , f'boundp)
+  , ("vectorp"              , undefined)
+  , ("hash-table-p"         , undefined)
+  , ("account-p"            , undefined)
+  , ("macro-function"       , undefined)
+  , ("typep"                , undefined)
+  , ("symbol-value"         , f'symbolValue)
+  , ("symbol-function"      , undefined)
+  , ("symbol-plist"         , undefined)
+  , ("function"             , undefined)
+  ]
 
 -- | set
-f'set :: ST [Sexp] -> RE (ST Sexp)
+f'set :: Fn
 f'set s = g'binary s >>= evalList >>= \t@(_, e) -> case e of
-  [Symbol k, a] -> put a t >>= set'env k
+  [Symbol k, a] -> put a t >>= set'venv k
   a             -> err [errEval, errNotSymbol, show' . head $ a]
 
 -- | setq
-f'setq :: ST [Sexp] -> RE (ST Sexp)
+f'setq :: Fn
 f'setq s = g'evenary s >>= go
  where
   go x = get x >>= \case
-    [Symbol k, a]       -> put a x >>= eval >>= set'env k
-    Symbol k : a : rest -> put a x >>= eval >>= set'env k >>= put rest >>= go
+    [Symbol k, a]       -> put a x >>= eval >>= set'venv k
+    Symbol k : a : rest -> put a x >>= eval >>= set'venv k >>= put rest >>= go
     _                   -> err [errEval, errMalformed, "setq"]
 
 -- | setf
-f'setf :: ST [Sexp] -> RE (ST Sexp)
+f'setf :: Fn
 f'setf _ = undefined
 
 -- | getf
-f'getf :: ST [Sexp] -> RE (ST Sexp)
+f'getf :: Fn
 f'getf _ = undefined
 
 -- | let
-f'let :: ST [Sexp] -> RE (ST Sexp)
+f'let :: Fn
 f'let = deflet bindPar "let"
 
 -- | let*
-f'let' :: ST [Sexp] -> RE (ST Sexp)
+f'let' :: Fn
 f'let' = deflet bindSeq "let*"
 
 -- | defparameter
-f'defparameter :: ST [Sexp] -> RE (ST Sexp)
-f'defparameter = defvar set'env
+f'defparameter :: Fn
+f'defparameter = defvar set'venv
 
 -- | defvar
-f'defvar :: ST [Sexp] -> RE (ST Sexp)
+f'defvar :: Fn
 f'defvar = defvar set'env'undef
 
 -- | quote
-f'quote :: ST [Sexp] -> RE (ST Sexp)
+f'quote :: Fn
 f'quote = g'unary
 
 -- | (+)
-f'add :: ST [Sexp] -> RE (ST Sexp)
+f'add :: Fn
 f'add = nfold g'number (calb (+)) "+"
 
 -- | (-)
-f'sub :: ST [Sexp] -> RE (ST Sexp)
+f'sub :: Fn
 f'sub = nfold g'number (calb (-)) "-"
 
 -- | (*)
-f'mul :: ST [Sexp] -> RE (ST Sexp)
+f'mul :: Fn
 f'mul = nfold g'number (calb (*)) "*"
 
 -- | (/)
-f'div :: ST [Sexp] -> RE (ST Sexp)
+f'div :: Fn
 f'div = nfold g'number (calb (/)) "/"
 
 -- | (%) or mod
-f'mod :: ST [Sexp] -> RE (ST Sexp)
+f'mod :: Fn
 f'mod = binary g'number (modify (uncurry (calb mod')))
 
 -- | expt
-f'expt :: ST [Sexp] -> RE (ST Sexp)
+f'expt :: Fn
 f'expt = binary g'number (modify (uncurry (calb (**))))
 
 -- | sqrt
-f'sqrt :: ST [Sexp] -> RE (ST Sexp)
+f'sqrt :: Fn
 f'sqrt = unary g'float (modify (calu sqrt))
 
 -- | exp
-f'exp :: ST [Sexp] -> RE (ST Sexp)
+f'exp :: Fn
 f'exp = unary g'float (modify (calu exp))
 
 -- | log
-f'log :: ST [Sexp] -> RE (ST Sexp)
+f'log :: Fn
 f'log = unary g'float (modify (calu log))
 
 -- | sin
-f'sin :: ST [Sexp] -> RE (ST Sexp)
+f'sin :: Fn
 f'sin = unary g'float (modify (calu sin))
 
 -- | cos
-f'cos :: ST [Sexp] -> RE (ST Sexp)
+f'cos :: Fn
 f'cos = unary g'float (modify (calu cos))
 
 -- | tan
-f'tan :: ST [Sexp] -> RE (ST Sexp)
+f'tan :: Fn
 f'tan = unary g'float (modify (calu tan))
 
 -- | asin
-f'asin :: ST [Sexp] -> RE (ST Sexp)
+f'asin :: Fn
 f'asin = unary g'float (modify (calu asin))
 
 -- | acos
-f'acos :: ST [Sexp] -> RE (ST Sexp)
+f'acos :: Fn
 f'acos = unary g'float (modify (calu acos))
 
 -- | atan
-f'atan :: ST [Sexp] -> RE (ST Sexp)
+f'atan :: Fn
 f'atan = unary g'float (modify (calu atan))
 
 -- | float
-f'float :: ST [Sexp] -> RE (ST Sexp)
+f'float :: Fn
 f'float s = g'unary s >>= g'float
 
 -- | abs
-f'abs :: ST [Sexp] -> RE (ST Sexp)
+f'abs :: Fn
 f'abs = unary pure (modify (calu abs))
 
 -- | (1+)
-f'1p :: ST [Sexp] -> RE (ST Sexp)
+f'1p :: Fn
 f'1p = unary pure (modify (calu (+ 1)))
 
 -- | (1-)
-f'1m :: ST [Sexp] -> RE (ST Sexp)
+f'1m :: Fn
 f'1m = unary pure (modify (calu (subtract 1)))
 
 -- | atom
-f'atom :: ST [Sexp] -> RE (ST Sexp)
+f'atom :: Fn
 f'atom s = pred' s $ \case
   List{}       -> NIL
   Seq{}        -> NIL
@@ -533,27 +555,27 @@ f'atom s = pred' s $ \case
   _            -> Boolean True
 
 -- | symbolp
-f'symbolp :: ST [Sexp] -> RE (ST Sexp)
+f'symbolp :: Fn
 f'symbolp s = pred' s $ \case
   Symbol{} -> Boolean True
   NIL      -> Boolean True
   _        -> NIL
 
 -- | numberp
-f'numberp :: ST [Sexp] -> RE (ST Sexp)
+f'numberp :: Fn
 f'numberp s = pred' s $ \case
   Int{}   -> Boolean True
   Float{} -> Boolean True
   _       -> NIL
 
 -- | stringp
-f'stringp :: ST [Sexp] -> RE (ST Sexp)
+f'stringp :: Fn
 f'stringp s = pred' s $ \case
-  StringLit{} -> Boolean True
-  _           -> NIL
+  String{} -> Boolean True
+  _        -> NIL
 
 -- | listp
-f'listp :: ST [Sexp] -> RE (ST Sexp)
+f'listp :: Fn
 f'listp s = pred' s $ \case
   NIL    -> Boolean True
   Cons{} -> Boolean True
@@ -561,216 +583,206 @@ f'listp s = pred' s $ \case
   _      -> NIL
 
 -- | boundp
-f'boundp :: ST [Sexp] -> RE (ST Sexp)
+f'boundp :: Fn
 f'boundp s = g'unary s >>= eval >>= g'symbol >>= \t@(_, Symbol k) ->
-  case from'env k t of
+  case from'venv k t of
     Right _ -> put (Boolean True) t
     Left  _ -> put NIL t
 
 -- | list
-f'list :: ST [Sexp] -> RE (ST Sexp)
+f'list :: Fn
 f'list s = g'nary s >>= evalList >>= modify (pure . List)
 
 -- | cons
-f'cons :: ST [Sexp] -> RE (ST Sexp)
+f'cons :: Fn
 f'cons s = g'binary s >>= evalList >>= \t@(_, e) -> case e of
   [a, NIL   ] -> put (List [a]) t
   [a, List l] -> put (List (a : l)) t
   [a, b     ] -> put (Cons a b) t
   _           -> err [errEval, errNotAllowed, "cons"]
 
--- | functional core of cdr
-car :: ST Sexp -> RE (ST Sexp)
-car s = g'list s >>= get >>= \case
-  Cons x _     -> put x s
-  List (x : _) -> put x s
-  _            -> put NIL s
-
--- | functional core of cdr
-cdr :: ST Sexp -> RE (ST Sexp)
-cdr s = g'list s >>= get >>= \case
-  Cons _ y      -> put y s
-  List (_ : xs) -> put (List xs) s
-  _             -> put NIL s
-
 -- | car
-f'car :: ST [Sexp] -> RE (ST Sexp)
+f'car :: Fn
 f'car = g'unary >=> eval >=> car
 
 -- | cdr
-f'cdr :: ST [Sexp] -> RE (ST Sexp)
+f'cdr :: Fn
 f'cdr = g'unary >=> eval >=> cdr
 
 -- | caar
-f'caar :: ST [Sexp] -> RE (ST Sexp)
+f'caar :: Fn
 f'caar = g'unary >=> eval >=> car >=> car
 
 -- | cadr
-f'cadr :: ST [Sexp] -> RE (ST Sexp)
+f'cadr :: Fn
 f'cadr = g'unary >=> eval >=> car >=> cdr
 
 -- | cdar
-f'cdar :: ST [Sexp] -> RE (ST Sexp)
+f'cdar :: Fn
 f'cdar = g'unary >=> eval >=> cdr >=> car
 -- | cddr
-f'cddr :: ST [Sexp] -> RE (ST Sexp)
+f'cddr :: Fn
 f'cddr = g'unary >=> eval >=> cdr >=> cdr
 
 -- | caaar
-f'caaar :: ST [Sexp] -> RE (ST Sexp)
+f'caaar :: Fn
 f'caaar = g'unary >=> eval >=> car >=> car >=> car
 
 -- | caadr
-f'caadr :: ST [Sexp] -> RE (ST Sexp)
+f'caadr :: Fn
 f'caadr = g'unary >=> eval >=> car >=> car >=> cdr
 
 -- | caadr
-f'cadar :: ST [Sexp] -> RE (ST Sexp)
+f'cadar :: Fn
 f'cadar = g'unary >=> eval >=> car >=> cdr >=> car
 
 -- | caadr
-f'caddr :: ST [Sexp] -> RE (ST Sexp)
+f'caddr :: Fn
 f'caddr = g'unary >=> eval >=> car >=> cdr >=> cdr
 
 -- | caadr
-f'cdaar :: ST [Sexp] -> RE (ST Sexp)
+f'cdaar :: Fn
 f'cdaar = g'unary >=> eval >=> cdr >=> car >=> car
 
 -- | caadr
-f'cdadr :: ST [Sexp] -> RE (ST Sexp)
+f'cdadr :: Fn
 f'cdadr = g'unary >=> eval >=> cdr >=> car >=> cdr
 
 -- | caadr
-f'cddar :: ST [Sexp] -> RE (ST Sexp)
+f'cddar :: Fn
 f'cddar = g'unary >=> eval >=> cdr >=> cdr >=> car
 
 -- | caadr
-f'cdddr :: ST [Sexp] -> RE (ST Sexp)
+f'cdddr :: Fn
 f'cdddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr
 
 -- | caaaar
-f'caaaar :: ST [Sexp] -> RE (ST Sexp)
+f'caaaar :: Fn
 f'caaaar = g'unary >=> eval >=> car >=> car >=> car >=> car
 
 -- | caaaar
-f'caaadr :: ST [Sexp] -> RE (ST Sexp)
+f'caaadr :: Fn
 f'caaadr = g'unary >=> eval >=> car >=> car >=> car >=> cdr
 
 -- | caaaar
-f'caadar :: ST [Sexp] -> RE (ST Sexp)
+f'caadar :: Fn
 f'caadar = g'unary >=> eval >=> car >=> car >=> cdr >=> car
 
 -- | caaaar
-f'caaddr :: ST [Sexp] -> RE (ST Sexp)
+f'caaddr :: Fn
 f'caaddr = g'unary >=> eval >=> car >=> car >=> cdr >=> cdr
 
 -- | caaaar
-f'cadaar :: ST [Sexp] -> RE (ST Sexp)
+f'cadaar :: Fn
 f'cadaar = g'unary >=> eval >=> car >=> cdr >=> car >=> car
 
 -- | caaaar
-f'cadadr :: ST [Sexp] -> RE (ST Sexp)
+f'cadadr :: Fn
 f'cadadr = g'unary >=> eval >=> car >=> cdr >=> car >=> cdr
 
 -- | caaaar
-f'caddar :: ST [Sexp] -> RE (ST Sexp)
+f'caddar :: Fn
 f'caddar = g'unary >=> eval >=> car >=> cdr >=> cdr >=> car
 
 -- | caaaar
-f'cadddr :: ST [Sexp] -> RE (ST Sexp)
+f'cadddr :: Fn
 f'cadddr = g'unary >=> eval >=> car >=> cdr >=> cdr >=> cdr
 
 -- | caaaar
-f'cdaaar :: ST [Sexp] -> RE (ST Sexp)
+f'cdaaar :: Fn
 f'cdaaar = g'unary >=> eval >=> cdr >=> car >=> car >=> car
 
 -- | caaaar
-f'cdaadr :: ST [Sexp] -> RE (ST Sexp)
+f'cdaadr :: Fn
 f'cdaadr = g'unary >=> eval >=> cdr >=> car >=> car >=> cdr
 
 -- | caaaar
-f'cdadar :: ST [Sexp] -> RE (ST Sexp)
+f'cdadar :: Fn
 f'cdadar = g'unary >=> eval >=> cdr >=> car >=> cdr >=> car
 
 -- | caaaar
-f'cdaddr :: ST [Sexp] -> RE (ST Sexp)
+f'cdaddr :: Fn
 f'cdaddr = g'unary >=> eval >=> cdr >=> car >=> cdr >=> cdr
 
 -- | caaaar
-f'cddaar :: ST [Sexp] -> RE (ST Sexp)
+f'cddaar :: Fn
 f'cddaar = g'unary >=> eval >=> cdr >=> cdr >=> car >=> car
 
 -- | caaaar
-f'cddadr :: ST [Sexp] -> RE (ST Sexp)
+f'cddadr :: Fn
 f'cddadr = g'unary >=> eval >=> cdr >=> cdr >=> car >=> cdr
 
 -- | caaaar
-f'cdddar :: ST [Sexp] -> RE (ST Sexp)
+f'cdddar :: Fn
 f'cdddar = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> car
 
 -- | caaaar
-f'cddddr :: ST [Sexp] -> RE (ST Sexp)
+f'cddddr :: Fn
 f'cddddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> cdr
 
 -- | nth
-f'nth :: ST [Sexp] -> RE (ST Sexp)
+f'nth :: Fn
 f'nth s = g'binary s >>= \t@(_, [i, l]) ->
   put i t >>= eval >>= g'int >>= get >>= \(Int i) ->
     put l t >>= nth (fromIntegral i)
 
--- |
-f'first :: ST [Sexp] -> RE (ST Sexp)
+-- | first
+f'first :: Fn
 f'first s = g'unary s >>= nth 0
 
--- |
-f'second :: ST [Sexp] -> RE (ST Sexp)
+-- | second
+f'second :: Fn
 f'second s = g'unary s >>= nth 1
 
--- |
-f'third :: ST [Sexp] -> RE (ST Sexp)
+-- | third
+f'third :: Fn
 f'third s = g'unary s >>= nth 2
 
--- |
-f'fourth :: ST [Sexp] -> RE (ST Sexp)
+-- | fourth
+f'fourth :: Fn
 f'fourth s = g'unary s >>= nth 3
 
--- |
-f'fifth :: ST [Sexp] -> RE (ST Sexp)
+-- | fifth
+f'fifth :: Fn
 f'fifth s = g'unary s >>= nth 4
 
--- |
-f'sixth :: ST [Sexp] -> RE (ST Sexp)
+-- | sixth
+f'sixth :: Fn
 f'sixth s = g'unary s >>= nth 5
 
--- |
-f'seventh :: ST [Sexp] -> RE (ST Sexp)
+-- | seventh
+f'seventh :: Fn
 f'seventh s = g'unary s >>= nth 6
 
--- |
-f'eighth :: ST [Sexp] -> RE (ST Sexp)
+-- | eighth
+f'eighth :: Fn
 f'eighth s = g'unary s >>= nth 7
 
--- |
-f'nineth :: ST [Sexp] -> RE (ST Sexp)
+-- | nineth
+f'nineth :: Fn
 f'nineth s = g'unary s >>= nth 8
 
--- |
-f'tenth :: ST [Sexp] -> RE (ST Sexp)
+-- | tenth
+f'tenth :: Fn
 f'tenth s = g'unary s >>= nth 9
 
+-- | rest
+f'rest :: Fn
+f'rest = f'cdr
+
 -- | eval
-f'eval :: ST [Sexp] -> RE (ST Sexp)
+f'eval :: Fn
 f'eval s = g'unary s >>= eval >>= eval
 
 -- | apply
-f'apply :: ST [Sexp] -> RE (ST Sexp)
+f'apply :: Fn
 f'apply = undefined
 -- f'apply s = g'nary s >>= evalList >>= \t@(_, e) -> case e of
-  -- (f : args) -> case put args t >>= last' of
+  -- (f : args) -> case put args t >>= last' of {}
 
 
 -- | symbol-value
-f'symbolValue :: ST [Sexp] -> RE (ST Sexp)
+f'symbolValue :: Fn
 f'symbolValue s = g'unary s >>= eval >>= g'symbol >>= eval
 
 
@@ -807,7 +819,7 @@ g'notNull caller s = get s >>= \case
 
 -- | Guard for bound symbols
 g'bound :: ST Sexp -> RE (ST Sexp)
-g'bound s = eval s >>= g'symbol >>= get >>= \(Symbol k) -> from'env k s
+g'bound s = eval s >>= g'symbol >>= get >>= \(Symbol k) -> from'venv k s
 
 -- | Guard for symbols
 g'symbol :: ST Sexp -> RE (ST Sexp)
@@ -825,8 +837,8 @@ g'number s = get s >>= \case
 -- | Guard for strings
 g'string :: ST Sexp -> RE (ST Sexp)
 g'string s = get s >>= \case
-  StringLit{} -> pure s
-  a           -> err [errEval, errNotString, show' a]
+  String{} -> pure s
+  a        -> err [errEval, errNotString, show' a]
 
 -- | Guard for lists
 g'list :: ST Sexp -> RE (ST Sexp)
@@ -1007,6 +1019,20 @@ nth i s = get s >>= \case
     x : _ -> put x s >>= eval
   a -> err [errEval, errMalformed, show' a]
 
+-- | functional core of cdr
+car :: ST Sexp -> RE (ST Sexp)
+car s = g'list s >>= get >>= \case
+  Cons x _     -> put x s
+  List (x : _) -> put x s
+  _            -> put NIL s
+
+-- | functional core of cdr
+cdr :: ST Sexp -> RE (ST Sexp)
+cdr s = g'list s >>= get >>= \case
+  Cons _ y      -> put y s
+  List (_ : xs) -> put (List xs) s
+  _             -> put NIL s
+
 
 ----------
 -- State
@@ -1071,18 +1097,24 @@ mapM' f s@(env, _) = mapM f (sequence s) >>= sequence' >>= put' env
 data Env = Env
   { env'g :: M.Map String Sexp
   , env'l :: M.Map String Sexp
+  , env'f :: M.Map String Fn
   }
   deriving Show
 
+instance Semigroup Env where
+  (<>) = undefined
+
+instance Monoid Env where
+  mempty = Env mempty mempty mempty
+
 -- |
 init'env :: ST Sexp
-init'env = (Env mempty mempty, NIL)
+init'env = (Env mempty mempty (M.fromList built'in), NIL)
 
 -- |
-set'env :: String -> ST Sexp -> RE (ST Sexp)
-set'env k s@(Env {..}, _) | M.member k env'l = set'lenv k s
-                          | otherwise        = set'genv k s
-
+set'venv :: String -> ST Sexp -> RE (ST Sexp)
+set'venv k s@(Env {..}, _) | M.member k env'l = set'lenv k s
+                           | otherwise        = set'genv k s
 -- |
 set'genv :: String -> ST Sexp -> RE (ST Sexp)
 set'genv k s@(env@Env {..}, e) = put' (env { env'g = M.insert k e env'g }) s
@@ -1091,27 +1123,37 @@ set'genv k s@(env@Env {..}, e) = put' (env { env'g = M.insert k e env'g }) s
 set'lenv :: String -> ST Sexp -> RE (ST Sexp)
 set'lenv k s@(env@Env {..}, e) = put' (env { env'l = M.insert k e env'l }) s
 
--- | The same as `set'env`, but set only when keys are not defined
+-- |
+set'fenv :: String -> ST Fn -> RE (ST Fn)
+set'fenv k s@(env@Env {..}, e) = put' (env { env'f = M.insert k e env'f }) s
+
+-- | The same as `set'venv`, but set only when keys are not defined
 set'env'undef :: String -> ST Sexp -> RE (ST Sexp)
 set'env'undef k s@(Env {..}, _) = case M.lookup k env'g of
   Just _  -> pure s
-  Nothing -> set'env k s
+  Nothing -> set'venv k s
 
--- | Get S-exp value from the state by a symbol key
-from'env :: String -> ST Sexp -> RE (ST Sexp)
-from'env k s = from'lenv k s <|> from'genv k s
+-- | Get S-exp from the env by a symbol-value key
+from'venv :: String -> ST a -> RE (ST Sexp)
+from'venv k s = from'lenv k s <|> from'genv k s
 
--- | Get S-exp value from the state global-env by a symbol key
-from'genv :: String -> ST Sexp -> RE (ST Sexp)
-from'genv k s@(Env {..}, _) = case M.lookup k env'g of
+-- | Get S-exp from the global-env by a symbol-value key
+from'genv :: String -> ST a -> RE (ST Sexp)
+from'genv = getter env'g errVoidSymbolVar
+
+-- | Get S-exp from the local-env by a symbol-value key
+from'lenv :: String -> ST a -> RE (ST Sexp)
+from'lenv = getter env'l errVoidSymbolVar
+
+-- | Get functions from the fn-env by a symbol-funtion key
+from'fenv :: String -> ST a -> RE (ST Fn)
+from'fenv = getter env'f errVoidSymbolFn
+
+-- | Env getters builder
+getter :: (Env -> M.Map String b) -> String -> String -> ST a -> RE (ST b)
+getter f msg k s@(env, _) = case M.lookup k (f env) of
   Just v  -> put v s
-  Nothing -> err [errEval, errVoidSymbolVar, k]
-
--- | Get S-exp value from the state local-env by a symbol key
-from'lenv :: String -> ST Sexp -> RE (ST Sexp)
-from'lenv k s@(Env {..}, _) = case M.lookup k env'l of
-  Just v  -> put v s
-  Nothing -> err [errEval, errVoidSymbolVar, k]
+  Nothing -> err [errEval, msg, k]
 
 -- | When going into local-scope
 local :: ST a -> RE (ST a)
@@ -1137,21 +1179,21 @@ print' = outputStrLn . show'
 -- | Stringify S-expression
 show' :: Sexp -> String
 show' = \case
-  NIL               -> "nil"
-  Int       intger  -> show intger
-  Float     float   -> show float
-  Symbol    symbol  -> symbol
-  Keyword   keyword -> keyword
-  StringLit string  -> "\"" ++ string ++ "\""
-  Quote     sexp    -> "'" ++ show' sexp
+  NIL             -> "nil"
+  Int     intger  -> show intger
+  Float   float   -> show float
+  Symbol  symbol  -> symbol
+  Keyword keyword -> keyword
+  String  string  -> "\"" ++ string ++ "\""
+  Quote   sexp    -> "'" ++ show' sexp
   Boolean bool | bool      -> "t"
                | otherwise -> "nil"
-  Seq       seq    -> show' (List seq)
-  Vector    vector -> "#(" ++ unwords (show' <$> V.toList vector) ++ ")"
-  HashTable map    -> show map
-  Fn        fn     -> show' . head $ fn
-  Macro     macro  -> show' . head $ macro
-  List      list   -> case list of
+  Seq       seq       -> show' (List seq)
+  Vector    vector    -> "#(" ++ unwords (show' <$> V.toList vector) ++ ")"
+  HashTable map       -> show map
+  Function name fn    -> unwords [show fn, name]
+  Macro    name macro -> unwords [show macro, name]
+  List list           -> case list of
     [] -> "nil"
     _  -> "(" ++ unwords (show' <$> list) ++ ")"
   Cons a b -> "(" ++ go (a, b) ++ ")"
@@ -1163,6 +1205,10 @@ show' = \case
       (x, Quote y ) -> unwords [show' x, "quote", show' y]
       (x, Cons y z) -> unwords [show' x, go (y, z)]
       (x, y       ) -> unwords [show' x, ".", show' y]
+
+
+instance Show (a -> b) where
+  showsPrec _ _ = showString "#<function>"
 
 
 deriving instance Show Sexp
@@ -1247,16 +1293,17 @@ sl = do
             (loop init'env normal)
  where
   normal = (read', print')
-  debug  = (read'd, print'd)
+  debug  = (d'read, pretty')
   loop s@(env, _) mode@(reader, printer) = do
     input <- getInputLine "SLISP> "
     case input of
-      Nothing    -> pure ()
-      Just []    -> loop s normal
-      Just ";;"  -> loop s debug
-      Just ";;;" -> print'd env >> loop s mode
-      -- Just ";" -> loop s paste
-      Just str   -> case reader str >>= eval . (env, ) of
+      Nothing     -> pure ()
+      Just []     -> loop s normal
+      Just ";"    -> outputStrLn "Set to paste-mode." -- loop s paste
+      Just ";;"   -> outputStrLn "Set to debug-mode." >> loop s debug
+      Just ";;;"  -> d'symbolv env >> loop s mode
+      Just ";;;;" -> d'symbolf env >> loop s mode
+      Just str    -> case reader str >>= eval . (env, ) of
         Left  err      -> outputStrLn err >> loop s mode
         Right t@(_, e) -> printer e >> loop t mode
 
@@ -1276,12 +1323,35 @@ rep stream = do
 -- Debug
 ----------
 -- | Debug-mode printer
-print'd :: (MonadIO m, Pretty a) => a -> InputT m ()
-print'd = outputStrLn . TL.unpack . pretty
+pretty' :: (MonadIO m, Pretty a) => a -> InputT m ()
+pretty' = outputStrLn . TL.unpack . pretty
 
 -- | Debug-mode reader
-read'd :: String -> RE Sexp
-read'd s = case parse' sexp s of
+d'read :: String -> RE Sexp
+d'read s = case parse' sexp s of
   Ok ok (State stream _ _) | isEmpty stream -> pure ok
                            | otherwise      -> err [errRepl, errManySexp]
   Error state -> err [errRead, errParsing, "\n", TL.unpack (pretty state)]
+
+-- | blank line
+__ :: MonadIO m => InputT m ()
+__ = outputStrLn mempty
+
+-- | Display symbol values in Env
+d'symbolv :: MonadIO m => Env -> InputT m ()
+d'symbolv env@Env {..} =
+  __
+    >> outputStrLn "global symbol values:"
+    >> pretty' (M.toList env'g)
+    >> __
+    >> outputStrLn "local symbol values (must be empty):"
+    >> pretty' (M.toList env'l)
+    >> __
+
+-- | Display symbol functions in Env
+d'symbolf :: MonadIO m => Env -> InputT m ()
+d'symbolf env@Env {..} =
+  __
+    >> mapM_ outputStrLn
+             ((\(a, b) -> unwords [show b, "\t", a]) <$> M.toList env'f)
+    >> __
