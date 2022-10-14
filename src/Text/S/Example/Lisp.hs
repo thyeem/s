@@ -459,11 +459,11 @@ f'let' = deflet bindSeq "let*"
 
 -- | defparameter
 f'defparameter :: Fn
-f'defparameter = defvar set'venv
+f'defparameter = defsymv set'venv
 
 -- | defvar
 f'defvar :: Fn
-f'defvar = defvar set'env'undef
+f'defvar = defsymv set'venv'undef
 
 -- | quote
 f'quote :: Fn
@@ -822,6 +822,12 @@ g'bound :: ST Sexp -> RE (ST Sexp)
 g'bound s = eval s >>= g'symbol >>= get >>= \(Symbol k) -> from'venv k s
 
 -- | Guard for symbols
+g'notNil :: ST Sexp -> RE (ST Sexp)
+g'notNil s = get s >>= \case
+  NIL -> err [errEval, errUnexpected, "NOT-NIL."]
+  _   -> pure s
+
+-- | Guard for symbols
 g'symbol :: ST Sexp -> RE (ST Sexp)
 g'symbol s = get s >>= \case
   Symbol{} -> pure s
@@ -869,8 +875,8 @@ g'nonzero s = get s >>= \case
   _       -> pure s
 
 -- | Ensure that the given key is not defined in the local env
-g'nokey'lenv :: String -> ST Sexp -> RE (ST Sexp)
-g'nokey'lenv k s@(Env {..}, _) = case M.lookup k env'l of
+g'undef'lkey :: String -> ST Sexp -> RE (ST Sexp)
+g'undef'lkey k s@(Env {..}, _) = case M.lookup k env'l of
   Just _  -> err [errEval, errManySymbol, k]
   Nothing -> pure s
 
@@ -899,7 +905,7 @@ bindPar s = get s >>= \case
   [] -> pure s
   (List [Symbol k, a] : rest) ->
     put a s
-      >>= g'nokey'lenv k
+      >>= g'undef'lkey k
       >>= xlocal
       >>= eval
       >>= global s
@@ -931,9 +937,9 @@ deflet f o s = g'nary s >>= get >>= \case
     put a s >>= local >>= f >>= put (Seq rest) >>= eval >>= global s
   _ -> err [errEval, errMalformed, o]
 
--- | defvar-function builder
-defvar :: (String -> ST Sexp -> RE (ST Sexp)) -> ST [Sexp] -> RE (ST Sexp)
-defvar f s = g'binary s >>= get >>= \case
+-- | function builder of defining symbol values
+defsymv :: (String -> ST Sexp -> RE (ST Sexp)) -> ST [Sexp] -> RE (ST Sexp)
+defsymv f s = g'binary s >>= get >>= \case
   [e@(Symbol k), a] -> put a s >>= eval >>= f k >>= put e
   x                 -> err [errEval, errNotSymbol, show' . head $ x]
 
@@ -1128,8 +1134,8 @@ set'fenv :: String -> ST Fn -> RE (ST Fn)
 set'fenv k s@(env@Env {..}, e) = put' (env { env'f = M.insert k e env'f }) s
 
 -- | The same as `set'venv`, but set only when keys are not defined
-set'env'undef :: String -> ST Sexp -> RE (ST Sexp)
-set'env'undef k s@(Env {..}, _) = case M.lookup k env'g of
+set'venv'undef :: String -> ST Sexp -> RE (ST Sexp)
+set'venv'undef k s@(Env {..}, _) = case M.lookup k env'g of
   Just _  -> pure s
   Nothing -> set'venv k s
 
@@ -1137,13 +1143,27 @@ set'env'undef k s@(Env {..}, _) = case M.lookup k env'g of
 from'venv :: String -> ST a -> RE (ST Sexp)
 from'venv k s = from'lenv k s <|> from'genv k s
 
+-- | Get S-exp from the env by a symbol-value key (nil if fail)
+from'venv' :: String -> ST a -> RE (ST Sexp)
+from'venv' k s = from'lenv' k s >>= \case
+  t@(_, NIL) -> from'genv' k t
+  t          -> pure t
+
 -- | Get S-exp from the global-env by a symbol-value key
 from'genv :: String -> ST a -> RE (ST Sexp)
 from'genv = getter env'g errVoidSymbolVar
 
+-- | Get S-exp from the global-env by a symbol-value key (nil if fail)
+from'genv' :: String -> ST a -> RE (ST Sexp)
+from'genv' = getter' env'g
+
 -- | Get S-exp from the local-env by a symbol-value key
 from'lenv :: String -> ST a -> RE (ST Sexp)
 from'lenv = getter env'l errVoidSymbolVar
+
+-- | Get S-exp from the local-env by a symbol-value key (nil if fail)
+from'lenv' :: String -> ST a -> RE (ST Sexp)
+from'lenv' = getter' env'l
 
 -- | Get functions from the fn-env by a symbol-funtion key
 from'fenv :: String -> ST a -> RE (ST Fn)
@@ -1154,6 +1174,13 @@ getter :: (Env -> M.Map String b) -> String -> String -> ST a -> RE (ST b)
 getter f msg k s@(env, _) = case M.lookup k (f env) of
   Just v  -> put v s
   Nothing -> err [errEval, msg, k]
+
+-- | Env getters builder (ignore-errors)
+-- The same as 'getter' but return nil instead of raising errors
+getter' :: (Env -> M.Map String Sexp) -> String -> ST a -> RE (ST Sexp)
+getter' f k s@(env, _) = case M.lookup k (f env) of
+  Just v  -> put v s
+  Nothing -> put NIL s
 
 -- | When going into local-scope
 local :: ST a -> RE (ST a)
@@ -1278,6 +1305,9 @@ errParsing = "Occurred error during parsing"
 errDivByZero :: String
 errDivByZero = "Arithmetic error: DIVISION-BY-ZERO"
 
+errUnexpected :: String
+errUnexpected = "Expected:"
+
 errNotAllowed :: String
 errNotAllowed = "Operation not allowed:"
 
@@ -1299,7 +1329,7 @@ sl = do
     case input of
       Nothing     -> pure ()
       Just []     -> loop s normal
-      Just ";"    -> outputStrLn "Set to paste-mode." -- loop s paste
+      Just ";"    -> outputStrLn "Set to paste-mode." >> loop s mode
       Just ";;"   -> outputStrLn "Set to debug-mode." >> loop s debug
       Just ";;;"  -> d'symbolv env >> loop s mode
       Just ";;;;" -> d'symbolf env >> loop s mode
@@ -1339,7 +1369,7 @@ __ = outputStrLn mempty
 
 -- | Display symbol values in Env
 d'symbolv :: MonadIO m => Env -> InputT m ()
-d'symbolv env@Env {..} =
+d'symbolv Env {..} =
   __
     >> outputStrLn "global symbol values:"
     >> pretty' (M.toList env'g)
@@ -1350,7 +1380,7 @@ d'symbolv env@Env {..} =
 
 -- | Display symbol functions in Env
 d'symbolf :: MonadIO m => Env -> InputT m ()
-d'symbolf env@Env {..} =
+d'symbolf Env {..} =
   __
     >> mapM_ outputStrLn
              ((\(a, b) -> unwords [show b, "\t", a]) <$> M.toList env'f)
