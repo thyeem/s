@@ -95,6 +95,152 @@ instance Eq Sexp where
 
 
 ----------
+-- State
+----------
+-- | Definition of EVAL-state
+-- During the evaluation process, each evaluation step has one of
+-- these states and eventually collapsed into a S-exp value
+type ST a = (Env, a)
+
+-- | Get the result value from the state
+get :: ST a -> RE a
+get = pure . snd
+
+-- | Set the given reuslt value to the state
+put :: a -> ST b -> RE (ST a)
+put x (env, _) = pure (env, x)
+
+-- | Transform the old state to a new state with the given functions
+modify :: (a -> RE b) -> ST a -> RE (ST b)
+modify f (env, e) = f e <&> (env, )
+
+-- | Get the env from the state
+get' :: ST a -> RE Env
+get' = pure . fst
+
+-- | Set the given env to the state
+put' :: Env -> ST a -> RE (ST a)
+put' env (_, x) = pure (env, x)
+
+-- | Head function for the state when the state result is a list
+head' :: ST [a] -> RE (ST a)
+head' s = g'notNull "head'" s >>= modify (pure . head)
+
+-- | Tail function for the state when the state result is a list
+tail' :: ST [a] -> RE (ST [a])
+tail' s = g'notNull "tail'" s >>= modify (pure . tail)
+
+-- | Last function for the state when the state result is a list
+last' :: ST [a] -> RE (ST a)
+last' s = g'notNull "last'" s >>= modify (pure . last)
+
+-- | Init function for the state when the state result is a list
+init' :: ST [a] -> RE (ST [a])
+init' s = g'notNull "init'" s >>= modify (pure . init)
+
+
+----------
+-- Env
+----------
+-- | SLISP environment
+data Env = Env
+  { env'g :: M.Map String Sexp
+  , env'l :: M.Map String Sexp
+  , env'f :: M.Map String Fn
+  }
+  deriving Show
+
+instance Semigroup Env where
+  (<>) = undefined
+
+instance Monoid Env where
+  mempty = Env mempty mempty mempty
+
+-- |
+init'env :: ST Sexp
+init'env = (Env mempty mempty (M.fromList built'in), NIL)
+
+-- |
+set'venv :: String -> ST Sexp -> RE (ST Sexp)
+set'venv k s@(Env {..}, _) | M.member k env'l = set'lenv k s
+                           | otherwise        = set'genv k s
+-- |
+set'genv :: String -> ST Sexp -> RE (ST Sexp)
+set'genv k s@(env@Env {..}, e) = put' (env { env'g = M.insert k e env'g }) s
+
+-- |
+set'lenv :: String -> ST Sexp -> RE (ST Sexp)
+set'lenv k s@(env@Env {..}, e) = put' (env { env'l = M.insert k e env'l }) s
+
+-- |
+set'fenv :: String -> ST Fn -> RE (ST Fn)
+set'fenv k s@(env@Env {..}, e) = put' (env { env'f = M.insert k e env'f }) s
+
+-- | The same as `set'venv`, but set only when keys are not defined
+set'venv'undef :: String -> ST Sexp -> RE (ST Sexp)
+set'venv'undef k s@(Env {..}, _) = case M.lookup k env'g of
+  Just _  -> pure s
+  Nothing -> set'venv k s
+
+-- | Get S-exp from the env by a symbol-value key
+from'venv :: String -> ST a -> RE (ST Sexp)
+from'venv k s = from'lenv k s <|> from'genv k s
+
+-- | Get S-exp from the env by a symbol-value key (nil if fail)
+from'venv' :: String -> ST a -> RE (ST Sexp)
+from'venv' k s = from'lenv' k s >>= \case
+  t@(_, NIL) -> from'genv' k t
+  t          -> pure t
+
+-- | Get S-exp from the global-env by a symbol-value key
+from'genv :: String -> ST a -> RE (ST Sexp)
+from'genv = getter env'g errVoidSymbolVar
+
+-- | Get S-exp from the global-env by a symbol-value key (nil if fail)
+from'genv' :: String -> ST a -> RE (ST Sexp)
+from'genv' = getter' env'g
+
+-- | Get S-exp from the local-env by a symbol-value key
+from'lenv :: String -> ST a -> RE (ST Sexp)
+from'lenv = getter env'l errVoidSymbolVar
+
+-- | Get S-exp from the local-env by a symbol-value key (nil if fail)
+from'lenv' :: String -> ST a -> RE (ST Sexp)
+from'lenv' = getter' env'l
+
+-- | Get functions from the fn-env by a symbol-funtion key
+from'fenv :: String -> ST a -> RE (ST Fn)
+from'fenv = getter env'f errVoidSymbolFn
+
+-- | Env getters builder
+getter :: (Env -> M.Map String b) -> String -> String -> ST a -> RE (ST b)
+getter f msg k s@(env, _) = case M.lookup k (f env) of
+  Just v  -> put v s
+  Nothing -> err [errEval, msg, k]
+
+-- | Env getters builder (ignore-errors)
+-- The same as 'getter' but return nil instead of raising errors
+getter' :: (Env -> M.Map String Sexp) -> String -> ST a -> RE (ST Sexp)
+getter' f k s@(env, _) = case M.lookup k (f env) of
+  Just v  -> put v s
+  Nothing -> put NIL s
+
+-- | When going into local-scope
+local :: ST a -> RE (ST a)
+local s@(env@Env {..}, _) =
+  put' (env { env'g = env'l <> env'g, env'l = mempty }) s
+
+-- | When getting out from local-scope
+global :: ST b -> ST a -> RE (ST a)
+global (g@Env{}, _) s@(l@Env{}, _) = put' (g { env'g = env'g l }) s
+
+-- | Deactivate local env and use only global env
+xlocal :: ST a -> RE (ST a)
+xlocal s@(env@Env{}, _) = put' (env { env'l = mempty }) s
+
+
+
+----------
 -- Read
 ----------
 -- | READ
@@ -459,11 +605,11 @@ f'let' = deflet bindSeq "let*"
 
 -- | defparameter
 f'defparameter :: Fn
-f'defparameter = defsymv set'venv
+f'defparameter = defsym set'venv
 
 -- | defvar
 f'defvar :: Fn
-f'defvar = defsymv set'venv'undef
+f'defvar = defsym set'venv'undef
 
 -- | quote
 f'quote :: Fn
@@ -548,17 +694,20 @@ f'1m = unary pure (modify (calu (subtract 1)))
 -- | atom
 f'atom :: Fn
 f'atom s = pred' s $ \case
-  List{}       -> NIL
-  Seq{}        -> NIL
-  Quote List{} -> NIL
-  Quote Seq{}  -> NIL
-  _            -> Boolean True
+  NIL       -> Boolean True
+  Boolean{} -> Boolean True
+  Int{}     -> Boolean True
+  Float{}   -> Boolean True
+  Symbol{}  -> Boolean True
+  Keyword{} -> Boolean True
+  String{}  -> Boolean True
+  _         -> NIL
 
 -- | symbolp
 f'symbolp :: Fn
 f'symbolp s = pred' s $ \case
-  Symbol{} -> Boolean True
   NIL      -> Boolean True
+  Symbol{} -> Boolean True
   _        -> NIL
 
 -- | numberp
@@ -585,9 +734,9 @@ f'listp s = pred' s $ \case
 -- | boundp
 f'boundp :: Fn
 f'boundp s = g'unary s >>= eval >>= g'symbol >>= \t@(_, Symbol k) ->
-  case from'venv k t of
-    Right _ -> put (Boolean True) t
-    Left  _ -> put NIL t
+  from'venv' k t >>= get >>= \case
+    NIL -> put NIL t
+    _   -> put (Boolean True) t
 
 -- | list
 f'list :: Fn
@@ -722,49 +871,48 @@ f'cddddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> cdr
 
 -- | nth
 f'nth :: Fn
-f'nth s = g'binary s >>= \t@(_, [i, l]) ->
-  put i t >>= eval >>= g'int >>= get >>= \(Int i) ->
-    put l t >>= nth (fromIntegral i)
+f'nth s = g'binary s >>= evalList >>= \t@(_, [i, l]) ->
+  put i t >>= g'int >>= get >>= \(Int i) -> put l t >>= nth (fromIntegral i)
 
 -- | first
 f'first :: Fn
-f'first s = g'unary s >>= nth 0
+f'first s = g'unary s >>= eval >>= nth 0
 
 -- | second
 f'second :: Fn
-f'second s = g'unary s >>= nth 1
+f'second s = g'unary s >>= eval >>= nth 1
 
 -- | third
 f'third :: Fn
-f'third s = g'unary s >>= nth 2
+f'third s = g'unary s >>= eval >>= nth 2
 
 -- | fourth
 f'fourth :: Fn
-f'fourth s = g'unary s >>= nth 3
+f'fourth s = g'unary s >>= eval >>= nth 3
 
 -- | fifth
 f'fifth :: Fn
-f'fifth s = g'unary s >>= nth 4
+f'fifth s = g'unary s >>= eval >>= nth 4
 
 -- | sixth
 f'sixth :: Fn
-f'sixth s = g'unary s >>= nth 5
+f'sixth s = g'unary s >>= eval >>= nth 5
 
 -- | seventh
 f'seventh :: Fn
-f'seventh s = g'unary s >>= nth 6
+f'seventh s = g'unary s >>= eval >>= nth 6
 
 -- | eighth
 f'eighth :: Fn
-f'eighth s = g'unary s >>= nth 7
+f'eighth s = g'unary s >>= eval >>= nth 7
 
 -- | nineth
 f'nineth :: Fn
-f'nineth s = g'unary s >>= nth 8
+f'nineth s = g'unary s >>= eval >>= nth 8
 
 -- | tenth
 f'tenth :: Fn
-f'tenth s = g'unary s >>= nth 9
+f'tenth s = g'unary s >>= eval >>= nth 9
 
 -- | rest
 f'rest :: Fn
@@ -779,7 +927,6 @@ f'apply :: Fn
 f'apply = undefined
 -- f'apply s = g'nary s >>= evalList >>= \t@(_, e) -> case e of
   -- (f : args) -> case put args t >>= last' of {}
-
 
 -- | symbol-value
 f'symbolValue :: Fn
@@ -929,7 +1076,7 @@ bindSeq s = get s >>= \case
   a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindSeq
 
 -- | let-function builder
-deflet :: (ST [Sexp] -> RE (ST [Sexp])) -> String -> ST [Sexp] -> RE (ST Sexp)
+deflet :: (ST [Sexp] -> RE (ST [Sexp])) -> String -> Fn
 deflet f o s = g'nary s >>= get >>= \case
   Quote e@Symbol{} : rest -> put (List [List [e, NIL]] : rest) s >>= deflet f o
   Quote (List a)   : rest -> put (List [List a] : rest) s >>= deflet f o
@@ -938,8 +1085,8 @@ deflet f o s = g'nary s >>= get >>= \case
   _ -> err [errEval, errMalformed, o]
 
 -- | function builder of defining symbol values
-defsymv :: (String -> ST Sexp -> RE (ST Sexp)) -> ST [Sexp] -> RE (ST Sexp)
-defsymv f s = g'binary s >>= get >>= \case
+defsym :: (String -> ST Sexp -> RE (ST Sexp)) -> Fn
+defsym f s = g'binary s >>= get >>= \case
   [e@(Symbol k), a] -> put a s >>= eval >>= f k >>= put e
   x                 -> err [errEval, errNotSymbol, show' . head $ x]
 
@@ -970,32 +1117,19 @@ calb op x y = case (x, y) of
   _                  -> err [errEval, errNotAllowed, "calb"]
 
 -- | Unary arithmetic function builder
-unary
-  :: (ST Sexp -> RE (ST Sexp))
-  -> (ST Sexp -> RE (ST Sexp))
-  -> ST [Sexp]
-  -> RE (ST Sexp)
+unary :: (ST Sexp -> RE (ST Sexp)) -> (ST Sexp -> RE (ST Sexp)) -> Fn
 unary g f = g'unary >=> eval >=> g >=> f
 
 -- | Binary arithmetic function builder
-binary
-  :: (ST Sexp -> RE (ST Sexp))
-  -> (ST (Sexp, Sexp) -> RE (ST Sexp))
-  -> ST [Sexp]
-  -> RE (ST Sexp)
+binary :: (ST Sexp -> RE (ST Sexp)) -> (ST (Sexp, Sexp) -> RE (ST Sexp)) -> Fn
 binary g f = g'binary >=> evalList >=> mapM' g >=> g'tuple >=> f
 
 -- | N-fold arithmetic function builder
-nfold
-  :: (ST Sexp -> RE (ST Sexp))
-  -> (Sexp -> Sexp -> RE Sexp)
-  -> String
-  -> ST [Sexp]
-  -> RE (ST Sexp)
+nfold :: (ST Sexp -> RE (ST Sexp)) -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
 nfold g f label = g'nary >=> evalList >=> mapM' g >=> fold' f label
 
 -- | Fold arguments of a S-exp list using the given binary function
-fold' :: (Sexp -> Sexp -> RE Sexp) -> String -> ST [Sexp] -> RE (ST Sexp)
+fold' :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
 fold' f o s = get s >>= \case
   [] -> case o of
     "+" -> put (Int 0) s
@@ -1008,6 +1142,16 @@ fold' f o s = get s >>= \case
   (x : xs) -> case o of
     "/" -> put xs s >>= mapM' g'nonzero >>= modify (foldM f x)
     _   -> put xs s >>= modify (foldM f x)
+
+-- | Map the state result to an action.
+-- This map is only valid when the result has multiple value, i.e., a list
+mapM' :: (ST a -> RE (ST a)) -> ST [a] -> RE (ST [a])
+mapM' f s@(env, _) = mapM f (sequence s) >>= sequence' >>= put' env
+ where
+  sequence' xs = put (go [] xs) init'env
+  go r = \case
+    []              -> reverse r
+    ((_, e) : rest) -> go (e : r) rest
 
 -- | Build functions to control function's number of arguments
 arity :: (Int -> Bool) -> ST [Sexp] -> RE (ST [Sexp])
@@ -1022,7 +1166,7 @@ nth :: Int -> ST Sexp -> RE (ST Sexp)
 nth i s = get s >>= \case
   List l -> case drop i l of
     []    -> put NIL s
-    x : _ -> put x s >>= eval
+    x : _ -> put x s
   a -> err [errEval, errMalformed, show' a]
 
 -- | functional core of cdr
@@ -1041,162 +1185,6 @@ cdr s = g'list s >>= get >>= \case
 
 
 ----------
--- State
-----------
--- | Definition of EVAL-state
--- During the evaluation process, each evaluation step has one of
--- these states and eventually collapsed into a S-exp value
-type ST a = (Env, a)
-
--- | Get the result value from the state
-get :: ST a -> RE a
-get = pure . snd
-
--- | Set the given reuslt value to the state
-put :: a -> ST b -> RE (ST a)
-put x (env, _) = pure (env, x)
-
--- | Transform the old state to a new state with the given functions
-modify :: (a -> RE b) -> ST a -> RE (ST b)
-modify f (env, e) = f e <&> (env, )
-
--- | Get the env from the state
-get' :: ST a -> RE Env
-get' = pure . fst
-
--- | Set the given env to the state
-put' :: Env -> ST a -> RE (ST a)
-put' env (_, x) = pure (env, x)
-
--- | Head function for the state when the state result is a list
-head' :: ST [a] -> RE (ST a)
-head' s = g'notNull "head'" s >>= modify (pure . head)
-
--- | Tail function for the state when the state result is a list
-tail' :: ST [a] -> RE (ST [a])
-tail' s = g'notNull "tail'" s >>= modify (pure . tail)
-
--- | Last function for the state when the state result is a list
-last' :: ST [a] -> RE (ST a)
-last' s = g'notNull "last'" s >>= modify (pure . last)
-
--- | Init function for the state when the state result is a list
-init' :: ST [a] -> RE (ST [a])
-init' s = g'notNull "init'" s >>= modify (pure . init)
-
-
--- | Map the state result to an action.
--- This map is only valid when the result has multiple value, i.e., a list
-mapM' :: (ST a -> RE (ST a)) -> ST [a] -> RE (ST [a])
-mapM' f s@(env, _) = mapM f (sequence s) >>= sequence' >>= put' env
- where
-  sequence' xs = put (go [] xs) init'env
-  go r = \case
-    []              -> reverse r
-    ((_, e) : rest) -> go (e : r) rest
-
-
-----------
--- Env
-----------
--- | SLISP environment
-data Env = Env
-  { env'g :: M.Map String Sexp
-  , env'l :: M.Map String Sexp
-  , env'f :: M.Map String Fn
-  }
-  deriving Show
-
-instance Semigroup Env where
-  (<>) = undefined
-
-instance Monoid Env where
-  mempty = Env mempty mempty mempty
-
--- |
-init'env :: ST Sexp
-init'env = (Env mempty mempty (M.fromList built'in), NIL)
-
--- |
-set'venv :: String -> ST Sexp -> RE (ST Sexp)
-set'venv k s@(Env {..}, _) | M.member k env'l = set'lenv k s
-                           | otherwise        = set'genv k s
--- |
-set'genv :: String -> ST Sexp -> RE (ST Sexp)
-set'genv k s@(env@Env {..}, e) = put' (env { env'g = M.insert k e env'g }) s
-
--- |
-set'lenv :: String -> ST Sexp -> RE (ST Sexp)
-set'lenv k s@(env@Env {..}, e) = put' (env { env'l = M.insert k e env'l }) s
-
--- |
-set'fenv :: String -> ST Fn -> RE (ST Fn)
-set'fenv k s@(env@Env {..}, e) = put' (env { env'f = M.insert k e env'f }) s
-
--- | The same as `set'venv`, but set only when keys are not defined
-set'venv'undef :: String -> ST Sexp -> RE (ST Sexp)
-set'venv'undef k s@(Env {..}, _) = case M.lookup k env'g of
-  Just _  -> pure s
-  Nothing -> set'venv k s
-
--- | Get S-exp from the env by a symbol-value key
-from'venv :: String -> ST a -> RE (ST Sexp)
-from'venv k s = from'lenv k s <|> from'genv k s
-
--- | Get S-exp from the env by a symbol-value key (nil if fail)
-from'venv' :: String -> ST a -> RE (ST Sexp)
-from'venv' k s = from'lenv' k s >>= \case
-  t@(_, NIL) -> from'genv' k t
-  t          -> pure t
-
--- | Get S-exp from the global-env by a symbol-value key
-from'genv :: String -> ST a -> RE (ST Sexp)
-from'genv = getter env'g errVoidSymbolVar
-
--- | Get S-exp from the global-env by a symbol-value key (nil if fail)
-from'genv' :: String -> ST a -> RE (ST Sexp)
-from'genv' = getter' env'g
-
--- | Get S-exp from the local-env by a symbol-value key
-from'lenv :: String -> ST a -> RE (ST Sexp)
-from'lenv = getter env'l errVoidSymbolVar
-
--- | Get S-exp from the local-env by a symbol-value key (nil if fail)
-from'lenv' :: String -> ST a -> RE (ST Sexp)
-from'lenv' = getter' env'l
-
--- | Get functions from the fn-env by a symbol-funtion key
-from'fenv :: String -> ST a -> RE (ST Fn)
-from'fenv = getter env'f errVoidSymbolFn
-
--- | Env getters builder
-getter :: (Env -> M.Map String b) -> String -> String -> ST a -> RE (ST b)
-getter f msg k s@(env, _) = case M.lookup k (f env) of
-  Just v  -> put v s
-  Nothing -> err [errEval, msg, k]
-
--- | Env getters builder (ignore-errors)
--- The same as 'getter' but return nil instead of raising errors
-getter' :: (Env -> M.Map String Sexp) -> String -> ST a -> RE (ST Sexp)
-getter' f k s@(env, _) = case M.lookup k (f env) of
-  Just v  -> put v s
-  Nothing -> put NIL s
-
--- | When going into local-scope
-local :: ST a -> RE (ST a)
-local s@(env@Env {..}, _) =
-  put' (env { env'g = env'l <> env'g, env'l = mempty }) s
-
--- | When getting out from local-scope
-global :: ST b -> ST a -> RE (ST a)
-global (g@Env{}, _) s@(l@Env{}, _) = put' (g { env'g = env'g l }) s
-
--- | Deactivate local env and use only global env
-xlocal :: ST a -> RE (ST a)
-xlocal s@(env@Env{}, _) = put' (env { env'l = mempty }) s
-
-
-----------
 -- Print
 ----------
 -- | PRINT
@@ -1206,15 +1194,15 @@ print' = outputStrLn . show'
 -- | Stringify S-expression
 show' :: Sexp -> String
 show' = \case
-  NIL             -> "nil"
-  Int     intger  -> show intger
-  Float   float   -> show float
-  Symbol  symbol  -> symbol
-  Keyword keyword -> keyword
-  String  string  -> "\"" ++ string ++ "\""
-  Quote   sexp    -> "'" ++ show' sexp
+  NIL -> "nil"
   Boolean bool | bool      -> "t"
                | otherwise -> "nil"
+  Int       intger    -> show intger
+  Float     float     -> show float
+  Symbol    symbol    -> symbol
+  Keyword   keyword   -> keyword
+  String    string    -> "\"" ++ string ++ "\""
+  Quote     sexp      -> "'" ++ show' sexp
   Seq       seq       -> show' (List seq)
   Vector    vector    -> "#(" ++ unwords (show' <$> V.toList vector) ++ ")"
   HashTable map       -> show map
