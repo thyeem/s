@@ -617,63 +617,63 @@ f'quote = g'unary
 
 -- | (+)
 f'add :: Fn
-f'add = nfold g'number (calb (+)) "+"
+f'add = nfold g'number (bop (+)) "+"
 
 -- | (-)
 f'sub :: Fn
-f'sub = nfold g'number (calb (-)) "-"
+f'sub = nfold g'number (bop (-)) "-"
 
 -- | (*)
 f'mul :: Fn
-f'mul = nfold g'number (calb (*)) "*"
+f'mul = nfold g'number (bop (*)) "*"
 
 -- | (/)
 f'div :: Fn
-f'div = nfold g'number (calb (/)) "/"
+f'div = nfold g'number (bop (/)) "/"
 
 -- | (%) or mod
 f'mod :: Fn
-f'mod = binary g'number (modify (uncurry (calb mod')))
+f'mod = binary g'number (modify (uncurry (bop mod')))
 
 -- | expt
 f'expt :: Fn
-f'expt = binary g'number (modify (uncurry (calb (**))))
+f'expt = binary g'number (modify (uncurry (bop (**))))
 
 -- | sqrt
 f'sqrt :: Fn
-f'sqrt = unary g'float (modify (calu sqrt))
+f'sqrt = unary g'float (modify (uop sqrt))
 
 -- | exp
 f'exp :: Fn
-f'exp = unary g'float (modify (calu exp))
+f'exp = unary g'float (modify (uop exp))
 
 -- | log
 f'log :: Fn
-f'log = unary g'float (modify (calu log))
+f'log = unary g'float (modify (uop log))
 
 -- | sin
 f'sin :: Fn
-f'sin = unary g'float (modify (calu sin))
+f'sin = unary g'float (modify (uop sin))
 
 -- | cos
 f'cos :: Fn
-f'cos = unary g'float (modify (calu cos))
+f'cos = unary g'float (modify (uop cos))
 
 -- | tan
 f'tan :: Fn
-f'tan = unary g'float (modify (calu tan))
+f'tan = unary g'float (modify (uop tan))
 
 -- | asin
 f'asin :: Fn
-f'asin = unary g'float (modify (calu asin))
+f'asin = unary g'float (modify (uop asin))
 
 -- | acos
 f'acos :: Fn
-f'acos = unary g'float (modify (calu acos))
+f'acos = unary g'float (modify (uop acos))
 
 -- | atan
 f'atan :: Fn
-f'atan = unary g'float (modify (calu atan))
+f'atan = unary g'float (modify (uop atan))
 
 -- | float
 f'float :: Fn
@@ -681,15 +681,15 @@ f'float s = g'unary s >>= g'float
 
 -- | abs
 f'abs :: Fn
-f'abs = unary pure (modify (calu abs))
+f'abs = unary pure (modify (uop abs))
 
 -- | (1+)
 f'1p :: Fn
-f'1p = unary pure (modify (calu (+ 1)))
+f'1p = unary pure (modify (uop (+ 1)))
 
 -- | (1-)
 f'1m :: Fn
-f'1m = unary pure (modify (calu (subtract 1)))
+f'1m = unary pure (modify (uop (subtract 1)))
 
 -- | atom
 f'atom :: Fn
@@ -950,7 +950,7 @@ g'binary = arity (== 2)
 
 -- | Guard for even-ary(pairwise) function's arguments
 g'evenary :: ST [Sexp] -> RE (ST [Sexp])
-g'evenary = arity even >=> g'notNull "g'evenary"
+g'evenary = arity (\x -> x /= 0 && even x)
 
 -- | Guard for tuple state: transforms the result value into a tuple
 g'tuple :: ST [Sexp] -> RE (ST (Sexp, Sexp))
@@ -1095,42 +1095,43 @@ pred' :: ST [Sexp] -> (Sexp -> Sexp) -> RE (ST Sexp)
 pred' s p = g'unary s >>= eval >>= modify (pure . p)
 
 -- | Unary arithmetic operator builder
-calu
+uop
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
-calu f = \case
+uop f = \case
   Int   a -> pure . Int . floor . f @Double . fromIntegral $ a
   Float a -> pure . Float . f $ a
-  _       -> err [errEval, errNotAllowed, "calu"]
+  _       -> err [errEval, errNotAllowed, "uop"]
 
 -- | Binary arithmetic operator builder
-calb
+bop
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
   -> Sexp
   -> Sexp
   -> RE Sexp
-calb op x y = case (x, y) of
+bop op x y = case (x, y) of
   (Int a, Int b) ->
     pure . Int . floor $ (op @Double) (fromIntegral a) (fromIntegral b)
   (Int   a, Float b) -> pure . Float $ fromIntegral a `op` b
   (Float a, Int b  ) -> pure . Float $ a `op` fromIntegral b
   (Float a, Float b) -> pure . Float $ a `op` b
-  _                  -> err [errEval, errNotAllowed, "calb"]
+  _                  -> err [errEval, errNotAllowed, "bop"]
 
--- | Unary arithmetic function builder
+-- | Unary function builder
 unary :: (ST Sexp -> RE (ST Sexp)) -> (ST Sexp -> RE (ST Sexp)) -> Fn
 unary g f = g'unary >=> eval >=> g >=> f
 
--- | Binary arithmetic function builder
+-- | Binary function builder
 binary :: (ST Sexp -> RE (ST Sexp)) -> (ST (Sexp, Sexp) -> RE (ST Sexp)) -> Fn
 binary g f = g'binary >=> evalList >=> mapM' g >=> g'tuple >=> f
 
--- | N-fold arithmetic function builder
+-- | N-fold function builder
 nfold :: (ST Sexp -> RE (ST Sexp)) -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-nfold g f label = g'nary >=> evalList >=> mapM' g >=> fold' f label
+nfold g f label = g'nary >=> evalList >=> mapM' g >=> foldM' f label
 
--- | Fold arguments of a S-exp list using the given binary function
-fold' :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-fold' f o s = get s >>= \case
+-- | Fold a list of S-exp using the given binary arithemetic operator.
+-- This is a variant of 'foldM' and mirrors it.
+foldM' :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
+foldM' f o s = get s >>= \case
   [] -> case o of
     "+" -> put (Int 0) s
     "*" -> put (Int 1) s
@@ -1143,8 +1144,8 @@ fold' f o s = get s >>= \case
     "/" -> put xs s >>= mapM' g'nonzero >>= modify (foldM f x)
     _   -> put xs s >>= modify (foldM f x)
 
--- | Map the state result to an action.
--- This map is only valid when the result has multiple value, i.e., a list
+-- | Map the state result to an action. This a variant of 'mapM'.
+-- This map is only valid when the state result has multiple values, i.e., a list.
 mapM' :: (ST a -> RE (ST a)) -> ST [a] -> RE (ST [a])
 mapM' f s@(env, _) = mapM f (sequence s) >>= sequence' >>= put' env
  where
