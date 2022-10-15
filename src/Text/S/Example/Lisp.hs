@@ -123,22 +123,6 @@ get' = pure . fst
 put' :: Env -> T a a
 put' env (_, x) = pure (env, x)
 
--- | Head function for the state when the state result is a list
-head' :: T [a] a
-head' s = g'notNull "head'" s >>= modify (pure . head)
-
--- | Tail function for the state when the state result is a list
-tail' :: T [a] [a]
-tail' s = g'notNull "tail'" s >>= modify (pure . tail)
-
--- | Last function for the state when the state result is a list
-last' :: T [a] a
-last' s = g'notNull "last'" s >>= modify (pure . last)
-
--- | Init function for the state when the state result is a list
-init' :: T [a] [a]
-init' s = g'notNull "init'" s >>= modify (pure . init)
-
 
 ----------
 -- Env
@@ -156,6 +140,10 @@ instance Semigroup Env where
 
 instance Monoid Env where
   mempty = Env mempty mempty mempty
+
+-- |
+null'env :: ST Sexp
+null'env = (mempty, NIL)
 
 -- |
 init'env :: ST Sexp
@@ -343,9 +331,9 @@ apply s = head' s >>= get >>= \case
 
 -- | set
 f'set :: Fn
-f'set s = g'binary s >>= evalList >>= \t@(_, e) -> case e of
-  [Symbol k, a] -> put a t >>= set'venv k
-  a             -> err [errEval, errNotSymbol, show' . head $ a]
+f'set s = g'binary s >>= evalTuple >>= \t@(_, e) -> case e of
+  (Symbol k, a) -> put a t >>= set'venv k
+  a             -> err [errEval, errNotSymbol, show' (fst a)]
 
 -- | setq
 f'setq :: Fn
@@ -513,11 +501,10 @@ f'list s = g'nary s >>= evalList >>= modify (pure . List)
 
 -- | cons
 f'cons :: Fn
-f'cons s = g'binary s >>= evalList >>= \t@(_, e) -> case e of
-  [a, NIL   ] -> put (List [a]) t
-  [a, List l] -> put (List (a : l)) t
-  [a, b     ] -> put (Cons a b) t
-  _           -> err [errEval, errNotAllowed, "cons"]
+f'cons s = g'binary s >>= evalTuple >>= \t@(_, e) -> case e of
+  (a, NIL   ) -> put (List [a]) t
+  (a, List l) -> put (List (a : l)) t
+  (a, b     ) -> put (Cons a b) t
 
 -- | car
 f'car :: Fn
@@ -640,8 +627,8 @@ f'cddddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> cdr
 
 -- | nth
 f'nth :: Fn
-f'nth s = g'binary s >>= evalList >>= \t@(_, [i, l]) ->
-  put i t >>= g'int >>= get >>= \(Int i) -> put l t >>= nth (fromIntegral i)
+f'nth s = g'binary s >>= evalTuple >>= \t@(_, (n, l)) ->
+  put n t >>= g'int >>= get >>= \(Int i) -> put l t >>= nth (fromIntegral i)
 
 -- | first
 f'first :: Fn
@@ -711,11 +698,11 @@ g'nary = arity (const True)
 
 -- | Guard for unary function's arguments
 g'unary :: T [Sexp] Sexp
-g'unary s = arity (== 1) s >>= head'
+g'unary = arity (== 1) >=> head'
 
 -- | Guard for binary function's arguments
-g'binary :: T [Sexp] [Sexp]
-g'binary = arity (== 2)
+g'binary :: T [Sexp] (Sexp, Sexp)
+g'binary = arity (== 2) >=> g'tuple
 
 -- | Guard for even-ary(pairwise) function's arguments
 g'evenary :: T [Sexp] [Sexp]
@@ -728,8 +715,8 @@ g'tuple = \case
   a             -> err [errEval, errWrongNargs, show . length $ a]
 
 -- | Guard for non-empty S-exp list
-g'notNull :: String -> T [a] [a]
-g'notNull caller s = get s >>= \case
+g'nempty :: String -> T [a] [a]
+g'nempty caller s = get s >>= \case
   [] -> err [errEval, errNoArgs, caller]
   _  -> pure s
 
@@ -738,8 +725,8 @@ g'bound :: T Sexp Sexp
 g'bound s = eval s >>= g'symbol >>= get >>= \(Symbol k) -> from'venv k s
 
 -- | Guard for symbols
-g'notNil :: T Sexp Sexp
-g'notNil s = get s >>= \case
+g'notnil :: T Sexp Sexp
+g'notnil s = get s >>= \case
   NIL -> err [errEval, errUnexpected, "NOT-NIL."]
   _   -> pure s
 
@@ -784,8 +771,8 @@ g'float s = g'number s >>= get >>= \case
   a         -> err [errEval, errNotFloat, show' a]
 
 -- | Ensure that the state is a non-zero S-exp
-g'nonzero :: T Sexp Sexp
-g'nonzero s = get s >>= \case
+g'nzero :: T Sexp Sexp
+g'nzero s = get s >>= \case
   Int   0 -> err [errEval, errDivByZero]
   Float 0 -> err [errEval, errDivByZero]
   _       -> pure s
@@ -814,6 +801,11 @@ evalList = go []
   go r s@(_, es) = case es of
     e : rest -> put e s >>= eval >>= \(env, x) -> go (x : r) (env, rest)
     []       -> put (reverse r) s
+
+-- | Evaluate a tuple
+evalTuple :: T (Sexp, Sexp) (Sexp, Sexp)
+evalTuple s@(_, (x, y)) = put x s >>= eval >>= \t@(_, v) ->
+  put y t >>= eval >>= \u@(_, w) -> put (v, w) u
 
 -- | Parallelly bind a sequence (let-like)
 bindPar :: T [Sexp] [Sexp]
@@ -856,8 +848,8 @@ deflet f o s = g'nary s >>= get >>= \case
 -- | function builder of defining symbol values
 defsym :: (String -> T Sexp Sexp) -> Fn
 defsym f s = g'binary s >>= get >>= \case
-  [e@(Symbol k), a] -> put a s >>= eval >>= f k >>= put e
-  x                 -> err [errEval, errNotSymbol, show' . head $ x]
+  (e@(Symbol k), a) -> put a s >>= eval >>= f k >>= put e
+  x                 -> err [errEval, errNotSymbol, show' (fst x)]
 
 -- | Predicate builder
 pred' :: (Sexp -> Sexp) -> T [Sexp] Sexp
@@ -891,7 +883,7 @@ unary g f = g'unary >=> eval >=> g >=> f
 
 -- | Binary function builder
 binary :: T Sexp Sexp -> T (Sexp, Sexp) Sexp -> Fn
-binary g f = g'binary >=> evalList >=> mapM' g >=> g'tuple >=> f
+binary g f = g'binary >=> evalTuple >=> bimapM g >=> f
 
 -- | N-fold function builder
 nfold :: T Sexp Sexp -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
@@ -907,21 +899,41 @@ foldM' f o s = get s >>= \case
     _   -> err [errEval, errNoArgs, o]
   [x] -> case o of
     "-" -> put x s >>= modify (f (Int 0))
-    "/" -> put x s >>= g'nonzero >>= modify (f (Int 1))
+    "/" -> put x s >>= g'nzero >>= modify (f (Int 1))
     _   -> put x s
   (x : xs) -> case o of
-    "/" -> put xs s >>= mapM' g'nonzero >>= modify (foldM f x)
+    "/" -> put xs s >>= mapM' g'nzero >>= modify (foldM f x)
     _   -> put xs s >>= modify (foldM f x)
 
--- | Map the state result to an action. This a variant of 'mapM'.
--- This map is only valid when the state result has multiple values, i.e., a list.
-mapM' :: T a a -> T [a] [a]
+-- | Map the state result to an action. This is a 'mapM' for ST.
+mapM' :: T a b -> T [a] [b]
 mapM' f s@(env, _) = mapM f (sequence s) >>= sequence' >>= put' env
  where
-  sequence' xs = put (go [] xs) init'env
+  sequence' xs = put (go [] xs) null'env
   go r = \case
     []              -> reverse r
     ((_, e) : rest) -> go (e : r) rest
+
+-- | Map the state result to an action. This a monadic 'bimap' for ST.
+bimapM :: T Sexp Sexp -> T (Sexp, Sexp) (Sexp, Sexp)
+bimapM f s@(env, (x, y)) =
+  f (env, x) >>= \(_, v) -> f (env, y) >>= \(_, w) -> put (v, w) s
+
+-- | Turn the state result to its head value
+head' :: T [a] a
+head' s = g'nempty "head'" s >>= modify (pure . head)
+
+-- | Turn the state result to its tail values
+tail' :: T [a] [a]
+tail' s = g'nempty "tail'" s >>= modify (pure . tail)
+
+-- | Turn the state result to its last value
+last' :: T [a] a
+last' s = g'nempty "last'" s >>= modify (pure . last)
+
+-- | Turn the state result to its init values
+init' :: T [a] [a]
+init' s = g'nempty "init'" s >>= modify (pure . init)
 
 -- | Build functions to control function's number of arguments
 arity :: (Int -> Bool) -> T [Sexp] [Sexp]
@@ -1261,7 +1273,7 @@ errWrongNargs :: String
 errWrongNargs = "Wrong number of arguments:"
 
 errNoArgs :: String
-errNoArgs = "No arguments, nothing to apply:"
+errNoArgs = "No arguments provided:"
 
 errNotSymbol :: String
 errNotSymbol = "Not a symbol:"
