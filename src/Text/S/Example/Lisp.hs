@@ -1201,7 +1201,7 @@ print' = outputStrLn . show'
 show' :: Sexp -> String
 show' = \case
   NIL                 -> "nil"
-  Bool      bool      -> "t"
+  Bool      _         -> "t"
   Int       intger    -> show intger
   Float     float     -> show float
   Symbol    symbol    -> symbol
