@@ -77,7 +77,7 @@ instance Eq Sexp where
   NIL       == Quote   NIL       = True
   NIL       == List    []        = True
   NIL       == Quote   (List []) = True
-  Bool    a == Bool    b         = a == b
+  Bool    _ == Bool    _         = True
   Int     a == Int     b         = a == b
   Float   a == Float   b         = a == b
   Symbol  a == Symbol  b         = a == b
@@ -85,6 +85,14 @@ instance Eq Sexp where
   String  a == String  b         = a == b
   _         == _                 = False
 
+
+instance Ord Sexp where
+  Int     a <= Int     b = a <= b
+  Float   a <= Float   b = a <= b
+  Symbol  a <= Symbol  b = a <= b
+  Keyword a <= Keyword b = a <= b
+  String  a <= String  b = a <= b
+  _         <= _         = False
 
 ----------
 -- State
@@ -371,6 +379,64 @@ f'defvar = defsym set'venv'undef
 -- | quote
 f'quote :: Fn
 f'quote = g'unary
+
+-- | not
+f'not :: Fn
+f'not = pred' $ \case
+  NIL -> Bool True
+  _   -> NIL
+
+-- | or
+f'or :: Fn
+f'or = nfold
+  pure
+  (\a b -> case (a, b) of
+    (NIL, b) -> pure b
+    (a  , _) -> pure a
+  )
+  "or"
+
+-- | and
+f'and :: Fn
+f'and = nfold
+  pure
+  (\a b -> case (a, b) of
+    (NIL, _) -> pure NIL
+    (_  , b) -> pure b
+  )
+  "and"
+
+-- | =
+f'EQ :: Fn
+f'EQ = nfold' g'number (==) "="
+
+-- | /=
+f'NE :: Fn
+f'NE = nfold' g'number (/=) "/="
+
+-- | <
+f'LT :: Fn
+f'LT = nfold' g'number (<) "<"
+
+-- | >
+f'GT :: Fn
+f'GT = nfold' g'number (>) ">"
+
+-- | <=
+f'LE :: Fn
+f'LE = nfold' g'number (<=) "<="
+
+-- | >=
+f'GE :: Fn
+f'GE = nfold' g'number (>=) ">="
+
+-- | min
+f'min :: Fn
+f'min = undefined
+
+-- | max
+f'max :: Fn
+f'max = undefined
 
 -- | (+)
 f'add :: Fn
@@ -743,6 +809,13 @@ g'number s = get s >>= \case
   Float{} -> pure s
   a       -> err [errEval, errNotNumber, show' a]
 
+-- | Guard for boolean
+g'bool :: T Sexp Sexp
+g'bool s = get s >>= \case
+  NIL     -> pure s
+  Float{} -> pure s
+  a       -> err [errEval, errNotNumber, show' a]
+
 -- | Guard for strings
 g'string :: T Sexp Sexp
 g'string s = get s >>= \case
@@ -885,12 +958,19 @@ unary g f = g'unary >=> eval >=> g >=> f
 binary :: T Sexp Sexp -> T (Sexp, Sexp) Sexp -> Fn
 binary g f = g'binary >=> evalTuple >=> bimapM g >=> f
 
--- | N-fold function builder
+-- | N-fold function builder (arithmetic)
 nfold :: T Sexp Sexp -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
 nfold g f label = g'nary >=> evalList >=> mapM' g >=> foldM' f label
 
+-- | N-fold function builder (logical)
+nfold' :: T Sexp Sexp -> (Sexp -> Sexp -> Bool) -> String -> Fn
+nfold' g op label =
+  g'nary >=> g'nempty label >=> evalList >=> mapM' g >=> \s@(_, l) ->
+    put (and $ zipWith op l (tail l)) s >>= get >>= \case
+      False -> put NIL s
+      _     -> put (Bool True) s
+
 -- | Fold a list of S-exp using the given binary arithemetic operator.
--- This is a variant of 'foldM' and mirrors it.
 foldM' :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
 foldM' f o s = get s >>= \case
   [] -> case o of
@@ -979,17 +1059,17 @@ built'in =
   , ("defvar"               , f'defvar)
   , ("makeunbound"          , undefined)
   , ("quote"                , f'quote)
-  , ("or"                   , undefined)
-  , ("not"                  , undefined)
-  , ("and"                  , undefined)
-  , ("="                    , undefined)
-  , ("/="                   , undefined)
-  , ("<"                    , undefined)
-  , (">"                    , undefined)
-  , ("<="                   , undefined)
-  , (">="                   , undefined)
-  , ("min"                  , undefined)
-  , ("max"                  , undefined)
+  , ("not"                  , f'not)
+  , ("or"                   , f'or)
+  , ("and"                  , f'and)
+  , ("="                    , f'EQ)
+  , ("/="                   , f'NE)
+  , ("<"                    , f'LT)
+  , (">"                    , f'GT)
+  , ("<="                   , f'LE)
+  , (">="                   , f'GE)
+  , ("min"                  , f'min)
+  , ("max"                  , f'max)
   , ("+"                    , f'add)
   , ("-"                    , f'sub)
   , ("*"                    , f'mul)
