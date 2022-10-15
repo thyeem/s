@@ -72,28 +72,6 @@ data Sexp = NIL
           | Macro       String Fn
 
 
-instance Eq Sexp where
-  NIL       == NIL               = True
-  NIL       == Quote   NIL       = True
-  NIL       == List    []        = True
-  NIL       == Quote   (List []) = True
-  Bool    _ == Bool    _         = True
-  Int     a == Int     b         = a == b
-  Float   a == Float   b         = a == b
-  Symbol  a == Symbol  b         = a == b
-  Keyword a == Keyword b         = a == b
-  String  a == String  b         = a == b
-  _         == _                 = False
-
-
-instance Ord Sexp where
-  Int     a <= Int     b = a <= b
-  Float   a <= Float   b = a <= b
-  Symbol  a <= Symbol  b = a <= b
-  Keyword a <= Keyword b = a <= b
-  String  a <= String  b = a <= b
-  _         <= _         = False
-
 ----------
 -- State
 ----------
@@ -121,7 +99,7 @@ put x (env, _) = pure (env, x)
 
 -- | Transform the old state to a new state with the given functions
 modify :: (a -> RE b) -> T a b
-modify f (env, e) = f e <&> (env, )
+modify f (env, x) = f x <&> (env, )
 
 -- | Get the env from the state
 get' :: ST a -> RE Env
@@ -163,19 +141,19 @@ set'venv k s@(Env {..}, _) | M.member k env'l = set'lenv k s
                            | otherwise        = set'genv k s
 -- |
 set'genv :: String -> T Sexp Sexp
-set'genv k s@(env@Env {..}, e) = put' (env { env'g = M.insert k e env'g }) s
+set'genv k s@(env@Env {..}, x) = put' (env { env'g = M.insert k x env'g }) s
 
 -- |
 set'lenv :: String -> T Sexp Sexp
-set'lenv k s@(env@Env {..}, e) = put' (env { env'l = M.insert k e env'l }) s
+set'lenv k s@(env@Env {..}, x) = put' (env { env'l = M.insert k x env'l }) s
 
 -- |
 set'fenv :: String -> T Fn Fn
-set'fenv k s@(env@Env {..}, e) = put' (env { env'f = M.insert k e env'f }) s
+set'fenv k s@(env@Env {..}, x) = put' (env { env'f = M.insert k x env'f }) s
 
 -- | The same as `set'venv`, but set only when keys are not defined
-set'venv'undef :: String -> T Sexp Sexp
-set'venv'undef k s@(Env {..}, _) = case M.lookup k env'g of
+set'venv'ifndef :: String -> T Sexp Sexp
+set'venv'ifndef k s@(Env {..}, _) = case M.lookup k env'g of
   Just _  -> pure s
   Nothing -> set'venv k s
 
@@ -325,10 +303,10 @@ eval s = get s >>= \case
   Quote  (List [])         -> put NIL s
   Quote  a                 -> put a s
   List   []                -> put NIL s
-  List   es@(Symbol{} : _) -> put es s >>= apply
+  List   xs@(Symbol{} : _) -> put xs s >>= apply
   List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
   c@Cons{}                 -> err [errEval, errInvalidFn, show' c]
-  Seq es                   -> put es s >>= evalSeq
+  Seq xs                   -> put xs s >>= evalSeq
   a                        -> put a s
 
 -- | Apply the function of symbol name to the given arguments
@@ -339,7 +317,7 @@ apply s = head' s >>= get >>= \case
 
 -- | set
 f'set :: Fn
-f'set s = g'binary s >>= evalTuple >>= \t@(_, e) -> case e of
+f'set s = g'binary s >>= evalTuple >>= \t@(_, x) -> case x of
   (Symbol k, a) -> put a t >>= set'venv k
   a             -> err [errEval, errNotSymbol, show' (fst a)]
 
@@ -347,9 +325,9 @@ f'set s = g'binary s >>= evalTuple >>= \t@(_, e) -> case e of
 f'setq :: Fn
 f'setq s = g'evenary s >>= go
  where
-  go x = get x >>= \case
-    [Symbol k, a]       -> put a x >>= eval >>= set'venv k
-    Symbol k : a : rest -> put a x >>= eval >>= set'venv k >>= put rest >>= go
+  go t = get t >>= \case
+    [Symbol k, a]       -> put a t >>= eval >>= set'venv k
+    Symbol k : a : rest -> put a t >>= eval >>= set'venv k >>= put rest >>= go
     _                   -> err [errEval, errMalformed, "setq"]
 
 -- | setf
@@ -374,7 +352,7 @@ f'defparameter = defsym set'venv
 
 -- | defvar
 f'defvar :: Fn
-f'defvar = defsym set'venv'undef
+f'defvar = defsym set'venv'ifndef
 
 -- | quote
 f'quote :: Fn
@@ -388,23 +366,11 @@ f'not = pred' $ \case
 
 -- | or
 f'or :: Fn
-f'or = nfold
-  pure
-  (\a b -> case (a, b) of
-    (NIL, b) -> pure b
-    (a  , _) -> pure a
-  )
-  "or"
+f'or = nfold pure or' "or"
 
 -- | and
 f'and :: Fn
-f'and = nfold
-  pure
-  (\a b -> case (a, b) of
-    (NIL, _) -> pure NIL
-    (_  , b) -> pure b
-  )
-  "and"
+f'and = nfold pure and' "and"
 
 -- | =
 f'EQ :: Fn
@@ -432,11 +398,11 @@ f'GE = nfold' g'number (>=) ">="
 
 -- | min
 f'min :: Fn
-f'min = undefined
+f'min = nfold g'number (bop min) "min"
 
 -- | max
 f'max :: Fn
-f'max = undefined
+f'max = nfold g'number (bop max) "max"
 
 -- | (+)
 f'add :: Fn
@@ -567,7 +533,7 @@ f'list s = g'nary s >>= evalList >>= modify (pure . List)
 
 -- | cons
 f'cons :: Fn
-f'cons s = g'binary s >>= evalTuple >>= \t@(_, e) -> case e of
+f'cons s = g'binary s >>= evalTuple >>= \t@(_, x) -> case x of
   (a, NIL   ) -> put (List [a]) t
   (a, List l) -> put (List (a : l)) t
   (a, b     ) -> put (Cons a b) t
@@ -586,11 +552,11 @@ f'caar = g'unary >=> eval >=> car >=> car
 
 -- | cadr
 f'cadr :: Fn
-f'cadr = g'unary >=> eval >=> car >=> cdr
+f'cadr = g'unary >=> eval >=> cdr >=> car
 
 -- | cdar
 f'cdar :: Fn
-f'cdar = g'unary >=> eval >=> cdr >=> car
+f'cdar = g'unary >=> eval >=> car >=> cdr
 -- | cddr
 f'cddr :: Fn
 f'cddr = g'unary >=> eval >=> cdr >=> cdr
@@ -601,7 +567,7 @@ f'caaar = g'unary >=> eval >=> car >=> car >=> car
 
 -- | caadr
 f'caadr :: Fn
-f'caadr = g'unary >=> eval >=> car >=> car >=> cdr
+f'caadr = g'unary >=> eval >=> cdr >=> car >=> car
 
 -- | caadr
 f'cadar :: Fn
@@ -609,11 +575,11 @@ f'cadar = g'unary >=> eval >=> car >=> cdr >=> car
 
 -- | caadr
 f'caddr :: Fn
-f'caddr = g'unary >=> eval >=> car >=> cdr >=> cdr
+f'caddr = g'unary >=> eval >=> cdr >=> cdr >=> car
 
 -- | caadr
 f'cdaar :: Fn
-f'cdaar = g'unary >=> eval >=> cdr >=> car >=> car
+f'cdaar = g'unary >=> eval >=> car >=> car >=> cdr
 
 -- | caadr
 f'cdadr :: Fn
@@ -621,7 +587,7 @@ f'cdadr = g'unary >=> eval >=> cdr >=> car >=> cdr
 
 -- | caadr
 f'cddar :: Fn
-f'cddar = g'unary >=> eval >=> cdr >=> cdr >=> car
+f'cddar = g'unary >=> eval >=> car >=> cdr >=> cdr
 
 -- | caadr
 f'cdddr :: Fn
@@ -633,23 +599,23 @@ f'caaaar = g'unary >=> eval >=> car >=> car >=> car >=> car
 
 -- | caaaar
 f'caaadr :: Fn
-f'caaadr = g'unary >=> eval >=> car >=> car >=> car >=> cdr
+f'caaadr = g'unary >=> eval >=> cdr >=> car >=> car >=> car
 
 -- | caaaar
 f'caadar :: Fn
-f'caadar = g'unary >=> eval >=> car >=> car >=> cdr >=> car
+f'caadar = g'unary >=> eval >=> car >=> cdr >=> car >=> car
 
 -- | caaaar
 f'caaddr :: Fn
-f'caaddr = g'unary >=> eval >=> car >=> car >=> cdr >=> cdr
+f'caaddr = g'unary >=> eval >=> cdr >=> cdr >=> car >=> car
 
 -- | caaaar
 f'cadaar :: Fn
-f'cadaar = g'unary >=> eval >=> car >=> cdr >=> car >=> car
+f'cadaar = g'unary >=> eval >=> car >=> car >=> cdr >=> car
 
 -- | caaaar
 f'cadadr :: Fn
-f'cadadr = g'unary >=> eval >=> car >=> cdr >=> car >=> cdr
+f'cadadr = g'unary >=> eval >=> cdr >=> car >=> cdr >=> car
 
 -- | caaaar
 f'caddar :: Fn
@@ -657,11 +623,11 @@ f'caddar = g'unary >=> eval >=> car >=> cdr >=> cdr >=> car
 
 -- | caaaar
 f'cadddr :: Fn
-f'cadddr = g'unary >=> eval >=> car >=> cdr >=> cdr >=> cdr
+f'cadddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> car
 
 -- | caaaar
 f'cdaaar :: Fn
-f'cdaaar = g'unary >=> eval >=> cdr >=> car >=> car >=> car
+f'cdaaar = g'unary >=> eval >=> car >=> car >=> car >=> cdr
 
 -- | caaaar
 f'cdaadr :: Fn
@@ -669,23 +635,23 @@ f'cdaadr = g'unary >=> eval >=> cdr >=> car >=> car >=> cdr
 
 -- | caaaar
 f'cdadar :: Fn
-f'cdadar = g'unary >=> eval >=> cdr >=> car >=> cdr >=> car
+f'cdadar = g'unary >=> eval >=> car >=> cdr >=> car >=> cdr
 
 -- | caaaar
 f'cdaddr :: Fn
-f'cdaddr = g'unary >=> eval >=> cdr >=> car >=> cdr >=> cdr
+f'cdaddr = g'unary >=> eval >=> cdr >=> cdr >=> car >=> cdr
 
 -- | caaaar
 f'cddaar :: Fn
-f'cddaar = g'unary >=> eval >=> cdr >=> cdr >=> car >=> car
+f'cddaar = g'unary >=> eval >=> car >=> car >=> cdr >=> cdr
 
 -- | caaaar
 f'cddadr :: Fn
-f'cddadr = g'unary >=> eval >=> cdr >=> cdr >=> car >=> cdr
+f'cddadr = g'unary >=> eval >=> cdr >=> car >=> cdr >=> cdr
 
 -- | caaaar
 f'cdddar :: Fn
-f'cdddar = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> car
+f'cdddar = g'unary >=> eval >=> car >=> cdr >=> cdr >=> cdr
 
 -- | caaaar
 f'cddddr :: Fn
@@ -740,14 +706,26 @@ f'tenth s = g'unary s >>= eval >>= nth 9
 f'rest :: Fn
 f'rest = f'cdr
 
+-- | do
+f'do :: Fn
+f'do = undefined
+
+-- | dolist
+f'dolist :: Fn
+f'dolist = undefined
+
 -- | eval
 f'eval :: Fn
 f'eval s = g'unary s >>= eval >>= eval
 
+-- | funcall
+f'funcall :: Fn
+f'funcall = undefined
+
 -- | apply
 f'apply :: Fn
 f'apply = undefined
--- f'apply s = g'nary s >>= evalList >>= \t@(_, e) -> case e of
+-- f'apply s = g'nary s >>= evalList >>= \t@(_, x) -> case x of
   -- (f : args) -> case put args t >>= last' of {}
 
 -- | symbol-value
@@ -860,19 +838,43 @@ g'undef'lkey k s@(Env {..}, _) = case M.lookup k env'l of
 ----------
 -- Core
 ----------
+
+instance Eq Sexp where
+  NIL       == NIL               = True
+  NIL       == Quote   NIL       = True
+  NIL       == List    []        = True
+  NIL       == Quote   (List []) = True
+  Bool    _ == Bool    _         = True
+  Int     a == Int     b         = a == b
+  Float   a == Float   b         = a == b
+  Symbol  a == Symbol  b         = a == b
+  Keyword a == Keyword b         = a == b
+  String  a == String  b         = a == b
+  _         == _                 = False
+
+
+instance Ord Sexp where
+  Int     a <= Int     b = a <= b
+  Float   a <= Float   b = a <= b
+  Symbol  a <= Symbol  b = a <= b
+  Keyword a <= Keyword b = a <= b
+  String  a <= String  b = a <= b
+  _         <= _         = False
+
+
 -- | Evaluate a sequence
 evalSeq :: T [Sexp] Sexp
-evalSeq s@(_, es) = case es of
-  [e       ] -> put e s >>= eval
-  (e : rest) -> put e s >>= eval >>= put rest >>= evalSeq
+evalSeq s@(_, xs) = case xs of
+  [x       ] -> put x s >>= eval
+  (x : rest) -> put x s >>= eval >>= put rest >>= evalSeq
   []         -> put NIL s
 
 -- | Evaluate a list
 evalList :: T [Sexp] [Sexp]
 evalList = go []
  where
-  go r s@(_, es) = case es of
-    e : rest -> put e s >>= eval >>= \(env, x) -> go (x : r) (env, rest)
+  go r s@(_, xs) = case xs of
+    x : rest -> put x s >>= eval >>= \(env, v) -> go (v : r) (env, rest)
     []       -> put (reverse r) s
 
 -- | Evaluate a tuple
@@ -894,8 +896,8 @@ bindPar s = get s >>= \case
       >>= put rest
       >>= bindPar
   x@List{} : _ -> err [errEval, errMalformed, show' x]
-  Quote e@(Symbol k) : rest ->
-    put e s >>= from'genv k >>= put (List [e, e] : rest) >>= bindPar
+  Quote x@(Symbol k) : rest ->
+    put x s >>= from'genv k >>= put (List [x, x] : rest) >>= bindPar
   a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindPar
 
 -- | Sequentially bind a sequence (let*-like)
@@ -905,14 +907,14 @@ bindSeq s = get s >>= \case
   (List [Symbol k, a] : rest) ->
     put a s >>= eval >>= set'lenv k >>= put rest >>= bindSeq
   x@List{} : _ -> err [errEval, errMalformed, show' x]
-  Quote e@(Symbol k) : rest ->
-    put e s >>= from'genv k >>= put (List [e, e] : rest) >>= bindSeq
+  Quote x@(Symbol k) : rest ->
+    put x s >>= from'genv k >>= put (List [x, x] : rest) >>= bindSeq
   a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindSeq
 
 -- | let-function builder
 deflet :: T [Sexp] [Sexp] -> String -> Fn
 deflet f o s = g'nary s >>= get >>= \case
-  Quote e@Symbol{} : rest -> put (List [List [e, NIL]] : rest) s >>= deflet f o
+  Quote x@Symbol{} : rest -> put (List [List [x, NIL]] : rest) s >>= deflet f o
   Quote (List a)   : rest -> put (List [List a] : rest) s >>= deflet f o
   List a : rest ->
     put a s >>= local >>= f >>= put (Seq rest) >>= eval >>= global s
@@ -921,7 +923,7 @@ deflet f o s = g'nary s >>= get >>= \case
 -- | function builder of defining symbol values
 defsym :: (String -> T Sexp Sexp) -> Fn
 defsym f s = g'binary s >>= get >>= \case
-  (e@(Symbol k), a) -> put a s >>= eval >>= f k >>= put e
+  (x@(Symbol k), a) -> put a s >>= eval >>= f k >>= put x
   x                 -> err [errEval, errNotSymbol, show' (fst x)]
 
 -- | Predicate builder
@@ -992,7 +994,7 @@ mapM' f s@(env, _) = mapM f (sequence s) >>= sequence' >>= put' env
   sequence' xs = put (go [] xs) null'env
   go r = \case
     []              -> reverse r
-    ((_, e) : rest) -> go (e : r) rest
+    ((_, x) : rest) -> go (x : r) rest
 
 -- | Map the state result to an action. This a monadic 'bimap' for ST.
 bimapM :: T Sexp Sexp -> T (Sexp, Sexp) (Sexp, Sexp)
@@ -1017,11 +1019,23 @@ init' s = g'nempty "init'" s >>= modify (pure . init)
 
 -- | Build functions to control function's number of arguments
 arity :: (Int -> Bool) -> T [Sexp] [Sexp]
-arity p s@(_, e : args)
+arity p s@(_, x : args)
   | p nargs   = put args s
-  | otherwise = err [errEval, errWrongNargs, show' e ++ ",", show nargs]
+  | otherwise = err [errEval, errWrongNargs, show' x ++ ",", show nargs]
   where nargs = length args
 arity _ _ = err [errEval, errNoArgs, "arity"]
+
+-- |
+or' :: Sexp -> Sexp -> RE Sexp
+or' a b = case (a, b) of
+  (NIL, b) -> pure b
+  (a  , _) -> pure a
+
+-- |
+and' :: Sexp -> Sexp -> RE Sexp
+and' a b = case (a, b) of
+  (NIL, _) -> pure NIL
+  (_  , b) -> pure b
 
 -- | Build functions to get a list item by index
 nth :: Int -> T Sexp Sexp
@@ -1195,7 +1209,6 @@ built'in =
   , ("member"               , undefined)
   , ("mapcar"               , undefined)
   , ("remove-if-not"        , undefined)
-  , ("dolist"               , undefined)
   , ("every"                , undefined)
   , ("some"                 , undefined)
   , ("push"                 , undefined)
@@ -1223,7 +1236,8 @@ built'in =
   , ("prog1"                , undefined)
   , ("prog2"                , undefined)
   , ("loop"                 , undefined)
-  , ("do"                   , undefined)
+  , ("do"                   , f'do)
+  , ("dolist"               , f'dolist)
   , ("dotimes"              , undefined)
   , ("if"                   , undefined)
   , ("when"                 , undefined)
@@ -1246,6 +1260,7 @@ built'in =
   -- make-string-input-stream
   -- make-string-output-stream
   , ("eval"                 , f'eval)
+  , ("funcall"              , f'funcall)
   , ("apply"                , f'apply)
   , ("defmacro"             , undefined)
   , ("macroexpand"          , undefined)
@@ -1412,13 +1427,13 @@ sl = do
     case input of
       Nothing     -> pure ()
       Just []     -> loop s normal
-      Just ";"    -> outputStrLn "Set to paste-mode." >> loop s mode
-      Just ";;"   -> outputStrLn "Set to debug-mode." >> loop s debug
+      Just ";"    -> outputStrLn "Set to paste-mode" >> loop s mode
+      Just ";;"   -> outputStrLn "Set to debug-mode" >> loop s debug
       Just ";;;"  -> d'symbolv env >> loop s mode
       Just ";;;;" -> d'symbolf env >> loop s mode
       Just str    -> case reader str >>= eval . (env, ) of
         Left  err      -> outputStrLn err >> loop s mode
-        Right t@(_, e) -> printer e >> loop t mode
+        Right t@(_, x) -> printer x >> loop t mode
 
 -- Run SLISP externally: READ-EVAL
 re :: String -> RE (ST Sexp)
@@ -1429,7 +1444,7 @@ rep :: String -> IO ()
 rep stream = do
   case re stream of
     Left  err    -> putStrLn err
-    Right (_, e) -> putStrLn . show' $ e
+    Right (_, x) -> putStrLn (show' x)
 
 
 ----------
