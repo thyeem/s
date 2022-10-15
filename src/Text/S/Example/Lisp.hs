@@ -231,15 +231,15 @@ xlocal s@(env@Env{}, _) = put' (env { env'l = mempty }) s
 ----------
 -- Read
 ----------
+-- | Use 'ParserS' as a stream parser
+type Parser = ParserS String
+
 -- | READ
 read' :: String -> RE Sexp
 read' input = case parse' sexp input of
   Ok ok (State stream _ _) | isEmpty stream -> pure ok
                            | otherwise      -> err [errRepl, errManySexp]
   Error _ -> err [errRead, errParsing]
-
--- | Use 'ParserS' as a stream parser
-type Parser = ParserS String
 
 -- | S-expression
 sexp :: Parser Sexp

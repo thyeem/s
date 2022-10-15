@@ -15,7 +15,9 @@ build-type:         Simple
 
 extra-source-files: README.md
 
-common shared
+library
+    hs-source-dirs:
+        src
     build-depends:
         base               >= 4.14.3 && < 4.15
       , bytestring         >= 0.10.12 && < 0.11
@@ -30,12 +32,6 @@ common shared
       , raw-strings-qq     >= 1.1 && < 1.2
       , text               >= 1.2.4 && < 1.3
       , vector             >= 0.13.0 && < 0.14
-
-library
-    import:
-        shared
-    hs-source-dirs:
-        src
     exposed-modules:
         Text.S
         Text.S.Base
@@ -82,8 +78,6 @@ test-suite test
     default-language: Haskell2010
 
 test-suite doctest
-    import:
-        shared
     type:
         exitcode-stdio-1.0
     hs-source-dirs:
@@ -93,9 +87,7 @@ test-suite doctest
     ghc-options:
         -threaded
     build-depends:
-      , doctest            >= 0.8
-      , s
-
+      , doctest
     default-language: Haskell2010
 
 benchmark bench
