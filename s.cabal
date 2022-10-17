@@ -47,14 +47,20 @@ library
         Text.S.Example.Markdown
     default-language: Haskell2010
 
-executable s
+executable sl
     hs-source-dirs:
         app
     main-is:
         Main.hs
     build-depends:
         base
+      , containers
+      , directory
+      , filepath
+      , haskeline
+      , text
       , s
+      , vector
 
 test-suite test
     type:

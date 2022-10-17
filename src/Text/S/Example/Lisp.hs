@@ -96,7 +96,7 @@ type T a b = ST a -> RE (ST b)
 get :: ST a -> RE a
 get = pure . snd
 
--- | Set the given reuslt value to the state
+-- | Set the given result value to the state
 put :: a -> T b a
 put x (env, _) = pure (env, x)
 
@@ -338,8 +338,8 @@ eval s = get s >>= \case
   c@Cons{}                 -> err [errEval, errInvalidFn, show' c]
   Seq       xs             -> put xs s >>= evalSeq
   Backquote a              -> put a s >>= evalBackquote
-  Comma     a              -> err [errEval, errNotInBquote, show' a]
-  CommaAt   a              -> err [errEval, errNotInBquote, show' a]
+  a@Comma{}                -> err [errEval, errNotInBquote, show' a]
+  a@CommaAt{}              -> err [errEval, errNotInBquote, show' a]
   a                        -> put a s
 
 -- | Apply the function of symbol name to the given arguments
@@ -894,23 +894,23 @@ instance Ord Sexp where
   String  a <= String  b = a <= b
   _         <= _         = False
 
--- | Evaluage and splice backquoted list
+-- | Evaluage backquoted S-exp
 evalBackquote :: T Sexp Sexp
 evalBackquote s = get s >>= \case
-  List    []          -> put NIL s
-  List    [CommaAt a] -> put a s >>= eval
-  List xs -> put xs s >>= evalList >>= splice >>= modify (pure . List)
-  Comma   a           -> put a s >>= eval
-  CommaAt a           -> put a s >>= eval
-  a                   -> put a s
+  List  []          -> put NIL s
+  List  [CommaAt a] -> put a s >>= eval
+  List  xs          -> put xs s >>= evalSplice >>= modify (pure . List)
+  Comma a           -> put a s >>= eval
+  a@CommaAt{}       -> err [errEval, errMalformed, show' a]
+  a                 -> put a s
 
--- |
-splice :: T [Sexp] [Sexp]
-splice = go []
+-- | Evaluage and splice backquoted list
+evalSplice :: T [Sexp] [Sexp]
+evalSplice = go []
  where
-  go r s@(env, xs) = case xs of
+  go r s@(_, xs) = case xs of
     []       -> put (reverse r) s
-    x : rest -> case x of
+    x : rest -> put x s >>= eval >>= \(env, v) -> case v of
       List l -> go (r ++ l) (env, rest)
       a      -> go (a : r) (env, rest)
 
@@ -1527,10 +1527,10 @@ __ = outputStrLn mempty
 d'symbolv :: MonadIO m => Env -> InputT m ()
 d'symbolv Env {..} =
   __
-    >> outputStrLn "global symbol values:"
+    >> outputStrLn "*** global symbol values: [(symbol \"key\", S-exp)] ***"
     >> pretty' (M.toList env'g)
     >> __
-    >> outputStrLn "local symbol values (must be empty):"
+    >> outputStrLn "*** local symbol values (must be empty) ***"
     >> pretty' (M.toList env'l)
     >> __
 
@@ -1538,6 +1538,7 @@ d'symbolv Env {..} =
 d'symbolf :: MonadIO m => Env -> InputT m ()
 d'symbolf Env {..} =
   __
+    >> outputStrLn "*** SLISP built-in functions ***"
     >> mapM_ outputStrLn
              ((\(a, b) -> unwords [show b, "\t", a]) <$> M.toList env'f)
     >> __

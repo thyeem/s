@@ -1,11 +1,6 @@
 module Main where
 
-import           System.Environment
-import           Text.S
-import           Text.S.Example.JSON
-
+import           Text.S.Example.Lisp
 
 main :: IO ()
-main = do
-  args <- getArgs
-  parseFile (jsonParser :: ParserS Text JSON) (head args) >>= print
+main = sl
