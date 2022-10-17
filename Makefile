@@ -3,7 +3,7 @@ ghc := --with-compiler=ghc-8.10.7
 opts := --ghc-options="-Wall -Wno-name-shadowing -Wno-orphans"
 fast := $(ghc) --ghc-options=-O0 $(opts)
 release := $(ghc) --ghc-options="-O2 -fexpose-all-unfoldings" $(opts)
-test-opts := $(fast) --enable-tests --test-show-details=direct
+test-opts := --test-show-details=direct
 
 .PHONY: build
 build:
@@ -19,19 +19,19 @@ clean:
 	git clean -xdf
 	cabal clean
 
-.PHONY: tests
-tests:
-	make doctest
-	make test
-
 .PHONY: test
 test:
 	cabal test test $(test-opts) --test-option=--match --test-option="$(match)"
 
 .PHONY: doctest
 doctest:
-	cabal exec -- \
-	cabal test doctest $(test-opts)
+	cabal build $(fast) --enable-tests && \
+	cabal exec -- cabal test doctest $(test-opts)
+
+.PHONY: tests
+tests:
+	make doctest
+	make test
 
 .PHONY: bench
 bench:

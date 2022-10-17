@@ -63,6 +63,9 @@ data Sexp = NIL
           | Keyword     String
           | String      String
           | Quote       Sexp
+          | Backquote   Sexp
+          | Comma       Sexp
+          | CommaAt     Sexp
           | Cons        Sexp Sexp
           | Seq         [Sexp]
           | List        [Sexp]
@@ -232,7 +235,23 @@ sexp :: Parser Sexp
 sexp = between
   jump
   jump
-  (choice [nil, str, bool, float, int, quote, key, sym, cons, vec, form])
+  (choice
+    [ nil
+    , str
+    , bool
+    , float
+    , int
+    , quote
+    , bquote
+    , commaAt
+    , comma
+    , key
+    , sym
+    , cons
+    , vec
+    , form
+    ]
+  )
 
 -- | Skip whitespaces and line/block comments
 jump :: Parser ()
@@ -274,6 +293,18 @@ str = String <$> stringLit
 quote :: Parser Sexp
 quote = symbol "'" *> (Quote <$> sexp)
 
+-- | Backquote
+bquote :: Parser Sexp
+bquote = symbol "`" *> (Backquote <$> sexp)
+
+-- | Comma
+comma :: Parser Sexp
+comma = symbol "," *> (Comma <$> sexp)
+
+-- | CommaAt
+commaAt :: Parser Sexp
+commaAt = symbol ",@" *> (CommaAt <$> sexp)
+
 -- | Vector
 vec :: Parser Sexp
 vec = Vector . V.fromList <$> between (symbol "#(") (symbol ")") (many sexp)
@@ -299,14 +330,16 @@ type Fn = T [Sexp] Sexp
 eval :: T Sexp Sexp
 eval s = get s >>= \case
   Symbol k                 -> from'venv k s
-  Quote  NIL               -> put NIL s
   Quote  (List [])         -> put NIL s
   Quote  a                 -> put a s
   List   []                -> put NIL s
   List   xs@(Symbol{} : _) -> put xs s >>= apply
   List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
   c@Cons{}                 -> err [errEval, errInvalidFn, show' c]
-  Seq xs                   -> put xs s >>= evalSeq
+  Seq       xs             -> put xs s >>= evalSeq
+  Backquote a              -> put a s >>= evalBackquote
+  Comma     a              -> err [errEval, errNotInBquote, show' a]
+  CommaAt   a              -> err [errEval, errNotInBquote, show' a]
   a                        -> put a s
 
 -- | Apply the function of symbol name to the given arguments
@@ -861,21 +894,40 @@ instance Ord Sexp where
   String  a <= String  b = a <= b
   _         <= _         = False
 
+-- |
+evalBackquote :: T Sexp Sexp
+evalBackquote s = get s >>= \case
+  List    []          -> put NIL s
+  List    [CommaAt a] -> put a s >>= eval
+  List    xs          -> put xs s >>= evalBackquoteList
+  Comma   a           -> put a s >>= eval
+  CommaAt a           -> put a s  >>=  eval
+  a                   -> put a s
+
+-- | Evaluage and splice backquoted list
+evalBackquoteList :: T [Sexp] Sexp
+evalBackquoteList = go []
+ where
+  go r s@(_, xs) = case xs of
+    []       -> put (List . reverse $ r) s
+    x : rest -> put x s >>= evalBackquote >>= \t@(env, v) -> case v of
+      List xs -> undefined
+      a -> go (a : r) (env, rest)
 
 -- | Evaluate a sequence
 evalSeq :: T [Sexp] Sexp
 evalSeq s@(_, xs) = case xs of
+  []         -> put NIL s
   [x       ] -> put x s >>= eval
   (x : rest) -> put x s >>= eval >>= put rest >>= evalSeq
-  []         -> put NIL s
 
 -- | Evaluate a list
 evalList :: T [Sexp] [Sexp]
 evalList = go []
  where
   go r s@(_, xs) = case xs of
-    x : rest -> put x s >>= eval >>= \(env, v) -> go (v : r) (env, rest)
     []       -> put (reverse r) s
+    x : rest -> put x s >>= eval >>= \(env, v) -> go (v : r) (env, rest)
 
 -- | Evaluate a tuple
 evalTuple :: T (Sexp, Sexp) (Sexp, Sexp)
@@ -1315,6 +1367,9 @@ show' = \case
   Keyword   keyword   -> keyword
   String    string    -> "\"" ++ string ++ "\""
   Quote     sexp      -> "'" ++ show' sexp
+  Backquote sexp      -> "`" ++ show' sexp
+  Comma     sexp      -> "," ++ show' sexp
+  CommaAt   sexp      -> ",@" ++ show' sexp
   Seq       seq       -> show' (List seq)
   Vector    vector    -> "#(" ++ unwords (show' <$> V.toList vector) ++ ")"
   HashTable map       -> show map
@@ -1402,6 +1457,9 @@ errParsing = "Occurred error during parsing"
 
 errDivByZero :: String
 errDivByZero = "Arithmetic error: DIVISION-BY-ZERO"
+
+errNotInBquote :: String
+errNotInBquote = "Not inside backquote:"
 
 errUnexpected :: String
 errUnexpected = "Expected:"
