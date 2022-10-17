@@ -894,25 +894,25 @@ instance Ord Sexp where
   String  a <= String  b = a <= b
   _         <= _         = False
 
--- |
+-- | Evaluage and splice backquoted list
 evalBackquote :: T Sexp Sexp
 evalBackquote s = get s >>= \case
   List    []          -> put NIL s
   List    [CommaAt a] -> put a s >>= eval
-  List    xs          -> put xs s >>= evalBackquoteList
+  List xs -> put xs s >>= evalList >>= splice >>= modify (pure . List)
   Comma   a           -> put a s >>= eval
-  CommaAt a           -> put a s  >>=  eval
+  CommaAt a           -> put a s >>= eval
   a                   -> put a s
 
--- | Evaluage and splice backquoted list
-evalBackquoteList :: T [Sexp] Sexp
-evalBackquoteList = go []
+-- |
+splice :: T [Sexp] [Sexp]
+splice = go []
  where
-  go r s@(_, xs) = case xs of
-    []       -> put (List . reverse $ r) s
-    x : rest -> put x s >>= evalBackquote >>= \t@(env, v) -> case v of
-      List xs -> undefined
-      a -> go (a : r) (env, rest)
+  go r s@(env, xs) = case xs of
+    []       -> put (reverse r) s
+    x : rest -> case x of
+      List l -> go (r ++ l) (env, rest)
+      a      -> go (a : r) (env, rest)
 
 -- | Evaluate a sequence
 evalSeq :: T [Sexp] Sexp
