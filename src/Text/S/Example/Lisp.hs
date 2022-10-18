@@ -65,7 +65,7 @@ data Sexp = NIL
           | Quote       Sexp
           | Backquote   Sexp
           | Comma       Sexp
-          | CommaAt     Sexp
+          | At          Sexp
           | Cons        Sexp Sexp
           | Seq         [Sexp]
           | List        [Sexp]
@@ -236,15 +236,15 @@ sexp = between
   jump
   jump
   (choice
-    [ nil
+    [ comma
+    , at
+    , nil
     , str
     , bool
     , float
     , int
     , quote
     , bquote
-    , commaAt
-    , comma
     , key
     , sym
     , cons
@@ -302,8 +302,8 @@ comma :: Parser Sexp
 comma = symbol "," *> (Comma <$> sexp)
 
 -- | CommaAt
-commaAt :: Parser Sexp
-commaAt = symbol ",@" *> (CommaAt <$> sexp)
+at :: Parser Sexp
+at = symbol "@" *> (At <$> choice [quote, bquote, form])
 
 -- | Vector
 vec :: Parser Sexp
@@ -329,17 +329,16 @@ type Fn = T [Sexp] Sexp
 -- | EVAL
 eval :: T Sexp Sexp
 eval s = get s >>= \case
+  a | nilp a               -> put NIL s
   Symbol k                 -> from'venv k s
-  Quote  (List [])         -> put NIL s
   Quote  a                 -> put a s
-  List   []                -> put NIL s
   List   xs@(Symbol{} : _) -> put xs s >>= apply
   List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
-  c@Cons{}                 -> err [errEval, errInvalidFn, show' c]
+  a@Cons{}                 -> err [errEval, errInvalidFn, show' a]
+  a@Comma{}                -> err [errEval, errNotInBquote, show' a]
+  At        a              -> put a s >>= eval
   Seq       xs             -> put xs s >>= evalSeq
   Backquote a              -> put a s >>= evalBackquote
-  a@Comma{}                -> err [errEval, errNotInBquote, show' a]
-  a@CommaAt{}              -> err [errEval, errNotInBquote, show' a]
   a                        -> put a s
 
 -- | Apply the function of symbol name to the given arguments
@@ -728,8 +727,8 @@ f'eighth :: Fn
 f'eighth s = g'unary s >>= eval >>= nth 7
 
 -- | nineth
-f'nineth :: Fn
-f'nineth s = g'unary s >>= eval >>= nth 8
+f'ninth :: Fn
+f'ninth s = g'unary s >>= eval >>= nth 8
 
 -- | tenth
 f'tenth :: Fn
@@ -873,17 +872,14 @@ g'undef'lkey k s@(Env {..}, _) = case M.lookup k env'l of
 ----------
 
 instance Eq Sexp where
-  NIL       == NIL               = True
-  NIL       == Quote   NIL       = True
-  NIL       == List    []        = True
-  NIL       == Quote   (List []) = True
-  Bool    _ == Bool    _         = True
-  Int     a == Int     b         = a == b
-  Float   a == Float   b         = a == b
-  Symbol  a == Symbol  b         = a == b
-  Keyword a == Keyword b         = a == b
-  String  a == String  b         = a == b
-  _         == _                 = False
+  NIL       == NIL       = True
+  Bool    _ == Bool    _ = True
+  Int     a == Int     b = a == b
+  Float   a == Float   b = a == b
+  Symbol  a == Symbol  b = a == b
+  Keyword a == Keyword b = a == b
+  String  a == String  b = a == b
+  a         == b         = nilp a && nilp b
 
 
 instance Ord Sexp where
@@ -894,25 +890,88 @@ instance Ord Sexp where
   String  a <= String  b = a <= b
   _         <= _         = False
 
+
+-- | Check the given S-exp is identical to 'NIL'
+nilp :: Sexp -> Bool
+nilp = \case
+  NIL                   -> True
+  List      []          -> True
+  Quote     NIL         -> True
+  Backquote NIL         -> True
+  (Quote     (List [])) -> True
+  (Backquote (List [])) -> True
+  _                     -> False
+
+-- |
+or' :: Sexp -> Sexp -> RE Sexp
+or' a b = case (a, b) of
+  (NIL, b) -> pure b
+  (a  , _) -> pure a
+
+-- |
+and' :: Sexp -> Sexp -> RE Sexp
+and' a b = case (a, b) of
+  (NIL, _) -> pure NIL
+  (_  , b) -> pure b
+
+-- | Build functions to get a list item by index
+nth :: Int -> T Sexp Sexp
+nth i s = get s >>= \case
+  List l -> case drop i l of
+    []    -> put NIL s
+    x : _ -> put x s
+  a -> err [errEval, errMalformed, show' a]
+
+-- | functional core of cdr
+car :: T Sexp Sexp
+car s = g'list s >>= get >>= \case
+  Cons x _     -> put x s
+  List (x : _) -> put x s
+  _            -> put NIL s
+
+-- | functional core of cdr
+cdr :: T Sexp Sexp
+cdr s = g'list s >>= get >>= \case
+  Cons _ y      -> put y s
+  List (_ : xs) -> put (List xs) s
+  _             -> put NIL s
+
+-- | Turn the state result to its head value
+head' :: T [a] a
+head' s = g'nempty "head'" s >>= modify (pure . head)
+
+-- | Turn the state result to its tail values
+tail' :: T [a] [a]
+tail' s = g'nempty "tail'" s >>= modify (pure . tail)
+
+-- | Turn the state result to its last value
+last' :: T [a] a
+last' s = g'nempty "last'" s >>= modify (pure . last)
+
+-- | Turn the state result to its init values
+init' :: T [a] [a]
+init' s = g'nempty "init'" s >>= modify (pure . init)
+
+-- | Build functions to control function's number of arguments
+arity :: (Int -> Bool) -> T [Sexp] [Sexp]
+arity p s@(_, x : args)
+  | p nargs   = put args s
+  | otherwise = err [errEval, errWrongNargs, show' x ++ ",", show nargs]
+  where nargs = length args
+arity _ _ = err [errEval, errNoArgs, "arity"]
+
 -- | Evaluage backquoted S-exp
 evalBackquote :: T Sexp Sexp
 evalBackquote s = get s >>= \case
-  List  []          -> put NIL s
-  List  [CommaAt a] -> put a s >>= eval
-  List  xs          -> put xs s >>= evalSplice >>= modify (pure . List)
-  Comma a           -> put a s >>= eval
-  a@CommaAt{}       -> err [errEval, errMalformed, show' a]
-  a                 -> put a s
+  List  [At a] -> put a s >>= eval
+  List  xs     -> put xs s >>= evalSplice >>= modify (pure . List)
+  Comma a      -> put a s >>= eval
+  a@At{}       -> err [errEval, errMalformed, show' a]
+  a            -> put a s
 
 -- | Evaluage and splice backquoted list
 evalSplice :: T [Sexp] [Sexp]
-evalSplice = go []
- where
-  go r s@(_, xs) = case xs of
-    []       -> put (reverse r) s
-    x : rest -> put x s >>= eval >>= \(env, v) -> case v of
-      List l -> go (r ++ l) (env, rest)
-      a      -> go (a : r) (env, rest)
+evalSplice = undefined
 
 -- | Evaluate a sequence
 evalSeq :: T [Sexp] Sexp
@@ -1053,64 +1112,6 @@ bimapM :: T Sexp Sexp -> T (Sexp, Sexp) (Sexp, Sexp)
 bimapM f s@(env, (x, y)) =
   f (env, x) >>= \(_, v) -> f (env, y) >>= \(_, w) -> put (v, w) s
 
--- | Turn the state result to its head value
-head' :: T [a] a
-head' s = g'nempty "head'" s >>= modify (pure . head)
-
--- | Turn the state result to its tail values
-tail' :: T [a] [a]
-tail' s = g'nempty "tail'" s >>= modify (pure . tail)
-
--- | Turn the state result to its last value
-last' :: T [a] a
-last' s = g'nempty "last'" s >>= modify (pure . last)
-
--- | Turn the state result to its init values
-init' :: T [a] [a]
-init' s = g'nempty "init'" s >>= modify (pure . init)
-
--- | Build functions to control function's number of arguments
-arity :: (Int -> Bool) -> T [Sexp] [Sexp]
-arity p s@(_, x : args)
-  | p nargs   = put args s
-  | otherwise = err [errEval, errWrongNargs, show' x ++ ",", show nargs]
-  where nargs = length args
-arity _ _ = err [errEval, errNoArgs, "arity"]
-
--- |
-or' :: Sexp -> Sexp -> RE Sexp
-or' a b = case (a, b) of
-  (NIL, b) -> pure b
-  (a  , _) -> pure a
-
--- |
-and' :: Sexp -> Sexp -> RE Sexp
-and' a b = case (a, b) of
-  (NIL, _) -> pure NIL
-  (_  , b) -> pure b
-
--- | Build functions to get a list item by index
-nth :: Int -> T Sexp Sexp
-nth i s = get s >>= \case
-  List l -> case drop i l of
-    []    -> put NIL s
-    x : _ -> put x s
-  a -> err [errEval, errMalformed, show' a]
-
--- | functional core of cdr
-car :: T Sexp Sexp
-car s = g'list s >>= get >>= \case
-  Cons x _     -> put x s
-  List (x : _) -> put x s
-  _            -> put NIL s
-
--- | functional core of cdr
-cdr :: T Sexp Sexp
-cdr s = g'list s >>= get >>= \case
-  Cons _ y      -> put y s
-  List (_ : xs) -> put (List xs) s
-  _             -> put NIL s
-
 
 -- | LISP built-in functions
 built'in :: [(String, Fn)]
@@ -1248,7 +1249,7 @@ built'in =
   , ("sixth"                , f'sixth)
   , ("seventh"              , f'seventh)
   , ("eighth"               , f'eighth)
-  , ("nineth"               , f'nineth)
+  , ("ninth"                , f'ninth)
   , ("tenth"                , f'tenth)
   , ("rest"                 , f'rest)
   , ("position"             , undefined)
@@ -1368,8 +1369,8 @@ show' = \case
   String    string    -> "\"" ++ string ++ "\""
   Quote     sexp      -> "'" ++ show' sexp
   Backquote sexp      -> "`" ++ show' sexp
+  At        sexp      -> "@" ++ show' sexp
   Comma     sexp      -> "," ++ show' sexp
-  CommaAt   sexp      -> ",@" ++ show' sexp
   Seq       seq       -> show' (List seq)
   Vector    vector    -> "#(" ++ unwords (show' <$> V.toList vector) ++ ")"
   HashTable map       -> show map

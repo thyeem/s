@@ -160,7 +160,7 @@ lispdef = LanguageDef { defCaseSensitive     = True
                       , defCommentBlockEnd   = string "|#"
                       , defCommentLine       = string ";"
                       , defIdentifierBegin   = noneOf " ()\",'`:;#|\\"
-                      , defIdentifierName    = many $ noneOf " ()\",'`:;#|\\"
+                      , defIdentifierName    = many $ noneOf " ()\",'`:;|\\"
                       , defReservedOps       = ["?", "!", "[", "]", "{", "}"]
                       , defKeywords          = []
                       }
