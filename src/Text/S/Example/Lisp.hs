@@ -236,8 +236,8 @@ sexp = between
   jump
   jump
   (choice
-    [ comma
-    , at
+    [ at
+    , comma
     , nil
     , str
     , bool
@@ -297,13 +297,13 @@ quote = symbol "'" *> (Quote <$> sexp)
 bquote :: Parser Sexp
 bquote = symbol "`" *> (Backquote <$> sexp)
 
+-- | Comma followed by At-sign
+at :: Parser Sexp
+at = symbol ",@" *> (At <$> sexp)
+
 -- | Comma
 comma :: Parser Sexp
 comma = symbol "," *> (Comma <$> sexp)
-
--- | CommaAt
-at :: Parser Sexp
-at = symbol "@" *> (At <$> choice [quote, bquote, form])
 
 -- | Vector
 vec :: Parser Sexp
@@ -336,7 +336,7 @@ eval s = get s >>= \case
   List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
   a@Cons{}                 -> err [errEval, errInvalidFn, show' a]
   a@Comma{}                -> err [errEval, errNotInBquote, show' a]
-  At        a              -> put a s >>= eval
+  a@At{}                   -> err [errEval, errNotInBquote, show' a]
   Seq       xs             -> put xs s >>= evalSeq
   Backquote a              -> put a s >>= evalBackquote
   a                        -> put a s
@@ -963,15 +963,28 @@ arity _ _ = err [errEval, errNoArgs, "arity"]
 -- | Evaluage backquoted S-exp
 evalBackquote :: T Sexp Sexp
 evalBackquote s = get s >>= \case
-  List  [At a] -> put a s >>= eval
-  List  xs     -> put xs s >>= evalSplice >>= modify (pure . List)
-  Comma a      -> put a s >>= eval
-  a@At{}       -> err [errEval, errMalformed, show' a]
-  a            -> put a s
+  a@At{}  -> err [errEval, errMalformed, show' a]
+  Comma a -> case a of
+    At{}    -> put a s
+    Comma{} -> put a s
+    b       -> put b s >>= eval
+  List [At a] -> put a s >>= eval
+  List xs     -> put xs s >>= evalSplice >>= modify (pure . List)
+  a           -> put a s
 
 -- | Evaluage and splice backquoted list
 evalSplice :: T [Sexp] [Sexp]
-evalSplice = undefined
+evalSplice = go []
+ where
+  go r s@(env, xs) = case xs of
+    []       -> put (reverse r) s
+    x : rest -> case x of
+      Comma a -> put a s >>= eval >>= \(env', v) -> go (v : r) (env', rest)
+      At    a -> put a s >>= eval >>= \(env', v) -> case v of
+        NIL    -> go r (env', rest)
+        List l -> go (reverse l ++ r) (env', rest)
+        a      -> err [errEval, errNotList, show' a]
+      a -> go (a : r) (env, rest)
 
 -- | Evaluate a sequence
 evalSeq :: T [Sexp] Sexp
@@ -1369,7 +1382,7 @@ show' = \case
   String    string    -> "\"" ++ string ++ "\""
   Quote     sexp      -> "'" ++ show' sexp
   Backquote sexp      -> "`" ++ show' sexp
-  At        sexp      -> "@" ++ show' sexp
+  At        sexp      -> ",@" ++ show' sexp
   Comma     sexp      -> "," ++ show' sexp
   Seq       seq       -> show' (List seq)
   Vector    vector    -> "#(" ++ unwords (show' <$> V.toList vector) ++ ")"
