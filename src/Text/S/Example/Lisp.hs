@@ -349,7 +349,7 @@ apply s = head' s >>= get >>= \case
 
 -- | set
 f'set :: Fn
-f'set s = g'binary s >>= evalTuple >>= \t@(_, x) -> case x of
+f'set s = g'binary s >>= bimapM eval >>= \t@(_, x) -> case x of
   (Symbol k, a) -> put a t >>= set'venv k
   a             -> err [errEval, errNotSymbol, show' (fst a)]
 
@@ -561,11 +561,11 @@ f'boundp s = g'unary s >>= eval >>= g'symbol >>= \t@(_, Symbol k) ->
 
 -- | list
 f'list :: Fn
-f'list s = g'nary s >>= evalList >>= modify (pure . List)
+f'list s = g'nary s >>= mapM' eval >>= modify (pure . List)
 
 -- | cons
 f'cons :: Fn
-f'cons s = g'binary s >>= evalTuple >>= \t@(_, x) -> case x of
+f'cons s = g'binary s >>= bimapM eval >>= \t@(_, x) -> case x of
   (a, NIL   ) -> put (List [a]) t
   (a, List l) -> put (List (a : l)) t
   (a, b     ) -> put (Cons a b) t
@@ -691,7 +691,7 @@ f'cddddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> cdr
 
 -- | nth
 f'nth :: Fn
-f'nth s = g'binary s >>= evalTuple >>= \t@(_, (n, l)) ->
+f'nth s = g'binary s >>= bimapM eval >>= \t@(_, (n, l)) ->
   put n t >>= g'int >>= get >>= \(Int i) -> put l t >>= nth (fromIntegral i)
 
 -- | first
@@ -757,7 +757,7 @@ f'funcall = undefined
 -- | apply
 f'apply :: Fn
 f'apply = undefined
--- f'apply s = g'nary s >>= evalList >>= \t@(_, x) -> case x of
+-- f'apply s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
   -- (f : args) -> case put args t >>= last' of {}
 
 -- | symbol-value
@@ -998,19 +998,6 @@ evalSeq s@(_, xs) = case xs of
   [x       ] -> put x s >>= eval
   (x : rest) -> put x s >>= eval >>= put rest >>= evalSeq
 
--- | Evaluate a list
-evalList :: T [Sexp] [Sexp]
-evalList = go []
- where
-  go r s@(_, xs) = case xs of
-    []       -> put (reverse r) s
-    x : rest -> put x s >>= eval >>= \(env, v) -> go (v : r) (env, rest)
-
--- | Evaluate a tuple
-evalTuple :: T (Sexp, Sexp) (Sexp, Sexp)
-evalTuple s@(_, (x, y)) = put x s >>= eval >>= \t@(_, v) ->
-  put y t >>= eval >>= \u@(_, w) -> put (v, w) u
-
 -- | Parallelly bind a sequence (let-like)
 bindPar :: T [Sexp] [Sexp]
 bindPar s = get s >>= \case
@@ -1087,16 +1074,16 @@ unary g f = g'unary >=> eval >=> g >=> f
 
 -- | Binary function builder
 binary :: T Sexp Sexp -> T (Sexp, Sexp) Sexp -> Fn
-binary g f = g'binary >=> evalTuple >=> bimapM g >=> f
+binary g f = g'binary >=> bimapM (eval >=> g) >=> f
 
 -- | N-fold function builder (arithmetic)
 nfold :: T Sexp Sexp -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-nfold g f label = g'nary >=> evalList >=> mapM' g >=> foldM' f label
+nfold g f label = g'nary >=> mapM' (eval >=> g) >=> foldM' f label
 
 -- | N-fold function builder (logical)
 nfold' :: T Sexp Sexp -> (Sexp -> Sexp -> Bool) -> String -> Fn
 nfold' g op label =
-  g'nary >=> g'nempty label >=> evalList >=> mapM' g >=> \s@(_, l) ->
+  g'nary >=> g'nempty label >=> mapM' (eval >=> g) >=> \s@(_, l) ->
     put (and $ zipWith op l (tail l)) s >>= get >>= \case
       False -> put NIL s
       _     -> put (Bool True) s
@@ -1118,17 +1105,16 @@ foldM' f o s = get s >>= \case
 
 -- | Map the state result to an action. This is a 'mapM' for ST.
 mapM' :: T a b -> T [a] [b]
-mapM' f s@(env, _) = mapM f (sequence s) >>= sequence' >>= put' env
+mapM' f = go []
  where
-  sequence' xs = put (go [] xs) null'env
-  go r = \case
-    []              -> reverse r
-    ((_, x) : rest) -> go (x : r) rest
+  go r s@(_, xs) = case xs of
+    []       -> put (reverse r) s
+    x : rest -> put x s >>= f >>= \(env, v) -> go (v : r) (env, rest)
 
 -- | Map the state result to an action. This a monadic 'bimap' for ST.
-bimapM :: T Sexp Sexp -> T (Sexp, Sexp) (Sexp, Sexp)
+bimapM :: T a b -> T (a, a) (b, b)
 bimapM f s@(env, (x, y)) =
-  f (env, x) >>= \(_, v) -> f (env, y) >>= \(_, w) -> put (v, w) s
+  put x s >>= f >>= \t@(_, v) -> put y t >>= f >>= \u@(_, w) -> put (v, w) u
 
 
 -- | LISP built-in functions
