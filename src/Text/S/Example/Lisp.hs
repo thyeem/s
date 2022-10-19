@@ -897,7 +897,7 @@ instance Ord Sexp where
   _         <= _         = False
 
 
--- | Check the given S-exp is identical to 'NIL'
+-- | Check if the given S-exp is identical to 'NIL'
 nilp :: Sexp -> Bool
 nilp = \case
   NIL                   -> True
@@ -986,7 +986,7 @@ arity _ _ = err [errEval, errNoArgs, "arity"]
 pred' :: (Sexp -> Sexp) -> T [Sexp] Sexp
 pred' p s = g'unary s >>= eval >>= modify (pure . p)
 
--- | Map the state result to an action. This is a 'mapM' for ST.
+-- | Map the list-form state result 'ST' to an action. The 'mapM' for 'ST'.
 mapM' :: T a b -> T [a] [b]
 mapM' f = go []
  where
@@ -994,41 +994,46 @@ mapM' f = go []
     []       -> put (reverse r) s
     x : rest -> put x s >>= f >>= \(env, v) -> go (v : r) (env, rest)
 
--- | Map the state result to an action. This a monadic 'bimap' for ST.
+-- | Map the tuple-form state result to an action. The monadic 'bimap' for 'ST'.
 bimapM :: T a b -> T (a, a) (b, b)
-bimapM f s@(env, (x, y)) =
+bimapM f s@(_, (x, y)) =
   put x s >>= f >>= \t@(_, v) -> put y t >>= f >>= \u@(_, w) -> put (v, w) u
 
 -- | Evaluate backquoted S-exp
 eval'bquote :: T Sexp Sexp
 eval'bquote s = get s >>= \case
-  Backquote a -> put a s >>= eval'bquote >>= modify (pure . Backquote)
-  List      [At a@Symbol{}] -> put a s >>= eval
-  List      xs              -> put xs s >>= splice >>= modify (pure . List)
-  a@At{}                    -> err [errEval, errMalformed, show' a]
-  Comma a                   -> put a s >>= replace
-  a                         -> put a s
+  a@At{}       -> err [errEval, errMalformed, show' a]
+  a@Comma{}    -> put a s >>= replace
+  List      xs -> put xs s >>= splice >>= modify (pure . List)
+  Backquote a  -> put a s >>= eval'bquote >>= modify (pure . Backquote)
+  a            -> put a s
 
 -- | Replace comma and at-sign with evaluated values in backquoted list
 replace :: T Sexp Sexp
 replace s = get s >>= \case
-  Comma a -> put a s >>= replace >>= modify (pure . Comma)
-  At    a -> put a s >>= replace >>= modify (pure . At)
-  a       -> put a s >>= eval
+  Comma a@Comma{} -> put a s >>= replace >>= modify (pure . Comma)
+  Comma a@At{}    -> put a s >>= replace >>= modify (pure . Comma)
+  At    a@Comma{} -> put a s >>= replace >>= modify (pure . At)
+  At    a@At{}    -> put a s >>= replace >>= modify (pure . At)
+  Comma a         -> put a s >>= eval
+  At    a         -> put a s >>= eval
+  a               -> put a s >>= eval
 
 -- | Splice the given backquoted list
 splice :: T [Sexp] [Sexp]
-splice = go [Symbol "list"]
+splice = go []
  where
   go r s@(env, xs) = case xs of
     []       -> put (reverse r) s
     x : rest -> case x of
-      Comma a -> put a s >>= replace >>= \(env', v) -> go (v : r) (env', rest)
-      At    a -> put a s >>= replace >>= \(env', v) -> case v of
+      a@Comma{} ->
+        put a s >>= replace >>= \(env', v) -> go (v : r) (env', rest)
+      a@At{} -> put a s >>= replace >>= \(env', v) -> case v of
         NIL    -> go r (env', rest)
         List l -> go (reverse l ++ r) (env', rest)
-        a      -> err [errEval, errNotList, show' a]
-      a -> go (Quote a : r) (env, rest)
+        a | length xs > 1 -> err [errEval, errNotList, show' a]
+          | otherwise     -> go (a : r) (env, rest)
+      a -> go (a : r) (env, rest)
 
 -- | Evaluate a sequence
 eval'seq :: T [Sexp] Sexp
