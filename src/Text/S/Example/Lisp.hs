@@ -796,6 +796,12 @@ g'nempty msg s = get s >>= \case
   [] -> err [errEval, errNoArgs, msg]
   _  -> pure s
 
+-- | Guard for non-empty S-exp list ([nil] if fail)
+g'nempty' :: T [Sexp] [Sexp]
+g'nempty' s = get s >>= \case
+  [] -> put [NIL] s
+  _  -> pure s
+
 -- | Guard for bound symbols
 g'bound :: T Sexp Sexp
 g'bound s = eval s >>= g'symbol >>= get >>= \(Symbol k) -> from'venv k s
@@ -940,17 +946,33 @@ cdr s = g'list s >>= get >>= \case
 head' :: String -> T [a] a
 head' msg s = g'nempty msg s >>= modify (pure . head)
 
+-- | Turn the state result to its head value (nil if fail)
+head_ :: T [Sexp] Sexp
+head_ s = g'nempty' s >>= modify (pure . head)
+
 -- | Turn the state result to its tail values
 tail' :: String -> T [a] [a]
 tail' msg s = g'nempty msg s >>= modify (pure . tail)
+
+-- | Turn the state result to its tail values ([] if fail)
+tail_ :: T [Sexp] [Sexp]
+tail_ s = g'nempty' s >>= modify (pure . tail)
 
 -- | Turn the state result to its last value
 last' :: String -> T [a] a
 last' msg s = g'nempty msg s >>= modify (pure . last)
 
+-- | Turn the state result to its last value (nil if fail)
+last_ :: T [Sexp] Sexp
+last_ s = g'nempty' s >>= modify (pure . last)
+
 -- | Turn the state result to its init values
 init' :: String -> T [a] [a]
 init' msg s = g'nempty msg s >>= modify (pure . init)
+
+-- | Turn the state result to its init values ([] if fail)
+init_ :: T [Sexp] [Sexp]
+init_ s = g'nempty' s >>= modify (pure . init)
 
 -- | Build functions to control function's number of arguments
 arity :: (Int -> Bool) -> T [Sexp] [Sexp]
@@ -1010,7 +1032,7 @@ splice = go [Symbol "list"]
 
 -- | Evaluate a sequence
 eval'seq :: T [Sexp] Sexp
-eval'seq = mapM' eval >=> last' "eval-sequence"
+eval'seq = mapM' eval >=> last_
 
 -- | Sequentially bind a sequence (let*-like)
 bind'seq :: T [Sexp] [Sexp]
