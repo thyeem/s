@@ -960,31 +960,36 @@ arity p s@(_, x : args)
   where nargs = length args
 arity _ _ = err [errEval, errNoArgs, "arity"]
 
--- | Evaluage backquoted S-exp
+-- | Evaluate backquoted S-exp
 evalBackquote :: T Sexp Sexp
 evalBackquote s = get s >>= \case
-  a@At{}  -> err [errEval, errMalformed, show' a]
-  Comma a -> case a of
-    At{}    -> put a s
-    Comma{} -> put a s
-    b       -> put b s >>= eval
-  List [At a] -> put a s >>= eval
-  List xs     -> put xs s >>= evalSplice >>= modify (pure . List)
-  a           -> put a s
+  Backquote a -> put a s >>= evalBackquote >>= modify (pure . Backquote)
+  List      [At a@Symbol{}] -> put a s >>= eval
+  List      xs              -> put xs s >>= splice >>= modify (pure . List)
+  a@At{}                    -> err [errEval, errMalformed, show' a]
+  Comma a                   -> put a s >>= replace
+  a                         -> put a s
 
--- | Evaluage and splice backquoted list
-evalSplice :: T [Sexp] [Sexp]
-evalSplice = go []
+-- | Replace comma and at-sign with evaluated values in backquoted list
+replace :: T Sexp Sexp
+replace s = get s >>= \case
+  Comma a -> put a s >>= replace >>= modify (pure . Comma)
+  At    a -> put a s >>= replace >>= modify (pure . At)
+  a       -> put a s >>= eval
+
+-- | Splice the given backquoted list
+splice :: T [Sexp] [Sexp]
+splice = go [Symbol "list"]
  where
   go r s@(env, xs) = case xs of
     []       -> put (reverse r) s
     x : rest -> case x of
-      Comma a -> put a s >>= eval >>= \(env', v) -> go (v : r) (env', rest)
-      At    a -> put a s >>= eval >>= \(env', v) -> case v of
+      Comma a -> put a s >>= replace >>= \(env', v) -> go (v : r) (env', rest)
+      At    a -> put a s >>= replace >>= \(env', v) -> case v of
         NIL    -> go r (env', rest)
         List l -> go (reverse l ++ r) (env', rest)
         a      -> err [errEval, errNotList, show' a]
-      a -> go (a : r) (env, rest)
+      a -> go (Quote a : r) (env, rest)
 
 -- | Evaluate a sequence
 evalSeq :: T [Sexp] Sexp
