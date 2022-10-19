@@ -337,13 +337,13 @@ eval s = get s >>= \case
   a@Cons{}                 -> err [errEval, errInvalidFn, show' a]
   a@Comma{}                -> err [errEval, errNotInBquote, show' a]
   a@At{}                   -> err [errEval, errNotInBquote, show' a]
-  Seq       xs             -> put xs s >>= evalSeq
-  Backquote a              -> put a s >>= evalBackquote
+  Seq       xs             -> put xs s >>= eval'seq
+  Backquote a              -> put a s >>= eval'bquote
   a                        -> put a s
 
 -- | Apply the function of symbol name to the given arguments
 apply :: Fn
-apply s = head' s >>= get >>= \case
+apply s = head' "apply" s >>= get >>= \case
   Symbol k -> from'fenv k s >>= \(_, fn) -> fn s
   a        -> err [errEval, errNotSymbol, show' a]
 
@@ -372,11 +372,11 @@ f'getf _ = undefined
 
 -- | let
 f'let :: Fn
-f'let = deflet bindPar "let"
+f'let = deflet bind'par "let"
 
 -- | let*
 f'let' :: Fn
-f'let' = deflet bindSeq "let*"
+f'let' = deflet bind'seq "let*"
 
 -- | defparameter
 f'defparameter :: Fn
@@ -774,7 +774,7 @@ g'nary = arity (const True)
 
 -- | Guard for unary function's arguments
 g'unary :: T [Sexp] Sexp
-g'unary = arity (== 1) >=> head'
+g'unary = arity (== 1) >=> head' "g'unary"
 
 -- | Guard for binary function's arguments
 g'binary :: T [Sexp] (Sexp, Sexp)
@@ -792,8 +792,8 @@ g'tuple = \case
 
 -- | Guard for non-empty S-exp list
 g'nempty :: String -> T [a] [a]
-g'nempty caller s = get s >>= \case
-  [] -> err [errEval, errNoArgs, caller]
+g'nempty msg s = get s >>= \case
+  [] -> err [errEval, errNoArgs, msg]
   _  -> pure s
 
 -- | Guard for bound symbols
@@ -937,20 +937,20 @@ cdr s = g'list s >>= get >>= \case
   _             -> put NIL s
 
 -- | Turn the state result to its head value
-head' :: T [a] a
-head' s = g'nempty "head'" s >>= modify (pure . head)
+head' :: String -> T [a] a
+head' msg s = g'nempty msg s >>= modify (pure . head)
 
 -- | Turn the state result to its tail values
-tail' :: T [a] [a]
-tail' s = g'nempty "tail'" s >>= modify (pure . tail)
+tail' :: String -> T [a] [a]
+tail' msg s = g'nempty msg s >>= modify (pure . tail)
 
 -- | Turn the state result to its last value
-last' :: T [a] a
-last' s = g'nempty "last'" s >>= modify (pure . last)
+last' :: String -> T [a] a
+last' msg s = g'nempty msg s >>= modify (pure . last)
 
 -- | Turn the state result to its init values
-init' :: T [a] [a]
-init' s = g'nempty "init'" s >>= modify (pure . init)
+init' :: String -> T [a] [a]
+init' msg s = g'nempty msg s >>= modify (pure . init)
 
 -- | Build functions to control function's number of arguments
 arity :: (Int -> Bool) -> T [Sexp] [Sexp]
@@ -960,10 +960,27 @@ arity p s@(_, x : args)
   where nargs = length args
 arity _ _ = err [errEval, errNoArgs, "arity"]
 
+-- | Predicate builder
+pred' :: (Sexp -> Sexp) -> T [Sexp] Sexp
+pred' p s = g'unary s >>= eval >>= modify (pure . p)
+
+-- | Map the state result to an action. This is a 'mapM' for ST.
+mapM' :: T a b -> T [a] [b]
+mapM' f = go []
+ where
+  go r s@(_, xs) = case xs of
+    []       -> put (reverse r) s
+    x : rest -> put x s >>= f >>= \(env, v) -> go (v : r) (env, rest)
+
+-- | Map the state result to an action. This a monadic 'bimap' for ST.
+bimapM :: T a b -> T (a, a) (b, b)
+bimapM f s@(env, (x, y)) =
+  put x s >>= f >>= \t@(_, v) -> put y t >>= f >>= \u@(_, w) -> put (v, w) u
+
 -- | Evaluate backquoted S-exp
-evalBackquote :: T Sexp Sexp
-evalBackquote s = get s >>= \case
-  Backquote a -> put a s >>= evalBackquote >>= modify (pure . Backquote)
+eval'bquote :: T Sexp Sexp
+eval'bquote s = get s >>= \case
+  Backquote a -> put a s >>= eval'bquote >>= modify (pure . Backquote)
   List      [At a@Symbol{}] -> put a s >>= eval
   List      xs              -> put xs s >>= splice >>= modify (pure . List)
   a@At{}                    -> err [errEval, errMalformed, show' a]
@@ -992,15 +1009,23 @@ splice = go [Symbol "list"]
       a -> go (Quote a : r) (env, rest)
 
 -- | Evaluate a sequence
-evalSeq :: T [Sexp] Sexp
-evalSeq s@(_, xs) = case xs of
-  []         -> put NIL s
-  [x       ] -> put x s >>= eval
-  (x : rest) -> put x s >>= eval >>= put rest >>= evalSeq
+eval'seq :: T [Sexp] Sexp
+eval'seq = mapM' eval >=> last' "eval-sequence"
+
+-- | Sequentially bind a sequence (let*-like)
+bind'seq :: T [Sexp] [Sexp]
+bind'seq s = get s >>= \case
+  [] -> pure s
+  (List [Symbol k, a] : rest) ->
+    put a s >>= eval >>= set'lenv k >>= put rest >>= bind'seq
+  x@List{} : _ -> err [errEval, errMalformed, show' x]
+  Quote x@(Symbol k) : rest ->
+    put x s >>= from'genv k >>= put (List [x, x] : rest) >>= bind'seq
+  a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bind'seq
 
 -- | Parallelly bind a sequence (let-like)
-bindPar :: T [Sexp] [Sexp]
-bindPar s = get s >>= \case
+bind'par :: T [Sexp] [Sexp]
+bind'par s = get s >>= \case
   [] -> pure s
   (List [Symbol k, a] : rest) ->
     put a s
@@ -1010,22 +1035,11 @@ bindPar s = get s >>= \case
       >>= global s
       >>= set'lenv k
       >>= put rest
-      >>= bindPar
+      >>= bind'par
   x@List{} : _ -> err [errEval, errMalformed, show' x]
   Quote x@(Symbol k) : rest ->
-    put x s >>= from'genv k >>= put (List [x, x] : rest) >>= bindPar
-  a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindPar
-
--- | Sequentially bind a sequence (let*-like)
-bindSeq :: T [Sexp] [Sexp]
-bindSeq s = get s >>= \case
-  [] -> pure s
-  (List [Symbol k, a] : rest) ->
-    put a s >>= eval >>= set'lenv k >>= put rest >>= bindSeq
-  x@List{} : _ -> err [errEval, errMalformed, show' x]
-  Quote x@(Symbol k) : rest ->
-    put x s >>= from'genv k >>= put (List [x, x] : rest) >>= bindSeq
-  a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bindSeq
+    put x s >>= from'genv k >>= put (List [x, x] : rest) >>= bind'par
+  a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bind'par
 
 -- | let-function builder
 deflet :: T [Sexp] [Sexp] -> String -> Fn
@@ -1041,10 +1055,6 @@ defsym :: (String -> T Sexp Sexp) -> Fn
 defsym f s = g'binary s >>= get >>= \case
   (x@(Symbol k), a) -> put a s >>= eval >>= f k >>= put x
   x                 -> err [errEval, errNotSymbol, show' (fst x)]
-
--- | Predicate builder
-pred' :: (Sexp -> Sexp) -> T [Sexp] Sexp
-pred' p s = g'unary s >>= eval >>= modify (pure . p)
 
 -- | Unary arithmetic operator builder
 uop
@@ -1078,19 +1088,19 @@ binary g f = g'binary >=> bimapM (eval >=> g) >=> f
 
 -- | N-fold function builder (arithmetic)
 nfold :: T Sexp Sexp -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-nfold g f label = g'nary >=> mapM' (eval >=> g) >=> foldM' f label
+nfold g f msg = g'nary >=> mapM' (eval >=> g) >=> foldNums f msg
 
 -- | N-fold function builder (logical)
 nfold' :: T Sexp Sexp -> (Sexp -> Sexp -> Bool) -> String -> Fn
-nfold' g op label =
-  g'nary >=> g'nempty label >=> mapM' (eval >=> g) >=> \s@(_, l) ->
+nfold' g op msg =
+  g'nary >=> g'nempty msg >=> mapM' (eval >=> g) >=> \s@(_, l) ->
     put (and $ zipWith op l (tail l)) s >>= get >>= \case
       False -> put NIL s
       _     -> put (Bool True) s
 
--- | Fold a list of S-exp using the given binary arithemetic operator.
-foldM' :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-foldM' f o s = get s >>= \case
+-- | Fold S-exp numbers using the given binary arithemetic operator.
+foldNums :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
+foldNums f o s = get s >>= \case
   [] -> case o of
     "+" -> put (Int 0) s
     "*" -> put (Int 1) s
@@ -1102,20 +1112,6 @@ foldM' f o s = get s >>= \case
   (x : xs) -> case o of
     "/" -> put xs s >>= mapM' g'nzero >>= modify (foldM f x)
     _   -> put xs s >>= modify (foldM f x)
-
--- | Map the state result to an action. This is a 'mapM' for ST.
-mapM' :: T a b -> T [a] [b]
-mapM' f = go []
- where
-  go r s@(_, xs) = case xs of
-    []       -> put (reverse r) s
-    x : rest -> put x s >>= f >>= \(env, v) -> go (v : r) (env, rest)
-
--- | Map the state result to an action. This a monadic 'bimap' for ST.
-bimapM :: T a b -> T (a, a) (b, b)
-bimapM f s@(env, (x, y)) =
-  put x s >>= f >>= \t@(_, v) -> put y t >>= f >>= \u@(_, w) -> put (v, w) u
-
 
 -- | LISP built-in functions
 built'in :: [(String, Fn)]
