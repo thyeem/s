@@ -1060,11 +1060,11 @@ bimapM f s@(_, (x, y)) =
 -- | Evaluate backquoted S-exp
 eval'bquote :: T Sexp Sexp
 eval'bquote s = get s >>= \case
-  a@At{}       -> err [errEval, errMalformed, show' a]
-  a@Comma{}    -> put a s >>= replace
-  List      xs -> put xs s >>= splice >>= modify (pure . List)
-  Backquote a  -> put a s >>= eval'bquote >>= modify (pure . Backquote)
-  a            -> put a s
+  a@At{}    -> err [errEval, errMalformed, show' a]
+  a@Comma{} -> put a s >>= replace
+  List xs   -> put xs s >>= splice
+  -- Backquote a  -> put a s >>= eval'bquote >>= modify (pure . Backquote)
+  a         -> put a s
 
 -- | Replace comma and at-sign with evaluated values in backquoted list
 replace :: T Sexp Sexp
@@ -1075,23 +1075,23 @@ replace s = get s >>= \case
   At    a@At{}    -> put a s >>= replace >>= modify (pure . At)
   Comma a         -> put a s >>= eval
   At    a         -> put a s >>= eval
-  a               -> put a s >>= eval
+  a               -> put a s
 
 -- | Splice the given backquoted list
-splice :: T [Sexp] [Sexp]
+splice :: T [Sexp] Sexp
 splice = go []
  where
   go r s@(env, xs) = case xs of
-    []       -> put (reverse r) s
+    []       -> put (reverse r) s >>= modify (pure . List . concat)
     x : rest -> case x of
       a@Comma{} ->
-        put a s >>= replace >>= \(env', v) -> go (v : r) (env', rest)
+        put a s >>= replace >>= \(env', v) -> go ([v] : r) (env', rest)
       a@At{} -> put a s >>= replace >>= \(env', v) -> case v of
         NIL    -> go r (env', rest)
-        List l -> go (reverse l ++ r) (env', rest)
+        List l -> go (l : r) (env', rest)
         a | length xs > 1 -> err [errEval, errNotList, show' a]
-          | otherwise     -> go (a : r) (env, rest)
-      a -> go (a : r) (env, rest)
+          | otherwise     -> go ([a] : r) (env, rest)
+      a -> go ([a] : r) (env, rest)
 
 -- | Evaluate a sequence
 eval'seq :: T [Sexp] Sexp
