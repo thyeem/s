@@ -796,6 +796,10 @@ f'tenth s = g'unary s >>= eval >>= nth 9
 f'rest :: Fn
 f'rest = f'cdr
 
+-- | rest
+f'defun :: Fn
+f'defun = undefined
+
 -- | do
 f'do :: Fn
 f'do = undefined
@@ -810,13 +814,18 @@ f'eval s = g'unary s >>= eval >>= eval
 
 -- | funcall
 f'funcall :: Fn
-f'funcall = undefined
+f'funcall s = modify (pure . (<> [NIL])) s >>= f'apply
 
 -- | apply
 f'apply :: Fn
-f'apply = undefined
--- f'apply s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
-  -- (f : args) -> case put args t >>= last' of {}
+f'apply s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
+  (f : args) ->
+    put f t >>= g'symbol >>= put args >>= init' (show' f) >>= get >>= \i ->
+      put args t >>= last' (show' f) >>= get >>= \case
+        NIL    -> put (f : i) t >>= apply
+        List l -> put (f : i <> l) t >>= apply
+        e      -> err [errEval, errNotList, show' e]
+  _ -> err [errEval, errNotAllowed, "f'apply"]
 
 -- | symbol-value
 f'symbolValue :: Fn
@@ -1407,7 +1416,7 @@ built'in =
   -- MULTIPLE-VALUES: 'skip
   -- defclass
   -- OBJECTS: 'skip
-  , ("defun"                , undefined)
+  , ("defun"                , f'defun)
   , ("lambda"               , undefined)
   , ("progn"                , undefined)
   , ("prog1"                , undefined)
