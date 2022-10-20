@@ -31,6 +31,9 @@ import           System.Console.Haskeline       ( InputT
                                                 )
 import           System.Directory               ( getHomeDirectory )
 import           System.FilePath                ( (</>) )
+import           System.Random                  ( mkStdGen
+                                                , randomR
+                                                )
 import           Text.S                         ( ParserS
                                                 , Pretty(pretty)
                                                 , Result(Error, Ok)
@@ -512,6 +515,21 @@ f'1p = unary pure (modify (uop (+ 1)))
 f'1m :: Fn
 f'1m = unary pure (modify (uop (subtract 1)))
 
+-- | random
+f'random :: Fn
+f'random = unary
+  g'number
+  (\s@(_, x) -> case x of
+    Float a -> put (Float . random $ a) s
+    Int   a -> put (Int . random $ a) s
+    _       -> err [errEval, errNotAllowed, "random"]
+  )
+  where random x = fst $ randomR (0, x) (mkStdGen 1)
+
+-- | ash
+f'ash :: Fn
+f'ash = undefined
+
 -- | atom
 f'atom :: Fn
 f'atom = pred' $ \case
@@ -552,12 +570,52 @@ f'listp = pred' $ \case
   List{} -> Bool True
   _      -> NIL
 
+-- | characterp
+f'characterp :: Fn
+f'characterp = undefined
+
+-- | alphacharp
+f'alphacharp :: Fn
+f'alphacharp = undefined
+
+-- | alphanumericp
+f'alphanumericp :: Fn
+f'alphanumericp = undefined
+
+-- | digit-char-p
+f'digitcharp :: Fn
+f'digitcharp = undefined
+
+-- | lower-case-p
+f'lowercasep :: Fn
+f'lowercasep = undefined
+
+-- | upper-case-p
+f'uppercasep :: Fn
+f'uppercasep = undefined
+
 -- | boundp
 f'boundp :: Fn
 f'boundp s = g'unary s >>= eval >>= g'symbol >>= \t@(_, Symbol k) ->
   from'venv' k t >>= get >>= \case
     NIL -> put NIL t
     _   -> put (Bool True) t
+
+-- | vectorp
+f'vectorp :: Fn
+f'vectorp = pred' $ \case
+  Vector{} -> Bool True
+  _        -> NIL
+
+-- | hash-table-p
+f'hashtablep :: Fn
+f'hashtablep = pred' $ \case
+  HashTable{} -> Bool True
+  _           -> NIL
+
+-- | account-p
+f'accoutp :: Fn
+f'accoutp = undefined
 
 -- | list
 f'list :: Fn
@@ -1197,9 +1255,9 @@ built'in =
   -- phase #c
   -- abs #c
   -- conjugate #c
-  , ("random"               , undefined)
+  , ("random"               , f'random)
   -- (setq *random-state* n)
-  , ("ash"                  , undefined)
+  , ("ash"                  , f'ash)
   -- logand
   -- logior
   -- logxor
@@ -1208,6 +1266,7 @@ built'in =
   -- #b1010
   -- #o52
   -- #x2a
+  , ("intern"               , undefined)
   , ("format"               , undefined)
   -- \\ \" LITERAL ESCAPE
   , ("string="              , undefined)
@@ -1357,16 +1416,17 @@ built'in =
   , ("zerop"                , undefined)
   , ("stringp"              , f'stringp)
   , ("listp"                , f'listp)
-  , ("characterp"           , undefined)
-  , ("alpha-char-p"         , undefined)
-  , ("alphanumericp"        , undefined)
-  , ("digit-char-p"         , undefined)
-  , ("lower-case-p"         , undefined)
-  , ("upper-case-p"         , undefined)
-  , ("characterp"           , undefined)
+  -- character fn
+  , ("characterp"           , f'characterp)
+  , ("alpha-char-p"         , f'alphacharp)
+  , ("alphanumericp"        , f'alphanumericp)
+  , ("digit-char-p"         , f'digitcharp)
+  , ("lower-case-p"         , f'lowercasep)
+  , ("upper-case-p"         , f'uppercasep)
+  --
   , ("boundp"               , f'boundp)
-  , ("vectorp"              , undefined)
-  , ("hash-table-p"         , undefined)
+  , ("vectorp"              , f'vectorp)
+  , ("hash-table-p"         , f'hashtablep)
   , ("account-p"            , undefined)
   , ("macro-function"       , undefined)
   , ("typep"                , undefined)
