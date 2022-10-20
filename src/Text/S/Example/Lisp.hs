@@ -1073,16 +1073,16 @@ bimapM f s@(_, (x, y)) =
 eval'bquote :: Int -> T Sexp Sexp
 eval'bquote d s = get s >>= \case
   a@At{}       -> err [errEval, errMalformed, show' a]
-  a@Comma{}    -> put a s >>= replaceable d
+  a@Comma{}    -> put a s >>= replaceable d id
   List      xs -> put xs s >>= splice d
   Backquote a  -> put a s >>= eval'bquote (d + 1) >>= modify (pure . Backquote)
   a            -> put a s
 
 -- | Check if a given backquoted S-exp is replaceable with the evalualed value
-replaceable :: Int -> T Sexp Sexp
-replaceable d s = get s >>= \x -> case compare' d x of
+replaceable :: Int -> (Sexp -> Sexp) -> T Sexp Sexp
+replaceable d f s = get s >>= \x -> case compare' d x of
   LT -> pure s
-  EQ -> replace s
+  EQ -> replace d f s
   GT -> err [errEval, errNotInBquote, show' x]
  where
   compare' d x = compare (count 0 x) d
@@ -1092,29 +1092,28 @@ replaceable d s = get s >>= \x -> case compare' d x of
     _       -> n
 
 -- | Substitute comma and at-sign with the evaluated value
-replace :: T Sexp Sexp
-replace s = get s >>= \case
-  Comma a@Comma{} -> put a s >>= replace >>= modify (pure . Comma)
-  Comma a@At{}    -> put a s >>= replace >>= modify (pure . Comma)
-  At    a@Comma{} -> put a s >>= replace >>= modify (pure . At)
-  At    a@At{}    -> put a s >>= replace >>= modify (pure . At)
-  Comma a         -> put a s >>= eval
-  At    a         -> put a s >>= eval
-  _               -> pure s
+replace :: Int -> (Sexp -> Sexp) -> T Sexp Sexp
+replace d f s = get s >>= \case
+  Comma a@Comma{} -> put a s >>= replace d (f . Comma)
+  Comma a@At{}    -> put a s >>= replace d (f . Comma)
+  At    a@Comma{} -> put a s >>= replace d (f . At)
+  At    a@At{}    -> put a s >>= replace d (f . At)
+  Comma a         -> put a s >>= eval >>= modify (pure . f)
+  At    a         -> put a s >>= eval >>= \t@(_, x) -> case x of
+    List xs -> put xs t >>= mapM' (modify (pure . f)) >>= modify (pure . List)
+    _       -> pure t
+  _ -> pure s
 
 -- | Splice the given backquoted list
 splice :: Int -> T [Sexp] Sexp
 splice d = go []
  where
   go r s@(env, xs) = case xs of
-    [] -> put (reverse r) s >>= \t@(_, rr) -> case rr of
-      [[a]] | atom a    -> put a t
-            | otherwise -> modify (pure . List . concat) t
-      _ -> modify (pure . List . concat) t
+    []       -> put (reverse r) s >>= modify (pure . List . concat)
     x : rest -> case x of
       a@Comma{} ->
-        put a s >>= replaceable d >>= \(env', v) -> go ([v] : r) (env', rest)
-      a@At{} -> put a s >>= replaceable d >>= \(env', v) -> case v of
+        put a s >>= replaceable d id >>= \(env', v) -> go ([v] : r) (env', rest)
+      a@At{} -> put a s >>= replaceable d id >>= \(env', v) -> case v of
         NIL    -> go r (env', rest)
         List l -> go (l : r) (env', rest)
         a      -> go ([a] : r) (env, rest)
