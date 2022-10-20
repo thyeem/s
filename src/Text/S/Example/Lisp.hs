@@ -1072,20 +1072,22 @@ bimapM f s@(_, (x, y)) =
 -- | Evaluate backquoted S-exp
 eval'bquote :: Int -> T Sexp Sexp
 eval'bquote d s = get s >>= \case
-  a@At{}       -> err [errEval, errMalformed, show' a]
-  a@Comma{}    -> put a s >>= replaceable d id
-  List      xs -> put xs s >>= splice d
-  Backquote a  -> put a s >>= eval'bquote (d + 1) >>= modify (pure . Backquote)
-  a            -> put a s
+  a@At{}        -> err [errEval, errMalformed, show' a]
+  a@Comma{}     -> put a s >>= replace'cond d id
+  List      [x] -> put [x] s >>= splice d
+  List      xs  -> put xs s >>= splice d
+  Backquote a   -> put a s >>= eval'bquote (d + 1) >>= modify (pure . Backquote)
+  a             -> put a s
 
--- | Check if a given backquoted S-exp is replaceable with the evalualed value
-replaceable :: Int -> (Sexp -> Sexp) -> T Sexp Sexp
-replaceable d f s = get s >>= \x -> case compare' d x of
+-- | Check if a given backquoted S-exp is replace'cond with the evalualed value
+-- It will be replaced if it meets the conditions.
+replace'cond :: Int -> (Sexp -> Sexp) -> T Sexp Sexp
+replace'cond d f s = get s >>= \x -> case compare' x d of
   LT -> pure s
   EQ -> replace d f s
   GT -> err [errEval, errNotInBquote, show' x]
  where
-  compare' d x = compare (count 0 x) d
+  compare' x = compare (count 0 x)
   count n = \case
     Comma a -> count (n + 1) a
     At    a -> count (n + 1) a
@@ -1100,7 +1102,7 @@ replace d f s = get s >>= \case
   At    a@At{}    -> put a s >>= replace d (f . At)
   Comma a         -> put a s >>= eval >>= modify (pure . f)
   At    a         -> put a s >>= eval >>= \t@(_, x) -> case x of
-    List xs -> put xs t >>= mapM' (modify (pure . f)) >>= modify (pure . List)
+    List ls -> put ls t >>= mapM' (modify (pure . f)) >>= modify (pure . List)
     _       -> pure t
   _ -> pure s
 
@@ -1110,14 +1112,23 @@ splice d = go []
  where
   go r s@(env, xs) = case xs of
     []       -> put (reverse r) s >>= modify (pure . List . concat)
-    x : rest -> case x of
-      a@Comma{} ->
-        put a s >>= replaceable d id >>= \(env', v) -> go ([v] : r) (env', rest)
-      a@At{} -> put a s >>= replaceable d id >>= \(env', v) -> case v of
-        NIL    -> go r (env', rest)
-        List l -> go (l : r) (env', rest)
-        a      -> go ([a] : r) (env, rest)
-      a -> go ([a] : r) (env, rest)
+    x : rest -> put x s >>= replace'cond d id >>= \t@(env', v) -> case v of
+      a@(List l) | spliceable x -> go (l : r) (env', rest)
+                 | otherwise    -> go ([a] : r) (env, rest)
+      a | length xs == 1 && spliceable x -> put a t
+        | otherwise                      -> go ([a] : r) (env, rest)
+
+
+-- | Check if a given backquoted S-exp is spliceable
+spliceable :: Sexp -> Bool
+spliceable x = case x of
+  Comma a@Comma{} -> spliceable a
+  Comma a@At{}    -> spliceable a
+  At    a@Comma{} -> spliceable a
+  At    a@At{}    -> spliceable a
+  Comma{}         -> False
+  At{}            -> True
+  _               -> False
 
 -- | Evaluate a sequence
 eval'seq :: T [Sexp] Sexp
