@@ -341,7 +341,7 @@ eval s = get s >>= \case
   a@Comma{}                -> err [errEval, errNotInBquote, show' a]
   a@At{}                   -> err [errEval, errNotInBquote, show' a]
   Seq       xs             -> put xs s >>= eval'seq
-  Backquote a              -> put a s >>= eval'bquote
+  Backquote a              -> put a s >>= eval'bquote 1
   a                        -> put a s
 
 -- | Apply the function of symbol name to the given arguments
@@ -967,6 +967,18 @@ nilp = \case
   _                     -> False
 
 -- |
+atom :: Sexp -> Bool
+atom = \case
+  NIL       -> True
+  Bool{}    -> True
+  Int{}     -> True
+  Float{}   -> True
+  Symbol{}  -> True
+  Keyword{} -> True
+  String{}  -> True
+  _         -> False
+
+-- |
 or' :: Sexp -> Sexp -> RE Sexp
 or' a b = case (a, b) of
   (NIL, b) -> pure b
@@ -1058,15 +1070,28 @@ bimapM f s@(_, (x, y)) =
   put x s >>= f >>= \t@(_, v) -> put y t >>= f >>= \u@(_, w) -> put (v, w) u
 
 -- | Evaluate backquoted S-exp
-eval'bquote :: T Sexp Sexp
-eval'bquote s = get s >>= \case
-  a@At{}    -> err [errEval, errMalformed, show' a]
-  a@Comma{} -> put a s >>= replace
-  List xs   -> put xs s >>= splice
-  -- Backquote a  -> put a s >>= eval'bquote >>= modify (pure . Backquote)
-  a         -> put a s
+eval'bquote :: Int -> T Sexp Sexp
+eval'bquote d s = get s >>= \case
+  a@At{}       -> err [errEval, errMalformed, show' a]
+  a@Comma{}    -> put a s >>= replaceable d
+  List      xs -> put xs s >>= splice d
+  Backquote a  -> put a s >>= eval'bquote (d + 1) >>= modify (pure . Backquote)
+  a            -> put a s
 
--- | Replace comma and at-sign with evaluated values in backquoted list
+-- | Check if a given backquoted S-exp is replaceable with the evalualed value
+replaceable :: Int -> T Sexp Sexp
+replaceable d s = get s >>= \x -> case compare' d x of
+  LT -> pure s
+  EQ -> replace s
+  GT -> err [errEval, errNotInBquote, show' x]
+ where
+  compare' d x = compare (count 0 x) d
+  count n = \case
+    Comma a -> count (n + 1) a
+    At    a -> count (n + 1) a
+    _       -> n
+
+-- | Substitute comma and at-sign with the evaluated value
 replace :: T Sexp Sexp
 replace s = get s >>= \case
   Comma a@Comma{} -> put a s >>= replace >>= modify (pure . Comma)
@@ -1075,22 +1100,24 @@ replace s = get s >>= \case
   At    a@At{}    -> put a s >>= replace >>= modify (pure . At)
   Comma a         -> put a s >>= eval
   At    a         -> put a s >>= eval
-  a               -> put a s
+  _               -> pure s
 
 -- | Splice the given backquoted list
-splice :: T [Sexp] Sexp
-splice = go []
+splice :: Int -> T [Sexp] Sexp
+splice d = go []
  where
   go r s@(env, xs) = case xs of
-    []       -> put (reverse r) s >>= modify (pure . List . concat)
+    [] -> put (reverse r) s >>= \t@(_, rr) -> case rr of
+      [[a]] | atom a    -> put a t
+            | otherwise -> modify (pure . List . concat) t
+      _ -> modify (pure . List . concat) t
     x : rest -> case x of
       a@Comma{} ->
-        put a s >>= replace >>= \(env', v) -> go ([v] : r) (env', rest)
-      a@At{} -> put a s >>= replace >>= \(env', v) -> case v of
+        put a s >>= replaceable d >>= \(env', v) -> go ([v] : r) (env', rest)
+      a@At{} -> put a s >>= replaceable d >>= \(env', v) -> case v of
         NIL    -> go r (env', rest)
         List l -> go (l : r) (env', rest)
-        a | length xs > 1 -> err [errEval, errNotList, show' a]
-          | otherwise     -> go ([a] : r) (env, rest)
+        a      -> go ([a] : r) (env, rest)
       a -> go ([a] : r) (env, rest)
 
 -- | Evaluate a sequence
