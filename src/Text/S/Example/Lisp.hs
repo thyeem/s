@@ -127,33 +127,34 @@ data Env = Env
   }
   deriving Show
 
+
 instance Semigroup Env where
   (<>) = undefined
 
 instance Monoid Env where
   mempty = Env mempty mempty mempty
 
--- |
+-- | Empty environment
 null'env :: ST Sexp
 null'env = (mempty, NIL)
 
--- |
+-- | Initialize SLISP environment
 init'env :: ST Sexp
 init'env = (Env mempty mempty (M.fromList built'in), NIL)
 
--- |
+-- | Insert a symbol-value key and a S-exp to the env
 set'venv :: String -> T Sexp Sexp
 set'venv k s@(Env {..}, _) | M.member k env'l = set'lenv k s
                            | otherwise        = set'genv k s
--- |
+-- | Insert a symbol-value key and a S-exp to the global-env
 set'genv :: String -> T Sexp Sexp
 set'genv k s@(env@Env {..}, x) = put' (env { env'g = M.insert k x env'g }) s
 
--- |
+-- | Insert a symbol-value key and a S-exp to the local-env
 set'lenv :: String -> T Sexp Sexp
 set'lenv k s@(env@Env {..}, x) = put' (env { env'l = M.insert k x env'l }) s
 
--- |
+-- | Insert a symbol-value key and a S-exp to the fn-env
 set'fenv :: String -> T Fn Fn
 set'fenv k s@(env@Env {..}, x) = put' (env { env'f = M.insert k x env'f }) s
 
@@ -162,6 +163,22 @@ set'venv'ifndef :: String -> T Sexp Sexp
 set'venv'ifndef k s@(Env {..}, _) = case M.lookup k env'g of
   Just _  -> pure s
   Nothing -> set'venv k s
+
+-- | Remove S-exp from the env by a symbol-value key
+del'venv :: String -> T Sexp Sexp
+del'venv k s = del'lenv k s >>= del'genv k
+
+-- | Remove S-exp from the global-env by a symbol-value key
+del'genv :: String -> T Sexp Sexp
+del'genv k s@(env@Env {..}, _) = put' (env { env'g = M.delete k env'g }) s
+
+-- | Remove S-exp from the local-env by a symbol-value key
+del'lenv :: String -> T Sexp Sexp
+del'lenv k s@(env@Env {..}, _) = put' (env { env'l = M.delete k env'l }) s
+
+-- | Remove S-exp from the fn-env by a symbol-value key
+del'fenv :: String -> T Fn Fn
+del'fenv k s@(env@Env {..}, _) = put' (env { env'f = M.delete k env'f }) s
 
 -- | Get S-exp from the env by a symbol-value key
 from'venv :: String -> T a Sexp
@@ -193,13 +210,13 @@ from'lenv' = getter' env'l
 from'fenv :: String -> T a Fn
 from'fenv = getter env'f errVoidSymbolFn
 
--- | Env getters builder
+-- | Env get-function builder
 getter :: (Env -> M.Map String b) -> String -> String -> T a b
 getter f msg k s@(env, _) = case M.lookup k (f env) of
   Just v  -> put v s
   Nothing -> err [errEval, msg, k]
 
--- | Env getters builder (ignore-errors)
+-- | Env get-function builder (ignore-errors)
 -- The same as 'getter' but return nil instead of raising errors
 getter' :: (Env -> M.Map String Sexp) -> String -> T a Sexp
 getter' f k s@(env, _) = case M.lookup k (f env) of
@@ -385,6 +402,11 @@ f'let' = deflet bind'seq "let*"
 f'defparameter :: Fn
 f'defparameter = defsym set'venv
 
+-- | makunbound
+f'makunbound :: Fn
+f'makunbound s = g'unary s >>= eval >>= g'symbol >>= \t@(_, a@(Symbol k)) ->
+  del'genv k t >>= put a
+
 -- | defvar
 f'defvar :: Fn
 f'defvar = defsym set'venv'ifndef
@@ -455,9 +477,13 @@ f'mul = nfold g'number (bop (*)) "*"
 f'div :: Fn
 f'div = nfold g'number (bop (/)) "/"
 
--- | (%) or mod
+-- | mod
 f'mod :: Fn
 f'mod = binary g'number (modify (uncurry (bop mod')))
+
+-- | rem
+f'rem :: Fn
+f'rem = undefined
 
 -- | expt
 f'expt :: Fn
@@ -499,6 +525,22 @@ f'acos = unary g'float (modify (uop acos))
 f'atan :: Fn
 f'atan = unary g'float (modify (uop atan))
 
+-- | truncate
+f'truncate :: Fn
+f'truncate = undefined
+
+-- | round
+f'round :: Fn
+f'round = undefined
+
+-- | ceiling
+f'ceiling :: Fn
+f'ceiling = undefined
+
+-- | floor
+f'floor :: Fn
+f'floor = undefined
+
 -- | float
 f'float :: Fn
 f'float s = g'unary s >>= g'float
@@ -506,6 +548,10 @@ f'float s = g'unary s >>= g'float
 -- | abs
 f'abs :: Fn
 f'abs = unary pure (modify (uop abs))
+
+-- | signum
+f'signum :: Fn
+f'signum = undefined
 
 -- | (1+)
 f'1p :: Fn
@@ -784,7 +830,7 @@ f'seventh s = g'unary s >>= eval >>= nth 6
 f'eighth :: Fn
 f'eighth s = g'unary s >>= eval >>= nth 7
 
--- | nineth
+-- | ninth
 f'ninth :: Fn
 f'ninth s = g'unary s >>= eval >>= nth 8
 
@@ -1256,7 +1302,7 @@ built'in =
   , ("let*"                 , f'let')
   , ("defparameter"         , f'defparameter)
   , ("defvar"               , f'defvar)
-  , ("makeunbound"          , undefined)
+  , ("makunbound"           , f'makunbound)
   , ("quote"                , f'quote)
   , ("not"                  , f'not)
   , ("or"                   , f'or)
@@ -1276,7 +1322,7 @@ built'in =
   , ("mod"                  , f'mod)
   -- numerator
   -- denominator
-  , ("rem"                  , undefined)
+  , ("rem"                  , f'rem)
   , ("expt"                 , f'expt)
   , ("sqrt"                 , f'sqrt)
   , ("exp"                  , f'exp)
@@ -1287,13 +1333,13 @@ built'in =
   , ("asin"                 , f'asin)
   , ("acos"                 , f'acos)
   , ("atan"                 , f'atan)
-  , ("truncate"             , undefined)
-  , ("round"                , undefined)
-  , ("ceiling"              , undefined)
-  , ("floor"                , undefined)
+  , ("truncate"             , f'truncate)
+  , ("round"                , f'round)
+  , ("ceiling"              , f'ceiling)
+  , ("floor"                , f'floor)
   , ("float"                , f'float)
   , ("abs"                  , f'abs)
-  , ("signum"               , undefined)
+  , ("signum"               , f'signum)
   , ("1+"                   , f'1p)
   , ("1-"                   , f'1m)
   -- COMPLEX-NUMBER
