@@ -1152,7 +1152,7 @@ bind'seq s = get s >>= \case
     put a s >>= eval >>= set'lenv k >>= put rest >>= bind'seq
   x@List{} : _ -> err [errEval, errMalformed, show' x]
   Quote x@(Symbol k) : rest ->
-    put x s >>= from'genv k >>= put (List [x, x] : rest) >>= bind'seq
+    put x s >>= from'venv k >>= put (List [x, x] : rest) >>= bind'seq
   a : rest -> put a s >>= g'symbol >>= put (List [a, NIL] : rest) >>= bind'seq
 
 -- | Parallelly bind a sequence (let-like)
