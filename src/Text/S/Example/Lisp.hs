@@ -39,8 +39,10 @@ import           Text.S                         ( ParserS
                                                 , Result(Error, Ok)
                                                 , State(State)
                                                 , Stream(isEmpty)
+                                                , anychar
                                                 , between
                                                 , choice
+                                                , count
                                                 , floatB
                                                 , gap
                                                 , identifier
@@ -64,6 +66,7 @@ data Sexp = NIL
           | Float       Double
           | Symbol      String
           | Keyword     String
+          | Char        String
           | String      String
           | Quote       Sexp
           | Backquote   Sexp
@@ -259,6 +262,7 @@ sexp = between
     [ at
     , comma
     , nil
+    , ch
     , str
     , bool
     , float
@@ -305,6 +309,11 @@ sym = Symbol <$> identifier lispdef
 key :: Parser Sexp
 key = Keyword . (":" ++) <$> (symbol ":" *> identifier lispdef)
 
+-- | Char Literal
+ch :: Parser Sexp
+ch =
+  Char <$> ((ch'extra <|> ((++) <$> symbol "#\\" <*> count 1 anychar)) <* end)
+
 -- | String Literal
 str :: Parser Sexp
 str = String <$> stringLit
@@ -338,6 +347,19 @@ cons = between (symbol "(") (symbol ")") pair
 -- | Form
 form :: Parser Sexp
 form = List <$> between (symbol "(") (symbol ")") (many sexp)
+
+-- | Lisp standard-char needed to treat specially
+ch'extra :: Parser String
+ch'extra = choice
+  [ symbol "#\\Space"
+  , symbol "#\\Newline"
+  , symbol "#\\Backspace"
+  , symbol "#\\Tab"
+  , symbol "#\\Linefeed"
+  , symbol "#\\Page"
+  , symbol "#\\Return"
+  , symbol "#\\Rubout"
+  ]
 
 
 ----------
@@ -1546,6 +1568,7 @@ show' = \case
   Float     float     -> show float
   Symbol    symbol    -> symbol
   Keyword   keyword   -> keyword
+  Char      char      -> "#\\" ++ char
   String    string    -> "\"" ++ string ++ "\""
   Quote     sexp      -> "'" ++ show' sexp
   Backquote sexp      -> "`" ++ show' sexp

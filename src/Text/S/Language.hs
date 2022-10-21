@@ -154,7 +154,7 @@ haskelldef = LanguageDef
 -- | Language definition of SLISP
 lispdef :: Stream s => LanguageDef s
 lispdef = LanguageDef { defCaseSensitive     = True
-                      , defCharLiteralMark   = fail "Not defined char-literal"
+                      , defCharLiteralMark   = string "#\\"
                       , defStringLiteralMark = string "\""
                       , defCommentBlockBegin = string "#|"
                       , defCommentBlockEnd   = string "|#"
