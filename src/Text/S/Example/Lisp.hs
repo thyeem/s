@@ -62,7 +62,7 @@ import           Text.S                         ( ParserS
 -- | S-exp AST
 data Sexp = NIL
           | Bool        Bool
-          | Int         Integer
+          | Integer     Integer
           | Float       Double
           | Symbol      String
           | Keyword     String
@@ -248,32 +248,32 @@ type Parser = ParserS String
 
 -- | READ
 read' :: String -> RE Sexp
-read' input = case parse' sexp input of
+read' input = case parse' p'sexp input of
   Ok ok (State stream _ _) | isEmpty stream -> pure ok
                            | otherwise      -> err [errRepl, errManySexp]
   Error _ -> err [errRead, errParsing]
 
 -- | S-expression
-sexp :: Parser Sexp
-sexp = between
+p'sexp :: Parser Sexp
+p'sexp = between
   jump
   jump
   (choice
-    [ at
-    , comma
-    , nil
-    , ch
-    , str
-    , bool
-    , float
-    , int
-    , quote
-    , bquote
-    , key
-    , sym
-    , cons
-    , vec
-    , form
+    [ p'at
+    , p'comma
+    , p'nil
+    , p'char
+    , p'str
+    , p'bool
+    , p'float
+    , p'integer
+    , p'quote
+    , p'backquote
+    , p'keyword
+    , p'symbol
+    , p'cons
+    , p'vector
+    , p'form
     ]
   )
 
@@ -285,80 +285,81 @@ jump = skips lispdef
 end :: Parser ()
 end = gap <|> void (try (symbol ")"))
 
--- | NIL
-nil :: Parser Sexp
-nil = NIL <$ symbol "nil" <* end
+-- | NIL parser
+p'nil :: Parser Sexp
+p'nil = NIL <$ symbol "nil" <* end
 
--- | Bool
-bool :: Parser Sexp
-bool = Bool <$> (symbol "t" <* end $> True)
+-- | Bool parser
+p'bool :: Parser Sexp
+p'bool = Bool <$> (symbol "t" <* end $> True)
 
--- | Integer
-int :: Parser Sexp
-int = Int <$> integer <* option "" (symbol ".") <* end
+-- | Integer parser
+p'integer :: Parser Sexp
+p'integer = Integer <$> integer <* option "" (symbol ".") <* end
 
--- | Non-integer
-float :: Parser Sexp
-float = Float <$> floatB <* end
+-- | Float parser
+p'float :: Parser Sexp
+p'float = Float <$> floatB <* end
 
--- | Symbol
-sym :: Parser Sexp
-sym = Symbol <$> identifier lispdef
+-- | Symbol parser
+p'symbol :: Parser Sexp
+p'symbol = Symbol <$> identifier lispdef
 
--- | Keyword
-key :: Parser Sexp
-key = Keyword . (":" ++) <$> (symbol ":" *> identifier lispdef)
+-- | Keyword parser
+p'keyword :: Parser Sexp
+p'keyword = Keyword . (":" ++) <$> (symbol ":" *> identifier lispdef)
 
--- | Char Literal
-ch :: Parser Sexp
-ch =
-  Char <$> ((ch'extra <|> ((++) <$> symbol "#\\" <*> count 1 anychar)) <* end)
+-- | Char Literal parser
+p'char :: Parser Sexp
+p'char = Char <$> ((symbol "#\\" *> (p'char'extra <|> count 1 anychar)) <* end)
 
--- | String Literal
-str :: Parser Sexp
-str = String <$> stringLit
+-- | String Literal parser
+p'str :: Parser Sexp
+p'str = String <$> stringLit
 
--- | Quote
-quote :: Parser Sexp
-quote = symbol "'" *> (Quote <$> sexp)
+-- | Quote parser
+p'quote :: Parser Sexp
+p'quote = symbol "'" *> (Quote <$> p'sexp)
 
--- | Backquote
-bquote :: Parser Sexp
-bquote = symbol "`" *> (Backquote <$> sexp)
+-- | Backquote parser
+p'backquote :: Parser Sexp
+p'backquote = symbol "`" *> (Backquote <$> p'sexp)
 
--- | Comma followed by At-sign
-at :: Parser Sexp
-at = symbol ",@" *> (At <$> sexp)
+-- | (Comma + At-sign) parser
+p'at :: Parser Sexp
+p'at = symbol ",@" *> (At <$> p'sexp)
 
--- | Comma
-comma :: Parser Sexp
-comma = symbol "," *> (Comma <$> sexp)
+-- | Comma parser
+p'comma :: Parser Sexp
+p'comma = symbol "," *> (Comma <$> p'sexp)
 
--- | Vector
-vec :: Parser Sexp
-vec = Vector . V.fromList <$> between (symbol "#(") (symbol ")") (many sexp)
+-- | Vector parser
+p'vector :: Parser Sexp
+p'vector =
+  Vector . V.fromList <$> between (symbol "#(") (symbol ")") (many p'sexp)
 
--- | Cons
-cons :: Parser Sexp
-cons = between (symbol "(") (symbol ")") pair
+-- | Cons parser
+p'cons :: Parser Sexp
+p'cons = between (symbol "(") (symbol ")") pair
  where
-  pair = sexp >>= \a -> symbol "." *> spaces *> sexp >>= \b -> pure $ Cons a b
+  pair =
+    p'sexp >>= \a -> symbol "." *> spaces *> p'sexp >>= \b -> pure $ Cons a b
 
--- | Form
-form :: Parser Sexp
-form = List <$> between (symbol "(") (symbol ")") (many sexp)
+-- | Form parser
+p'form :: Parser Sexp
+p'form = List <$> between (symbol "(") (symbol ")") (many p'sexp)
 
 -- | Lisp standard-char needed to treat specially
-ch'extra :: Parser String
-ch'extra = choice
-  [ symbol "#\\Space"
-  , symbol "#\\Newline"
-  , symbol "#\\Backspace"
-  , symbol "#\\Tab"
-  , symbol "#\\Linefeed"
-  , symbol "#\\Page"
-  , symbol "#\\Return"
-  , symbol "#\\Rubout"
+p'char'extra :: Parser String
+p'char'extra = choice
+  [ symbol "space"
+  , symbol "newline"
+  , symbol "backspace"
+  , symbol "tab"
+  , symbol "linefeed"
+  , symbol "page"
+  , symbol "return"
+  , symbol "rubout"
   ]
 
 
@@ -507,6 +508,16 @@ f'mod = binary g'number (modify (uncurry (bop mod')))
 f'rem :: Fn
 f'rem = undefined
 
+-- | gcd
+f'gcd :: Fn
+f'gcd = undefined
+-- f'gcd = binary g'integer (modify (uncurry (bop gcd)))
+
+-- | lcm
+f'lcm :: Fn
+f'lcm = undefined
+-- f'lcm = binary g'integer (modify (uncurry (bop lcm)))
+
 -- | expt
 f'expt :: Fn
 f'expt = binary g'number (modify (uncurry (bop (**))))
@@ -588,9 +599,9 @@ f'random :: Fn
 f'random = unary
   g'number
   (\s@(_, x) -> case x of
-    Float a -> put (Float . random $ a) s
-    Int   a -> put (Int . random $ a) s
-    _       -> err [errEval, errNotAllowed, "random"]
+    Float   a -> put (Float . random $ a) s
+    Integer a -> put (Integer . random $ a) s
+    _         -> err [errEval, errNotAllowed, "random"]
   )
   where random x = fst $ randomR (0, x) (mkStdGen 1)
 
@@ -603,7 +614,7 @@ f'atom :: Fn
 f'atom = pred' $ \case
   NIL       -> Bool True
   Bool{}    -> Bool True
-  Int{}     -> Bool True
+  Integer{} -> Bool True
   Float{}   -> Bool True
   Symbol{}  -> Bool True
   Keyword{} -> Bool True
@@ -620,9 +631,9 @@ f'symbolp = pred' $ \case
 -- | numberp
 f'numberp :: Fn
 f'numberp = pred' $ \case
-  Int{}   -> Bool True
-  Float{} -> Bool True
-  _       -> NIL
+  Integer{} -> Bool True
+  Float{}   -> Bool True
+  _         -> NIL
 
 -- | stringp
 f'stringp :: Fn
@@ -695,6 +706,10 @@ f'cons s = g'binary s >>= bimapM eval >>= \t@(_, x) -> case x of
   (a, NIL   ) -> put (List [a]) t
   (a, List l) -> put (List (a : l)) t
   (a, b     ) -> put (Cons a b) t
+
+-- | consing
+cons :: T Sexp Sexp
+cons = undefined
 
 -- | car
 f'car :: Fn
@@ -818,7 +833,8 @@ f'cddddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> cdr
 -- | nth
 f'nth :: Fn
 f'nth s = g'binary s >>= bimapM eval >>= \t@(_, (n, l)) ->
-  put n t >>= g'int >>= get >>= \(Int i) -> put l t >>= nth (fromIntegral i)
+  put n t >>= g'integer >>= get >>= \(Integer i) ->
+    put l t >>= nth (fromIntegral i)
 
 -- | first
 f'first :: Fn
@@ -863,6 +879,10 @@ f'tenth s = g'unary s >>= eval >>= nth 9
 -- | rest
 f'rest :: Fn
 f'rest = f'cdr
+
+-- | rest
+f'append :: Fn
+f'append = g'unary
 
 -- | rest
 f'defun :: Fn
@@ -956,9 +976,9 @@ g'symbol s = get s >>= \case
 -- | Guard for numbers
 g'number :: T Sexp Sexp
 g'number s = get s >>= \case
-  Int{}   -> pure s
-  Float{} -> pure s
-  a       -> err [errEval, errNotNumber, show' a]
+  Integer{} -> pure s
+  Float{}   -> pure s
+  a         -> err [errEval, errNotNumber, show' a]
 
 -- | Guard for boolean
 g'bool :: T Sexp Sexp
@@ -982,24 +1002,24 @@ g'list s = get s >>= \case
   a      -> err [errEval, errNotList, show' a]
 
 -- | Ensure that the state is an integer S-exp
-g'int :: T Sexp Sexp
-g'int s = g'number s >>= get >>= \case
-  i@Int{} -> put i s
-  a       -> err [errEval, errNotInteger, show' a]
+g'integer :: T Sexp Sexp
+g'integer s = g'number s >>= get >>= \case
+  i@Integer{} -> put i s
+  a           -> err [errEval, errNotInteger, show' a]
 
 -- | Ensure that the state is a float S-exp
 g'float :: T Sexp Sexp
 g'float s = g'number s >>= get >>= \case
-  Int i     -> put (Float . fromIntegral $ i) s
+  Integer i -> put (Float . fromIntegral $ i) s
   r@Float{} -> put r s
   a         -> err [errEval, errNotFloat, show' a]
 
 -- | Ensure that the state is a non-zero S-exp
 g'nzero :: T Sexp Sexp
 g'nzero s = get s >>= \case
-  Int   0 -> err [errEval, errDivByZero]
-  Float 0 -> err [errEval, errDivByZero]
-  _       -> pure s
+  Integer 0 -> err [errEval, errDivByZero]
+  Float   0 -> err [errEval, errDivByZero]
+  _         -> pure s
 
 -- | Ensure that the given key is not defined in the local env
 g'undef'lkey :: String -> T Sexp Sexp
@@ -1015,7 +1035,7 @@ g'undef'lkey k s@(Env {..}, _) = case M.lookup k env'l of
 instance Eq Sexp where
   NIL       == NIL       = True
   Bool    _ == Bool    _ = True
-  Int     a == Int     b = a == b
+  Integer a == Integer b = a == b
   Float   a == Float   b = a == b
   Symbol  a == Symbol  b = a == b
   Keyword a == Keyword b = a == b
@@ -1024,7 +1044,7 @@ instance Eq Sexp where
 
 
 instance Ord Sexp where
-  Int     a <= Int     b = a <= b
+  Integer a <= Integer b = a <= b
   Float   a <= Float   b = a <= b
   Symbol  a <= Symbol  b = a <= b
   Keyword a <= Keyword b = a <= b
@@ -1048,7 +1068,7 @@ atom :: Sexp -> Bool
 atom = \case
   NIL       -> True
   Bool{}    -> True
-  Int{}     -> True
+  Integer{} -> True
   Float{}   -> True
   Symbol{}  -> True
   Keyword{} -> True
@@ -1260,9 +1280,9 @@ defsym f s = g'binary s >>= get >>= \case
 uop
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
 uop f = \case
-  Int   a -> pure . Int . floor . f @Double . fromIntegral $ a
-  Float a -> pure . Float . f $ a
-  _       -> err [errEval, errNotAllowed, "uop"]
+  Integer a -> pure . Integer . floor . f @Double . fromIntegral $ a
+  Float   a -> pure . Float . f $ a
+  _         -> err [errEval, errNotAllowed, "uop"]
 
 -- | Binary arithmetic operator builder
 bop
@@ -1271,12 +1291,11 @@ bop
   -> Sexp
   -> RE Sexp
 bop op x y = case (x, y) of
-  (Int a, Int b) ->
-    pure . Int . floor $ (op @Double) (fromIntegral a) (fromIntegral b)
-  (Int   a, Float b) -> pure . Float $ fromIntegral a `op` b
-  (Float a, Int b  ) -> pure . Float $ a `op` fromIntegral b
-  (Float a, Float b) -> pure . Float $ a `op` b
-  _                  -> err [errEval, errNotAllowed, "bop"]
+  (Integer a, Integer b) -> pure . Float $ fromIntegral a `op` fromIntegral b
+  (Integer a, Float b  ) -> pure . Float $ fromIntegral a `op` b
+  (Float   a, Integer b) -> pure . Float $ a `op` fromIntegral b
+  (Float   a, Float b  ) -> pure . Float $ a `op` b
+  _                      -> err [errEval, errNotAllowed, "bop"]
 
 -- | Unary function builder
 unary :: T Sexp Sexp -> T Sexp Sexp -> Fn
@@ -1302,12 +1321,12 @@ nfold' g op msg =
 foldNums :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
 foldNums f o s = get s >>= \case
   [] -> case o of
-    "+" -> put (Int 0) s
-    "*" -> put (Int 1) s
+    "+" -> put (Integer 0) s
+    "*" -> put (Integer 1) s
     _   -> err [errEval, errNoArgs, o]
   [x] -> case o of
-    "-" -> put x s >>= modify (f (Int 0))
-    "/" -> put x s >>= g'nzero >>= modify (f (Int 1))
+    "-" -> put x s >>= modify (f (Integer 0))
+    "/" -> put x s >>= g'nzero >>= modify (f (Integer 1))
     _   -> put x s
   (x : xs) -> case o of
     "/" -> put xs s >>= mapM' g'nzero >>= modify (foldM f x)
@@ -1345,6 +1364,8 @@ built'in =
   -- numerator
   -- denominator
   , ("rem"                  , f'rem)
+  , ("gcd"                  , f'gcd)
+  , ("lcm"                  , f'lcm)
   , ("expt"                 , f'expt)
   , ("sqrt"                 , f'sqrt)
   , ("exp"                  , f'exp)
@@ -1454,7 +1475,7 @@ built'in =
   , ("tenth"                , f'tenth)
   , ("rest"                 , f'rest)
   , ("position"             , undefined)
-  , ("append"               , undefined)
+  , ("append"               , f'append)
   , ("nthcdr"               , undefined)
   , ("butlast"              , undefined)
   , ("reverse"              , undefined)
@@ -1564,7 +1585,7 @@ show' :: Sexp -> String
 show' = \case
   NIL                 -> "nil"
   Bool      _         -> "t"
-  Int       intger    -> show intger
+  Integer   intger    -> show intger
   Float     float     -> show float
   Symbol    symbol    -> symbol
   Keyword   keyword   -> keyword
@@ -1732,7 +1753,7 @@ pretty' = outputStrLn . TL.unpack . pretty
 
 -- | Debug-mode reader
 d'read :: String -> RE Sexp
-d'read s = case parse' sexp s of
+d'read s = case parse' p'sexp s of
   Ok ok (State stream _ _) | isEmpty stream -> pure ok
                            | otherwise      -> err [errRepl, errManySexp]
   Error state -> err [errRead, errParsing, "\n", TL.unpack (pretty state)]
