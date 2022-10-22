@@ -1682,20 +1682,34 @@ sl = do
   runInputT (defaultSettings { historyFile = Just historyFile })
             (loop init'env normal)
  where
+  repl s@(env, _) mode@(reader, printer) str =
+    case reader str >>= eval . (env, ) of
+      Left  err      -> outputStrLn err >> loop s mode
+      Right t@(_, x) -> printer x >> loop t mode
+
   normal = (read', print')
   debug  = (d'read, pretty')
-  loop s@(env, _) mode@(reader, printer) = do
+  loop s@(env, _) mode = do
     input <- getInputLine "SLISP> "
     case input of
-      Nothing     -> pure ()
-      Just []     -> loop s normal
-      Just ";"    -> outputStrLn "Set to paste-mode" >> loop s mode
-      Just ";;"   -> outputStrLn "Set to debug-mode" >> loop s debug
+      Nothing -> pure ()
+      Just [] -> loop s normal
+      Just ";" ->
+        outputStrLn "Enabled paste-mode. Ctrl-d to finish"
+          >>  mlLoop [] s mode
+          >>= repl s mode
+      Just ";;" ->
+        outputStrLn "Enabled debug-mode. RET to quit" >> loop s debug
       Just ";;;"  -> d'symbolv env >> loop s mode
       Just ";;;;" -> d'symbolf env >> loop s mode
-      Just str    -> case reader str >>= eval . (env, ) of
-        Left  err      -> outputStrLn err >> loop s mode
-        Right t@(_, x) -> printer x >> loop t mode
+      Just str    -> repl s mode str
+
+  mlLoop xs s mode = do
+    input <- getInputLine "SLISP| "
+    case input of
+      Nothing -> pure . unlines . reverse $ xs
+      Just x  -> mlLoop ((x ++ " ") : xs) s mode
+
 
 -- Run SLISP externally: READ-EVAL
 re :: String -> RE (ST Sexp)
