@@ -69,4 +69,9 @@ in'out =
   , ( "(let ((c (list 22 33))) `(foobar a b ,c ,'(e f g) d ,@'(e f g) (h i j) ,@c))"
     , "(foobar a b (22 33) (e f g) d e f g (h i j) 22 33)"
     )
+  , ("(append)"                           , "nil")
+  , ("(append 'a)"                        , "a")
+  , ("(append '(a b c) '(d e f) '() '(g))", "(a b c d e f g)")
+  , ("(append '(a b c) 'd)"               , "(a b c . d)")
+  , ("(let ((lst '(a b c))) (append lst '(d)))", "(a b c d)")
   ]

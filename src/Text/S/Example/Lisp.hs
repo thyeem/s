@@ -62,7 +62,7 @@ import           Text.S                         ( ParserS
 -- | S-exp AST
 data Sexp = NIL
           | Bool        Bool
-          | Integer     Integer
+          | Int         Integer
           | Float       Double
           | Symbol      String
           | Keyword     String
@@ -266,7 +266,7 @@ p'sexp = between
     , p'str
     , p'bool
     , p'float
-    , p'integer
+    , p'int
     , p'quote
     , p'backquote
     , p'keyword
@@ -294,8 +294,8 @@ p'bool :: Parser Sexp
 p'bool = Bool <$> (symbol "t" <* end $> True)
 
 -- | Integer parser
-p'integer :: Parser Sexp
-p'integer = Integer <$> integer <* option "" (symbol ".") <* end
+p'int :: Parser Sexp
+p'int = Int <$> integer <* option "" (symbol ".") <* end
 
 -- | Float parser
 p'float :: Parser Sexp
@@ -378,10 +378,10 @@ eval s = get s >>= \case
   List   xs@(Symbol{} : _) -> put xs s >>= apply
   List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
   a@Cons{}                 -> err [errEval, errInvalidFn, show' a]
-  a@Comma{}                -> err [errEval, errNotInBquote, show' a]
-  a@At{}                   -> err [errEval, errNotInBquote, show' a]
+  a@Comma{}                -> err [errEval, errNotInBackquote, show' a]
+  a@At{}                   -> err [errEval, errNotInBackquote, show' a]
   Seq       xs             -> put xs s >>= eval'seq
-  Backquote a              -> put a s >>= eval'bquote 1
+  Backquote a              -> put a s >>= eval'backquote 1
   a                        -> put a s
 
 -- | Apply the function of symbol name to the given arguments
@@ -599,9 +599,9 @@ f'random :: Fn
 f'random = unary
   g'number
   (\s@(_, x) -> case x of
-    Float   a -> put (Float . random $ a) s
-    Integer a -> put (Integer . random $ a) s
-    _         -> err [errEval, errNotAllowed, "random"]
+    Float a -> put (Float . random $ a) s
+    Int   a -> put (Int . random $ a) s
+    _       -> err [errEval, errNotAllowed, "random"]
   )
   where random x = fst $ randomR (0, x) (mkStdGen 1)
 
@@ -614,7 +614,7 @@ f'atom :: Fn
 f'atom = pred' $ \case
   NIL       -> Bool True
   Bool{}    -> Bool True
-  Integer{} -> Bool True
+  Int{}     -> Bool True
   Float{}   -> Bool True
   Symbol{}  -> Bool True
   Keyword{} -> Bool True
@@ -631,9 +631,9 @@ f'symbolp = pred' $ \case
 -- | numberp
 f'numberp :: Fn
 f'numberp = pred' $ \case
-  Integer{} -> Bool True
-  Float{}   -> Bool True
-  _         -> NIL
+  Int{}   -> Bool True
+  Float{} -> Bool True
+  _       -> NIL
 
 -- | stringp
 f'stringp :: Fn
@@ -702,14 +702,7 @@ f'list s = g'nary s >>= mapM' eval >>= modify (pure . List)
 
 -- | cons
 f'cons :: Fn
-f'cons s = g'binary s >>= bimapM eval >>= \t@(_, x) -> case x of
-  (a, NIL   ) -> put (List [a]) t
-  (a, List l) -> put (List (a : l)) t
-  (a, b     ) -> put (Cons a b) t
-
--- | consing
-cons :: T Sexp Sexp
-cons = undefined
+f'cons s = g'binary s >>= bimapM eval >>= cons
 
 -- | car
 f'car :: Fn
@@ -833,8 +826,7 @@ f'cddddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> cdr
 -- | nth
 f'nth :: Fn
 f'nth s = g'binary s >>= bimapM eval >>= \t@(_, (n, l)) ->
-  put n t >>= g'integer >>= get >>= \(Integer i) ->
-    put l t >>= nth (fromIntegral i)
+  put n t >>= g'integer >>= get >>= \(Int i) -> put l t >>= nth (fromIntegral i)
 
 -- | first
 f'first :: Fn
@@ -880,9 +872,16 @@ f'tenth s = g'unary s >>= eval >>= nth 9
 f'rest :: Fn
 f'rest = f'cdr
 
--- | rest
+-- | append
 f'append :: Fn
-f'append = g'unary
+f'append s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
+  []  -> put NIL t
+  [a] -> put a t
+  a   -> put (init a) t >>= modify (pure . List) >>= concat' >>= get >>= \case
+    List xs -> case last a of
+      List l -> put (xs <> l <> [NIL]) t >>= foldrM cons
+      v      -> put (xs <> [v]) t >>= foldrM cons
+    a -> err [errEval, errNotList, show' a]
 
 -- | rest
 f'defun :: Fn
@@ -976,9 +975,9 @@ g'symbol s = get s >>= \case
 -- | Guard for numbers
 g'number :: T Sexp Sexp
 g'number s = get s >>= \case
-  Integer{} -> pure s
-  Float{}   -> pure s
-  a         -> err [errEval, errNotNumber, show' a]
+  Int{}   -> pure s
+  Float{} -> pure s
+  a       -> err [errEval, errNotNumber, show' a]
 
 -- | Guard for boolean
 g'bool :: T Sexp Sexp
@@ -1004,22 +1003,22 @@ g'list s = get s >>= \case
 -- | Ensure that the state is an integer S-exp
 g'integer :: T Sexp Sexp
 g'integer s = g'number s >>= get >>= \case
-  i@Integer{} -> put i s
-  a           -> err [errEval, errNotInteger, show' a]
+  i@Int{} -> put i s
+  a       -> err [errEval, errNotInteger, show' a]
 
 -- | Ensure that the state is a float S-exp
 g'float :: T Sexp Sexp
 g'float s = g'number s >>= get >>= \case
-  Integer i -> put (Float . fromIntegral $ i) s
+  Int i     -> put (Float . fromIntegral $ i) s
   r@Float{} -> put r s
   a         -> err [errEval, errNotFloat, show' a]
 
 -- | Ensure that the state is a non-zero S-exp
 g'nzero :: T Sexp Sexp
 g'nzero s = get s >>= \case
-  Integer 0 -> err [errEval, errDivByZero]
-  Float   0 -> err [errEval, errDivByZero]
-  _         -> pure s
+  Int   0 -> err [errEval, errDivByZero]
+  Float 0 -> err [errEval, errDivByZero]
+  _       -> pure s
 
 -- | Ensure that the given key is not defined in the local env
 g'undef'lkey :: String -> T Sexp Sexp
@@ -1035,7 +1034,7 @@ g'undef'lkey k s@(Env {..}, _) = case M.lookup k env'l of
 instance Eq Sexp where
   NIL       == NIL       = True
   Bool    _ == Bool    _ = True
-  Integer a == Integer b = a == b
+  Int     a == Int     b = a == b
   Float   a == Float   b = a == b
   Symbol  a == Symbol  b = a == b
   Keyword a == Keyword b = a == b
@@ -1044,7 +1043,7 @@ instance Eq Sexp where
 
 
 instance Ord Sexp where
-  Integer a <= Integer b = a <= b
+  Int     a <= Int     b = a <= b
   Float   a <= Float   b = a <= b
   Symbol  a <= Symbol  b = a <= b
   Keyword a <= Keyword b = a <= b
@@ -1068,7 +1067,7 @@ atom :: Sexp -> Bool
 atom = \case
   NIL       -> True
   Bool{}    -> True
-  Integer{} -> True
+  Int{}     -> True
   Float{}   -> True
   Symbol{}  -> True
   Keyword{} -> True
@@ -1095,6 +1094,13 @@ nth i s = get s >>= \case
     x : _ -> put x s
   a -> err [errEval, errMalformed, show' a]
 
+-- | functional core of cons
+cons :: T (Sexp, Sexp) Sexp
+cons s = get s >>= \case
+  (a, NIL   ) -> put (List [a]) s
+  (a, List l) -> put (List (a : l)) s
+  (a, b     ) -> put (Cons a b) s
+
 -- | functional core of cdr
 car :: T Sexp Sexp
 car s = g'list s >>= get >>= \case
@@ -1108,6 +1114,20 @@ cdr s = g'list s >>= get >>= \case
   Cons _ y      -> put y s
   List (_ : xs) -> put (List xs) s
   _             -> put NIL s
+
+-- | Concatenates all the elements of the state result
+concat' :: T Sexp Sexp
+concat' s = get s >>= \case
+  a | nilp a -> put NIL s
+  List l     -> put l s >>= go []
+  a          -> err [errEval, errNotList, show' a]
+ where
+  go r s@(_, xs) = case xs of
+    []       -> put (concat . reverse $ r) s >>= modify (pure . List)
+    x : rest -> case x of
+      NIL    -> put rest s >>= go r
+      List l -> put rest s >>= go (l : r)
+      a      -> err [errEval, errNotList, show' a]
 
 -- | Turn the state result to its head value
 head' :: String -> T [a] a
@@ -1153,28 +1173,49 @@ arity _ _ = err [errEval, errNoArgs, "arity"]
 pred' :: (Sexp -> Sexp) -> T [Sexp] Sexp
 pred' p s = g'unary s >>= eval >>= modify (pure . p)
 
--- | Map the list-form state result 'ST' to an action. The 'mapM' for 'ST'.
+-- | Map the list-form state result 'ST' to an action.
 mapM' :: T a b -> T [a] [b]
 mapM' f = go []
  where
   go r s@(_, xs) = case xs of
     []       -> put (reverse r) s
-    x : rest -> put x s >>= f >>= \(env, v) -> go (v : r) (env, rest)
+    x : rest -> put x s >>= f >>= \(env, x) -> go (x : r) (env, rest)
 
--- | Map the tuple-form state result to an action. The monadic 'bimap' for 'ST'.
+-- | Map the tuple-form state result to an action.
 bimapM :: T a b -> T (a, a) (b, b)
 bimapM f s@(_, (x, y)) =
-  put x s >>= f >>= \t@(_, v) -> put y t >>= f >>= \u@(_, w) -> put (v, w) u
+  put x s >>= f >>= \t@(_, x) -> put y t >>= f >>= \u@(_, w) -> put (x, w) u
+
+-- | Left-to-right monadic fold over the list-form state result with no base value.
+foldlM :: T (a, a) a -> T [a] a
+foldlM f s = get s >>= \case
+  []       -> err [errEval, errNoArgs, "foldlM"]
+  a : rest -> put rest s >>= go a
+ where
+  go a t@(_, xs) = case xs of
+    []       -> put a t
+    v : rest -> put (a, v) t >>= f >>= \(env, v) -> go v (env, rest)
+
+-- | Right-to-left monadic fold over the list-form state result with no base value.
+foldrM :: T (a, a) a -> T [a] a
+foldrM f s = get s >>= \case
+  [] -> err [errEval, errNoArgs, "foldrM"]
+  a  -> put (init a) s >>= go (last a)
+ where
+  go a t@(_, xs) = case xs of
+    []       -> put a t
+    x : rest -> put rest t >>= go a >>= \u@(_, v) -> put (x, v) u >>= f
 
 -- | Evaluate backquoted S-exp
-eval'bquote :: Int -> T Sexp Sexp
-eval'bquote d s = get s >>= \case
-  a@At{}        -> err [errEval, errMalformed, show' a]
-  a@Comma{}     -> put a s >>= replace'cond d 1 id
-  List      [x] -> put [x] s >>= splice d
-  List      xs  -> put xs s >>= splice d
-  Backquote a   -> put a s >>= eval'bquote (d + 1) >>= modify (pure . Backquote)
-  a             -> put a s
+eval'backquote :: Int -> T Sexp Sexp
+eval'backquote d s = get s >>= \case
+  a@At{}    -> err [errEval, errMalformed, show' a]
+  a@Comma{} -> put a s >>= replace'cond d 1 id
+  List [x]  -> put [x] s >>= splice d
+  List xs   -> put xs s >>= splice d
+  Backquote a ->
+    put a s >>= eval'backquote (d + 1) >>= modify (pure . Backquote)
+  a -> put a s
 
 -- | Check if a given backquoted S-exp is replace'cond with the evalualed value
 -- It will be replaced if it meets the conditions.
@@ -1182,7 +1223,7 @@ replace'cond :: Int -> Int -> (Sexp -> Sexp) -> T Sexp Sexp
 replace'cond d n f s = get s >>= \x -> case compare' x d of
   LT -> pure s
   EQ -> replace d n f s
-  GT -> err [errEval, errNotInBquote, show' x]
+  GT -> err [errEval, errNotInBackquote, show' x]
  where
   compare' x = compare (count 0 x)
   count n = \case
@@ -1208,18 +1249,18 @@ replace d n f s = get s >>= \case
 splice :: Int -> T [Sexp] Sexp
 splice d = go []
  where
-  go r s@(env, xs) = case xs of
-    []       -> put (reverse r) s >>= modify (pure . List . concat)
-    x : rest -> put x s >>= replace'cond d (length xs) id >>= \t@(env', v) ->
+  go r s@(_, xs) = case xs of
+    []       -> put (concat . reverse $ r) s >>= modify (pure . List)
+    x : rest -> put x s >>= replace'cond d (length xs) id >>= \t@(_, v) ->
       case v of
-        a@(List l) | spliceable x -> go (l : r) (env', rest)
-                   | otherwise    -> go ([a] : r) (env, rest)
+        a@(List l) | spliceable x -> put rest t >>= go (l : r)
+                   | otherwise    -> put rest t >>= go ([a] : r)
         a | length xs == 1 && spliceable x -> put a t
-          | otherwise                      -> go ([a] : r) (env, rest)
+          | otherwise                      -> put rest t >>= go ([a] : r)
 
 -- | Check if a given backquoted S-exp is spliceable
 spliceable :: Sexp -> Bool
-spliceable x = case x of
+spliceable = \case
   Comma a@Comma{} -> spliceable a
   Comma a@At{}    -> spliceable a
   At    a@Comma{} -> spliceable a
@@ -1280,9 +1321,9 @@ defsym f s = g'binary s >>= get >>= \case
 uop
   :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
 uop f = \case
-  Integer a -> pure . Integer . floor . f @Double . fromIntegral $ a
-  Float   a -> pure . Float . f $ a
-  _         -> err [errEval, errNotAllowed, "uop"]
+  Int   a -> pure . Int . floor . f @Double . fromIntegral $ a
+  Float a -> pure . Float . f $ a
+  _       -> err [errEval, errNotAllowed, "uop"]
 
 -- | Binary arithmetic operator builder
 bop
@@ -1291,11 +1332,11 @@ bop
   -> Sexp
   -> RE Sexp
 bop op x y = case (x, y) of
-  (Integer a, Integer b) -> pure . Float $ fromIntegral a `op` fromIntegral b
-  (Integer a, Float b  ) -> pure . Float $ fromIntegral a `op` b
-  (Float   a, Integer b) -> pure . Float $ a `op` fromIntegral b
-  (Float   a, Float b  ) -> pure . Float $ a `op` b
-  _                      -> err [errEval, errNotAllowed, "bop"]
+  (Int   a, Int b  ) -> pure . Float $ fromIntegral a `op` fromIntegral b
+  (Int   a, Float b) -> pure . Float $ fromIntegral a `op` b
+  (Float a, Int b  ) -> pure . Float $ a `op` fromIntegral b
+  (Float a, Float b) -> pure . Float $ a `op` b
+  _                  -> err [errEval, errNotAllowed, "bop"]
 
 -- | Unary function builder
 unary :: T Sexp Sexp -> T Sexp Sexp -> Fn
@@ -1321,12 +1362,12 @@ nfold' g op msg =
 foldNums :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
 foldNums f o s = get s >>= \case
   [] -> case o of
-    "+" -> put (Integer 0) s
-    "*" -> put (Integer 1) s
+    "+" -> put (Int 0) s
+    "*" -> put (Int 1) s
     _   -> err [errEval, errNoArgs, o]
   [x] -> case o of
-    "-" -> put x s >>= modify (f (Integer 0))
-    "/" -> put x s >>= g'nzero >>= modify (f (Integer 1))
+    "-" -> put x s >>= modify (f (Int 0))
+    "/" -> put x s >>= g'nzero >>= modify (f (Int 1))
     _   -> put x s
   (x : xs) -> case o of
     "/" -> put xs s >>= mapM' g'nzero >>= modify (foldM f x)
@@ -1585,7 +1626,7 @@ show' :: Sexp -> String
 show' = \case
   NIL                 -> "nil"
   Bool      _         -> "t"
-  Integer   intger    -> show intger
+  Int       intger    -> show intger
   Float     float     -> show float
   Symbol    symbol    -> symbol
   Keyword   keyword   -> keyword
@@ -1683,8 +1724,8 @@ errParsing = "Occurred error during parsing"
 errDivByZero :: String
 errDivByZero = "Arithmetic error: DIVISION-BY-ZERO"
 
-errNotInBquote :: String
-errNotInBquote = "Not inside backquote:"
+errNotInBackquote :: String
+errNotInBackquote = "Not inside backquote:"
 
 errUnexpected :: String
 errUnexpected = "Expected:"
