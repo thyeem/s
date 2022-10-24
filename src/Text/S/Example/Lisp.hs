@@ -341,10 +341,10 @@ p'vector =
 
 -- | Cons parser
 p'cons :: Parser Sexp
-p'cons = between (symbol "(") (symbol ")") (manyTill' pair p'sexp)
+p'cons = between (symbol "(") (symbol ")") (manyTill' dot p'sexp)
   >>= \(xs, a) -> pure $ foldr Cons a xs
  where
-  pair =
+  dot =
     p'sexp >>= \a -> symbol "." *> spaces *> p'sexp >>= \b -> pure $ Cons a b
 
 -- | Form parser
