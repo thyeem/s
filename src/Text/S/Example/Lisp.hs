@@ -49,6 +49,7 @@ import           Text.S                         ( ParserS
                                                 , integer
                                                 , lispdef
                                                 , many
+                                                , manyTill'
                                                 , option
                                                 , parse'
                                                 , skips
@@ -307,7 +308,7 @@ p'symbol = Symbol <$> identifier lispdef
 
 -- | Keyword parser
 p'keyword :: Parser Sexp
-p'keyword = Keyword . (":" ++) <$> (symbol ":" *> identifier lispdef)
+p'keyword = Keyword <$> ((++) <$> symbol ":" <*> identifier lispdef)
 
 -- | Char Literal parser
 p'char :: Parser Sexp
@@ -340,7 +341,8 @@ p'vector =
 
 -- | Cons parser
 p'cons :: Parser Sexp
-p'cons = between (symbol "(") (symbol ")") pair
+p'cons = between (symbol "(") (symbol ")") (manyTill' pair p'sexp)
+  >>= \(xs, a) -> pure $ foldr Cons a xs
  where
   pair =
     p'sexp >>= \a -> symbol "." *> spaces *> p'sexp >>= \b -> pure $ Cons a b

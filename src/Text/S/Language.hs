@@ -162,7 +162,7 @@ lispdef = LanguageDef { defCaseSensitive     = True
                       , defIdentifierBegin   = noneOf " ()\",'`:;#|\\"
                       , defIdentifierName    = many $ noneOf " ()\",'`:;|\\"
                       , defReservedOps       = ["?", "!", "[", "]", "{", "}"]
-                      , defKeywords          = []
+                      , defKeywords          = ["."]
                       }
 
 -- | Language definition of Java
