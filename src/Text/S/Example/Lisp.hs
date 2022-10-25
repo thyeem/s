@@ -502,23 +502,23 @@ f'GE = nfold' g'number (>=) ">="
 
 -- | min
 f'min :: Fn
-f'min = nfold g'number (bop min) "min"
+f'min = nfold g'number (bop'int min) "min"
 
 -- | max
 f'max :: Fn
-f'max = nfold g'number (bop max) "max"
+f'max = nfold g'number (bop'int max) "max"
 
 -- | (+)
 f'add :: Fn
-f'add = nfold g'number (bop' (+)) "+"
+f'add = nfold g'number (bop'num (+)) "+"
 
 -- | (-)
 f'sub :: Fn
-f'sub = nfold g'number (bop' (-)) "-"
+f'sub = nfold g'number (bop'num (-)) "-"
 
 -- | (*)
 f'mul :: Fn
-f'mul = nfold g'number (bop' (*)) "*"
+f'mul = nfold g'number (bop'num (*)) "*"
 
 -- | (/)
 f'div :: Fn
@@ -526,7 +526,7 @@ f'div = nfold g'number (bop'frac (/)) "/"
 
 -- | mod
 f'mod :: Fn
-f'mod = binary g'number (modify (uncurry (bop mod')))
+f'mod = binary g'number (modify (uncurry (bop'int mod')))
 
 -- | rem
 f'rem :: Fn
@@ -534,17 +534,15 @@ f'rem = undefined
 
 -- | gcd
 f'gcd :: Fn
-f'gcd = undefined
--- f'gcd = binary g'integer (modify (uncurry (bop gcd)))
+f'gcd = binary g'integer (modify (uncurry (bop'int gcd)))
 
 -- | lcm
 f'lcm :: Fn
-f'lcm = undefined
--- f'lcm = binary g'integer (modify (uncurry (bop lcm)))
+f'lcm = binary g'integer (modify (uncurry (bop'int lcm)))
 
 -- | expt
 f'expt :: Fn
-f'expt = binary g'number (modify (uncurry (bop' (**))))
+f'expt = binary g'number (modify (uncurry (bop'flt (**))))
 
 -- | sqrt
 f'sqrt :: Fn
@@ -1076,84 +1074,6 @@ instance Ord Sexp where
          | otherwise          = False
 
 
-instance Num Sexp where
-  signum      = undefined
-  fromInteger = Int
-  abs         = \case
-    Complex x -> Float (magnitude x)
-    x | fst (toNum x) >= 0 -> x
-      | otherwise          -> negate x
-
-  -- negate = uop negate
-  a + b = bop'num (+) a b
-  a - b = bop'num (+) a (negate b)
-  a * b = bop'num (*) a b
-
-
-instance Fractional Sexp where
-  fromRational = Rational
-  Int a / Int b = Rational $ fromIntegral a / fromIntegral b
-  a     / b     = case bop'frac (/) a b of
-    Left  e -> die [errEval, errNotAllowed, e]
-    Right x -> x
-
-
--- | Binary arithmetic operator builder (num)
-uop :: (forall a . Num a => a -> a) -> Sexp -> RE Sexp
-uop op = \case
-  Int      a -> pure . Int $ op a
-  Rational a -> reduce . Rational $ op a
-  a          -> uop' op a
-
--- | Binary arithmetic operator builder (floating)
-uop' :: (forall a . (Num a, Floating a) => a -> a) -> Sexp -> RE Sexp
-uop' op = \case
-  Complex a -> reduce . Complex $ op a
-  a         -> reduce . Float . op . fst . toNum $ a
-
--- | Binary operator builder for Num instance
-bop'num :: (forall a . Num a => a -> a -> a) -> Sexp -> Sexp -> Sexp
-bop'num op x y = case (x, y) of
-  (Int a, Int b) -> Int $ a `op` b
-  (a    , b    ) -> case bop'frac op a b of
-    Left  e -> die [errEval, errNotAllowed, e]
-    Right x -> x
-
--- | Binary arithmetic operator builder (fractional)
-bop'frac
-  :: (forall a . (Num a, Fractional a) => a -> a -> a)
-  -> Sexp
-  -> Sexp
-  -> RE Sexp
-bop'frac op x y = case (x, y) of
-  (Int      a, Rational b) -> reduce . Rational $ fromIntegral a `op` b
-  (Int      a, Float b   ) -> reduce . Float $ fromIntegral a `op` b
-  (Rational a, Rational b) -> reduce . Rational $ a `op` b
-  (Rational a, Float b   ) -> reduce . Float $ fromRational a `op` b
-  (Float    a, Float b   ) -> reduce . Float $ a `op` b
-  (Complex  a, b         ) -> reduce . Complex $ a `op` uncurry (:+) (toNum b)
-  (a         , b         ) -> bop'frac op b a
-
--- | Binary arithmetic operator builder (integral)
-bop
-  :: (forall a . (Ord a, Num a, Integral a) => a -> a -> a)
-  -> Sexp
-  -> Sexp
-  -> RE Sexp
-bop op x y = case (x, y) of
-  (Int a, Int b) -> pure . Int $ a `op` b
-  _              -> undefined
-
--- | Binary arithmetic operator builder (floating)
-bop'
-  :: (forall a . (Num a, Floating a) => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
-bop' op x y = case (x, y) of
-  (Int a, Int b) ->
-    pure . Int . floor @Double $ fromIntegral a `op` fromIntegral b
-  (Complex a, b        ) -> reduce . Complex $ a `op` uncurry (:+) (toNum b)
-  (a        , Complex b) -> reduce . Complex $ uncurry (:+) (toNum a) `op` b
-  (a        , b        ) -> reduce . Float $ on op (fst . toNum) a b
-
 -- | Check if the given S-exp is identical to 'NIL'
 nilp :: Sexp -> Bool
 nilp = \case
@@ -1213,28 +1133,6 @@ hashtablep = \case
   HashTable{} -> True
   _           -> False
 
--- | Unbox an S-exp object related to number
-toNum :: Sexp -> (Double, Double)
-toNum = \case
-  Int      x -> (fromIntegral x, 0)
-  Rational x -> (fromRational x, 0)
-  Float    x -> (x, 0)
-  Complex  x -> (realPart x, imagPart x)
-  a          -> die [errEval, errNotNumber, show' a]
-
--- | Normalize (zero-imaginary) complex and (reducible) rational number if possible
-reduce :: Sexp -> RE Sexp
-reduce = \case
-  a@Complex{} | (snd . toNum $ a) == 0 -> pure . Float . fst . toNum $ a
-              | otherwise              -> pure a
-  a@(Rational r) -> case (numerator r, denominator r) of
-    (_, 0) -> err [errEval, errDivByZero, show' a]
-    (n, d) | d == gcd n d -> pure . Int $ quot n d
-           | otherwise    -> pure a
-  a@Int{}   -> pure a
-  a@Float{} -> pure a
-  a         -> err [errEval, errNotNumber, show' a]
-
 -- | Check if the given S-exp is a number
 numberp :: Sexp -> Bool
 numberp x = realp x || complexp x
@@ -1288,23 +1186,129 @@ t'nil = \case
   True -> Bool True
   _    -> NIL
 
--- |
+-- | Logical 'not'
 not' :: Sexp -> Bool
 not' = \case
   a | nilp a -> True
   _          -> False
 
--- |
+-- | Logical 'or'
 or' :: Sexp -> Sexp -> RE Sexp
 or' a b = case (a, b) of
   (NIL, b) -> pure b
   (a  , _) -> pure a
 
--- |
+-- | Logical 'and'
 and' :: Sexp -> Sexp -> RE Sexp
 and' a b = case (a, b) of
   (NIL, _) -> pure NIL
   (_  , b) -> pure b
+
+-- | Unbox an S-exp object related to number
+toNum :: Sexp -> (Double, Double)
+toNum = \case
+  Int      x -> (fromIntegral x, 0)
+  Rational x -> (fromRational x, 0)
+  Float    x -> (x, 0)
+  Complex  x -> (realPart x, imagPart x)
+  a          -> die [errEval, errNotNumber, show' a]
+
+
+instance Num Sexp where
+  signum      = undefined
+  fromInteger = Int
+  abs         = \case
+    Complex x -> Float (magnitude x)
+    x | fst (toNum x) >= 0 -> x
+      | otherwise          -> negate x
+
+  a + b = bop (+) a b
+  a - b = bop (+) a (negate b)
+  a * b = bop (*) a b
+
+
+instance Fractional Sexp where
+  fromRational = Rational
+  Int a / Int b = Rational $ fromIntegral a / fromIntegral b
+  a     / b     = case bop'frac (/) a b of
+    Left  e -> die [errEval, errNotAllowed, e]
+    Right x -> x
+
+
+-- | Binary operator builder for Num instance deriviation
+bop :: (forall a . Num a => a -> a -> a) -> Sexp -> Sexp -> Sexp
+bop op x y = case (x, y) of
+  (Int a, Int b) -> Int $ a `op` b
+  (a    , b    ) -> case bop'frac op a b of
+    Left  e -> die [errEval, errNotAllowed, e]
+    Right x -> x
+
+-- | Unary arithmetic (num) operator builder
+uop :: (forall a . Num a => a -> a) -> Sexp -> RE Sexp
+uop op = \case
+  Int      a -> pure . Int $ op a
+  Rational a -> reduce . Rational $ op a
+  a          -> uop' op a
+
+-- | Unary arithmetic (floating) operator builder
+uop' :: (forall a . (Num a, Floating a) => a -> a) -> Sexp -> RE Sexp
+uop' op = \case
+  Complex a -> reduce . Complex $ op a
+  a         -> reduce . Float . op . fst . toNum $ a
+
+-- | Binary arithmetic (num) operator builder (num)
+bop'num :: (forall a . Num a => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
+bop'num op x y = case (x, y) of
+  (Int a, Int b) -> pure . Int $ a `op` b
+  (a    , b    ) -> bop'frac op a b
+
+-- | Binary arithmetic (fractional) operator builder
+bop'frac
+  :: (forall a . (Num a, Fractional a) => a -> a -> a)
+  -> Sexp
+  -> Sexp
+  -> RE Sexp
+bop'frac op x y = case (x, y) of
+  (Int      a, Rational b) -> reduce . Rational $ fromIntegral a `op` b
+  (Int      a, Float b   ) -> reduce . Float $ fromIntegral a `op` b
+  (Rational a, Rational b) -> reduce . Rational $ a `op` b
+  (Rational a, Float b   ) -> reduce . Float $ fromRational a `op` b
+  (Float    a, Float b   ) -> reduce . Float $ a `op` b
+  (Complex  a, b         ) -> reduce . Complex $ a `op` uncurry (:+) (toNum b)
+  (a         , b         ) -> bop'frac op b a
+
+-- | Binary arithmetic (integral) operator builder
+bop'int
+  :: (forall a . (Ord a, Num a, Integral a) => a -> a -> a)
+  -> Sexp
+  -> Sexp
+  -> RE Sexp
+bop'int op x y = case (x, y) of
+  (Int a, Int b) -> pure . Int $ a `op` b
+  _              -> undefined
+
+-- | Binary arithmetic (floating) operator builder
+bop'flt
+  :: (forall a . (Num a, Floating a) => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
+bop'flt op x y = case (x, y) of
+  (Int a, Int b) ->
+    pure . Int . floor @Double $ fromIntegral a `op` fromIntegral b
+  (Complex a, b        ) -> reduce . Complex $ a `op` uncurry (:+) (toNum b)
+  (a        , Complex b) -> reduce . Complex $ uncurry (:+) (toNum a) `op` b
+  (a        , b        ) -> reduce . Float $ on op (fst . toNum) a b
+
+-- | Normalize (zero-imaginary) complex and (reducible) rational number if possible
+reduce :: Sexp -> RE Sexp
+reduce = \case
+  a@Complex{} | (snd . toNum $ a) == 0 -> pure . Float . fst . toNum $ a
+              | otherwise              -> pure a
+  a@(Rational r) -> case (numerator r, denominator r) of
+    (_, 0) -> err [errEval, errDivByZero, show' a]
+    (n, d) | d == gcd n d -> pure . Int $ quot n d
+           | otherwise    -> pure a
+  a@Int{}   -> pure a
+  a@Float{} -> pure a
+  a         -> err [errEval, errNotNumber, show' a]
 
 -- | Build functions to get a list item by index
 nth :: Int -> T Sexp Sexp
