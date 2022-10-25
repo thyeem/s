@@ -528,6 +528,18 @@ f'div = nfold g'number (bop'frac (/)) "/"
 f'mod :: Fn
 f'mod = binary g'number (modify (uncurry (bop'int mod')))
 
+-- | numerator
+f'numerator :: Fn
+f'numerator = unary
+  g'rational
+  (\s@(_, Rational r) -> put r s >>= modify (pure . Int . numerator))
+
+-- | denominator
+f'denominator :: Fn
+f'denominator = unary
+  g'rational
+  (\s@(_, Rational r) -> put r s >>= modify (pure . Int . denominator))
+
 -- | rem
 f'rem :: Fn
 f'rem = undefined
@@ -546,39 +558,39 @@ f'expt = binary g'number (modify (uncurry (bop'flt (**))))
 
 -- | sqrt
 f'sqrt :: Fn
-f'sqrt = unary g'number (modify (uop' sqrt))
+f'sqrt = unary g'number (modify (uop'flt sqrt))
 
 -- | exp
 f'exp :: Fn
-f'exp = unary g'number (modify (uop' exp))
+f'exp = unary g'number (modify (uop'flt exp))
 
 -- | log
 f'log :: Fn
-f'log = unary g'number (modify (uop' log))
+f'log = unary g'number (modify (uop'flt log))
 
 -- | sin
 f'sin :: Fn
-f'sin = unary g'number (modify (uop' sin))
+f'sin = unary g'number (modify (uop'flt sin))
 
 -- | cos
 f'cos :: Fn
-f'cos = unary g'number (modify (uop' cos))
+f'cos = unary g'number (modify (uop'flt cos))
 
 -- | tan
 f'tan :: Fn
-f'tan = unary g'number (modify (uop' tan))
+f'tan = unary g'number (modify (uop'flt tan))
 
 -- | asin
 f'asin :: Fn
-f'asin = unary g'number (modify (uop' asin))
+f'asin = unary g'number (modify (uop'flt asin))
 
 -- | acos
 f'acos :: Fn
-f'acos = unary g'number (modify (uop' acos))
+f'acos = unary g'number (modify (uop'flt acos))
 
 -- | atan
 f'atan :: Fn
-f'atan = unary g'number (modify (uop' atan))
+f'atan = unary g'number (modify (uop'flt atan))
 
 -- | truncate
 f'truncate :: Fn
@@ -602,19 +614,39 @@ f'float s = g'unary s >>= g'float
 
 -- | abs
 f'abs :: Fn
-f'abs = unary pure (modify (uop abs))
+f'abs = unary g'number (modify (uop'num abs))
 
 -- | signum
 f'signum :: Fn
-f'signum = undefined
+f'signum = unary g'number (modify (uop'num signum))
 
 -- | (1+)
 f'1p :: Fn
-f'1p = unary pure (modify (uop (+ 1)))
+f'1p = unary pure (modify (uop'num (+ 1)))
 
 -- | (1-)
 f'1m :: Fn
-f'1m = unary pure (modify (uop (subtract 1)))
+f'1m = unary pure (modify (uop'num (subtract 1)))
+
+-- | realpart
+f'realpart :: Fn
+f'realpart = unary g'complex (modify (pure . Float . fst . toNum))
+
+-- | imagpart
+f'imagpart :: Fn
+f'imagpart = unary g'complex (modify (pure . Float . snd . toNum))
+
+-- | conjugate
+f'conjugate :: Fn
+f'conjugate = unary
+  g'complex
+  (\s@(_, Complex c) -> put c s >>= modify (pure . Complex . conjugate))
+
+-- | phase
+f'phase :: Fn
+f'phase = unary
+  g'complex
+  (\s@(_, Complex c) -> put c s >>= modify (pure . Float . phase))
 
 -- | random
 f'random :: Fn
@@ -1010,22 +1042,32 @@ g'bool s = get s >>= \case
 -- | Guard for strings
 g'string :: T Sexp Sexp
 g'string s = get s >>= \case
-  String{} -> pure s
-  a        -> err [errEval, errNotString, show' a]
+  a | stringp a -> pure s
+  a             -> err [errEval, errNotString, show' a]
 
 -- | Guard for lists
 g'list :: T Sexp Sexp
 g'list s = get s >>= \case
-  NIL    -> pure s
-  Cons{} -> pure s
-  List{} -> pure s
-  a      -> err [errEval, errNotList, show' a]
+  a | listp a -> pure s
+  a           -> err [errEval, errNotList, show' a]
 
 -- | Ensure that the state is an integer S-exp
 g'integer :: T Sexp Sexp
 g'integer s = g'number s >>= get >>= \case
-  Int{} -> pure s
-  a     -> err [errEval, errNotInteger, show' a]
+  a | integerp a -> pure s
+  a              -> err [errEval, errNotInteger, show' a]
+
+-- | Ensure that the state is a rational S-exp
+g'rational :: T Sexp Sexp
+g'rational s = g'number s >>= get >>= \case
+  a | rationalp a -> pure s
+  a               -> err [errEval, errNotRational, show' a]
+
+-- | Ensure that the state is a complex S-exp
+g'complex :: T Sexp Sexp
+g'complex s = g'number s >>= get >>= \case
+  a | complexp a -> pure s
+  a              -> err [errEval, errNotRational, show' a]
 
 -- | Ensure that the state is a float S-exp
 g'float :: T Sexp Sexp
@@ -1037,9 +1079,8 @@ g'float s = g'number s >>= get >>= \case
 -- | Ensure that the state is a non-zero S-exp
 g'nzero :: T Sexp Sexp
 g'nzero s = get s >>= \case
-  Int   0 -> err [errEval, errDivByZero]
-  Float 0 -> err [errEval, errDivByZero]
-  _       -> pure s
+  a | numberp a && (fst . toNum $ a) == 0 -> err [errEval, errDivByZero]
+  _ -> pure s
 
 -- | Ensure that the given key is not defined in the local env
 g'undef'lkey :: String -> T Sexp Sexp
@@ -1213,46 +1254,16 @@ toNum = \case
   Complex  x -> (realPart x, imagPart x)
   a          -> die [errEval, errNotNumber, show' a]
 
-
-instance Num Sexp where
-  signum      = undefined
-  fromInteger = Int
-  abs         = \case
-    Complex x -> Float (magnitude x)
-    x | fst (toNum x) >= 0 -> x
-      | otherwise          -> negate x
-
-  a + b = bop (+) a b
-  a - b = bop (+) a (negate b)
-  a * b = bop (*) a b
-
-
-instance Fractional Sexp where
-  fromRational = Rational
-  Int a / Int b = Rational $ fromIntegral a / fromIntegral b
-  a     / b     = case bop'frac (/) a b of
-    Left  e -> die [errEval, errNotAllowed, e]
-    Right x -> x
-
-
--- | Binary operator builder for Num instance deriviation
-bop :: (forall a . Num a => a -> a -> a) -> Sexp -> Sexp -> Sexp
-bop op x y = case (x, y) of
-  (Int a, Int b) -> Int $ a `op` b
-  (a    , b    ) -> case bop'frac op a b of
-    Left  e -> die [errEval, errNotAllowed, e]
-    Right x -> x
-
 -- | Unary arithmetic (num) operator builder
-uop :: (forall a . Num a => a -> a) -> Sexp -> RE Sexp
-uop op = \case
+uop'num :: (forall a . Num a => a -> a) -> Sexp -> RE Sexp
+uop'num op = \case
   Int      a -> pure . Int $ op a
   Rational a -> reduce . Rational $ op a
-  a          -> uop' op a
+  a          -> uop'flt op a
 
 -- | Unary arithmetic (floating) operator builder
-uop' :: (forall a . (Num a, Floating a) => a -> a) -> Sexp -> RE Sexp
-uop' op = \case
+uop'flt :: (forall a . (Num a, Floating a) => a -> a) -> Sexp -> RE Sexp
+uop'flt op = \case
   Complex a -> reduce . Complex $ op a
   a         -> reduce . Float . op . fst . toNum $ a
 
@@ -1269,12 +1280,14 @@ bop'frac
   -> Sexp
   -> RE Sexp
 bop'frac op x y = case (x, y) of
+  (Int a, Int b) -> reduce . Rational $ fromIntegral a `op` fromIntegral b
   (Int      a, Rational b) -> reduce . Rational $ fromIntegral a `op` b
   (Int      a, Float b   ) -> reduce . Float $ fromIntegral a `op` b
   (Rational a, Rational b) -> reduce . Rational $ a `op` b
   (Rational a, Float b   ) -> reduce . Float $ fromRational a `op` b
   (Float    a, Float b   ) -> reduce . Float $ a `op` b
   (Complex  a, b         ) -> reduce . Complex $ a `op` uncurry (:+) (toNum b)
+  (a         , Complex b ) -> reduce . Complex $ uncurry (:+) (toNum a) `op` b
   (a         , b         ) -> bop'frac op b a
 
 -- | Binary arithmetic (integral) operator builder
@@ -1393,7 +1406,7 @@ binary g f = g'binary >=> bimapM (eval >=> g) >=> f
 
 -- | N-fold function builder (arithmetic)
 nfold :: T Sexp Sexp -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-nfold g f msg = g'nary >=> mapM' (eval >=> g) >=> foldNums f msg
+nfold g f msg = g'nary >=> mapM' (eval >=> g) >=> foldNum f msg
 
 -- | N-fold function builder (logical)
 nfold' :: T Sexp Sexp -> (Sexp -> Sexp -> Bool) -> String -> Fn
@@ -1404,8 +1417,8 @@ nfold' g op msg =
       _     -> put (Bool True) s
 
 -- | Fold S-exp numbers using the given binary arithemetic operator.
-foldNums :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-foldNums f o s = get s >>= \case
+foldNum :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
+foldNum f o s = get s >>= \case
   [] -> case o of
     "+" -> put (Int 0) s
     "*" -> put (Int 1) s
@@ -1605,8 +1618,8 @@ built'in =
   , ("*"                    , f'mul)
   , ("/"                    , f'div)
   , ("mod"                  , f'mod)
-  -- numerator
-  -- denominator
+  , ("numerator"            , f'numerator)
+  , ("denominator"          , f'denominator)
   , ("rem"                  , f'rem)
   , ("gcd"                  , f'gcd)
   , ("lcm"                  , f'lcm)
@@ -1629,12 +1642,10 @@ built'in =
   , ("signum"               , f'signum)
   , ("1+"                   , f'1p)
   , ("1-"                   , f'1m)
-  -- COMPLEX-NUMBER
-  -- realpart #c
-  -- imagpart #c
-  -- phase #c
-  -- abs #c
-  -- conjugate #c
+  , ("realpart"             , f'realpart)
+  , ("imagpart"             , f'imagpart)
+  , ("phase"                , f'phase)
+  , ("conjugate"            , f'conjugate)
   , ("random"               , f'random)
   -- (setq *random-state* n)
   , ("ash"                  , f'ash)
@@ -1914,7 +1925,13 @@ errNotInteger :: String
 errNotInteger = "Not an integer:"
 
 errNotFloat :: String
-errNotFloat = "Not a float:"
+errNotFloat = "Not a floating number:"
+
+errNotRational :: String
+errNotRational = "Not a rational number:"
+
+errNotComplex :: String
+errNotComplex = "Not a complex number:"
 
 errNotList :: String
 errNotList = "Not a list:"
@@ -1952,36 +1969,32 @@ sl :: IO ()
 sl = do
   historyFile <- getHomeDirectory <&> (</> ".slisp")
   runInputT (defaultSettings { historyFile = Just historyFile })
-            (loop init'env normal)
+            (loop init'env print')
  where
-  repl s@(env, _) mode@(reader, printer) str =
-    case reader str >>= eval . (env, ) of
-      Left  err      -> outputStrLn err >> loop s mode
-      Right t@(_, x) -> printer x >> loop t mode
+  repl s@(env, _) printer str = case read' str >>= eval . (env, ) of
+    Left  err      -> outputStrLn err >> loop s printer
+    Right t@(_, x) -> printer x >> loop t printer
 
-  normal = (read', print')
-  debug  = (d'read, pretty')
-  loop s@(env, _) mode = do
+  loop s@(env, _) printer = do
     input <- getInputLine "SLISP> "
     case input of
       Nothing -> pure ()
-      Just [] -> loop s normal
+      Just [] -> loop s print'
       Just ";" ->
         outputStrLn "Enabled paste-mode. Ctrl-d to finish"
-          >>  mlLoop [] s mode
-          >>= repl s mode
+          >>  mlLoop [] s printer
+          >>= repl s printer
       Just ";;" ->
-        outputStrLn "Enabled debug-mode. RET to quit" >> loop s debug
-      Just ";;;"  -> d'symbolv env >> loop s mode
-      Just ";;;;" -> d'symbolf env >> loop s mode
-      Just str    -> repl s mode str
+        outputStrLn "Enabled debug-mode. RET to quit" >> loop s pretty'
+      Just ";;;"  -> d'symbolv env >> loop s printer
+      Just ";;;;" -> d'symbolf env >> loop s printer
+      Just str    -> repl s printer str
 
-  mlLoop xs s mode = do
+  mlLoop xs s printer = do
     input <- getInputLine "SLISP| "
     case input of
       Nothing -> pure . unlines . reverse $ xs
-      Just x  -> mlLoop ((x ++ " ") : xs) s mode
-
+      Just x  -> mlLoop ((x ++ " ") : xs) s printer
 
 -- Run SLISP externally: READ-EVAL
 re :: String -> RE (ST Sexp)
@@ -2001,13 +2014,6 @@ rep stream = do
 -- | Debug-mode printer
 pretty' :: (MonadIO m, Pretty a) => a -> InputT m ()
 pretty' = outputStrLn . TL.unpack . pretty
-
--- | Debug-mode reader
-d'read :: String -> RE Sexp
-d'read s = case parse' p'sexp s of
-  Ok ok (State stream _ _) | isEmpty stream -> pure ok
-                           | otherwise      -> err [errRepl, errManySexp]
-  Error state -> err [errRead, errParsing, "\n", TL.unpack (pretty state)]
 
 -- | blank line
 __ :: MonadIO m => InputT m ()
