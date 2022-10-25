@@ -526,7 +526,7 @@ f'div = nfold g'number (bop'frac (/)) "/"
 
 -- | mod
 f'mod :: Fn
-f'mod = binary g'number (modify (uncurry (bop'int mod')))
+f'mod = binary g'real (modify (uncurry (bop'real mod')))
 
 -- | numerator
 f'numerator :: Fn
@@ -542,7 +542,7 @@ f'denominator = unary
 
 -- | rem
 f'rem :: Fn
-f'rem = undefined
+f'rem = binary g'real (modify (uncurry (bop'real mod')))
 
 -- | gcd
 f'gcd :: Fn
@@ -1063,18 +1063,23 @@ g'rational s = g'number s >>= get >>= \case
   a | rationalp a -> pure s
   a               -> err [errEval, errNotRational, show' a]
 
+-- | Ensure that the state is a float S-exp
+g'float :: T Sexp Sexp
+g'float s = g'number s >>= get >>= \case
+  a | floatp a -> pure s
+  a            -> err [errEval, errNotFloat, show' a]
+
+-- | Ensure that the state is a real S-exp
+g'real :: T Sexp Sexp
+g'real s = g'number s >>= get >>= \case
+  a | realp a -> pure s
+  a           -> err [errEval, errNotFloat, show' a]
+
 -- | Ensure that the state is a complex S-exp
 g'complex :: T Sexp Sexp
 g'complex s = g'number s >>= get >>= \case
   a | complexp a -> pure s
   a              -> err [errEval, errNotRational, show' a]
-
--- | Ensure that the state is a float S-exp
-g'float :: T Sexp Sexp
-g'float s = g'number s >>= get >>= \case
-  Int i   -> put (Float . fromIntegral $ i) s
-  Float{} -> pure s
-  a       -> err [errEval, errNotFloat, show' a]
 
 -- | Ensure that the state is a non-zero S-exp
 g'nzero :: T Sexp Sexp
@@ -1292,13 +1297,17 @@ bop'frac op x y = case (x, y) of
 
 -- | Binary arithmetic (integral) operator builder
 bop'int
-  :: (forall a . (Ord a, Num a, Integral a) => a -> a -> a)
-  -> Sexp
-  -> Sexp
-  -> RE Sexp
+  :: (forall a . (Ord a, Integral a) => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
 bop'int op x y = case (x, y) of
   (Int a, Int b) -> pure . Int $ a `op` b
-  _              -> undefined
+  _              -> err [errEval]
+
+-- | Binary arithmetic (real) operator builder
+bop'real
+  :: (forall a . (Num a, Real a) => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
+bop'real op x y = case (x, y) of
+  (Int a, Int b) -> pure . Int $ a `op` b
+  (a    , b    ) -> pure . Float $ (fst . toNum $ a) `op` (fst . toNum $ b)
 
 -- | Binary arithmetic (floating) operator builder
 bop'flt
