@@ -5,8 +5,8 @@
 {-# Language RankNTypes #-}
 {-# Language RecordWildCards #-}
 {-# Language StandaloneDeriving #-}
-{-# Language TypeApplications #-}
 {-# Language TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Text.S.Example.Lisp where
 
@@ -15,11 +15,17 @@ import           Control.Monad                  ( (>=>)
                                                 , foldM
                                                 )
 import           Control.Monad.IO.Class         ( MonadIO )
+import           Data.Complex
 import           Data.Fixed                     ( mod' )
+import           Data.Function                  ( on )
 import           Data.Functor                   ( ($>)
                                                 , (<&>)
                                                 )
 import qualified Data.Map                      as M
+import           Data.Ratio                     ( (%)
+                                                , denominator
+                                                , numerator
+                                                )
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Vector                   as V
 import           System.Console.Haskeline       ( InputT
@@ -64,7 +70,9 @@ import           Text.S                         ( ParserS
 data Sexp = NIL
           | Bool        Bool
           | Int         Integer
+          | Rational    Rational
           | Float       Double
+          | Complex     (Complex Double)
           | Symbol      String
           | Keyword     String
           | Char        String
@@ -169,19 +177,19 @@ set'venv'ifndef k s@(Env {..}, _) = case M.lookup k env'g of
   Nothing -> set'venv k s
 
 -- | Remove S-exp from the env by a symbol-value key
-del'venv :: String -> T Sexp Sexp
+del'venv :: String -> T a a
 del'venv k s = del'lenv k s >>= del'genv k
 
 -- | Remove S-exp from the global-env by a symbol-value key
-del'genv :: String -> T Sexp Sexp
+del'genv :: String -> T a a
 del'genv k s@(env@Env {..}, _) = put' (env { env'g = M.delete k env'g }) s
 
 -- | Remove S-exp from the local-env by a symbol-value key
-del'lenv :: String -> T Sexp Sexp
+del'lenv :: String -> T a a
 del'lenv k s@(env@Env {..}, _) = put' (env { env'l = M.delete k env'l }) s
 
 -- | Remove S-exp from the fn-env by a symbol-value key
-del'fenv :: String -> T Fn Fn
+del'fenv :: String -> T a a
 del'fenv k s@(env@Env {..}, _) = put' (env { env'f = M.delete k env'f }) s
 
 -- | Get S-exp from the env by a symbol-value key
@@ -266,7 +274,9 @@ p'sexp = between
     , p'char
     , p'str
     , p'bool
+    , p'complex
     , p'float
+    , p'rat
     , p'int
     , p'quote
     , p'backquote
@@ -298,9 +308,23 @@ p'bool = Bool <$> (symbol "t" <* end $> True)
 p'int :: Parser Sexp
 p'int = Int <$> integer <* option "" (symbol ".") <* end
 
+-- | Rational parser
+p'rat :: Parser Sexp
+p'rat = integer >>= \a -> symbol "/" *> integer >>= \case
+  b | b == 0 -> fail . unwords $ [errEval, errDivByZero]
+  b          -> pure $ Rational (a % b)
+
 -- | Float parser
 p'float :: Parser Sexp
 p'float = Float <$> floatB <* end
+
+-- | Complex parser
+p'complex :: Parser Sexp
+p'complex = (symbol "#c" <|> symbol "#C") *> between
+  (jump *> symbol "(")
+  (jump *> symbol ")")
+  (jump *> real >>= \a -> jump *> real >>= \b -> pure $ complex a b)
+  where real = p'int <|> p'float
 
 -- | Symbol parser
 p'symbol :: Parser Sexp
@@ -442,9 +466,7 @@ f'quote = g'unary
 
 -- | not
 f'not :: Fn
-f'not = pred' $ \case
-  NIL -> Bool True
-  _   -> NIL
+f'not = pred' not'
 
 -- | or
 f'or :: Fn
@@ -488,19 +510,19 @@ f'max = nfold g'number (bop max) "max"
 
 -- | (+)
 f'add :: Fn
-f'add = nfold g'number (bop (+)) "+"
+f'add = nfold g'number (bop' (+)) "+"
 
 -- | (-)
 f'sub :: Fn
-f'sub = nfold g'number (bop (-)) "-"
+f'sub = nfold g'number (bop' (-)) "-"
 
 -- | (*)
 f'mul :: Fn
-f'mul = nfold g'number (bop (*)) "*"
+f'mul = nfold g'number (bop' (*)) "*"
 
 -- | (/)
 f'div :: Fn
-f'div = nfold g'number (bop (/)) "/"
+f'div = nfold g'number (bop'frac (/)) "/"
 
 -- | mod
 f'mod :: Fn
@@ -522,43 +544,43 @@ f'lcm = undefined
 
 -- | expt
 f'expt :: Fn
-f'expt = binary g'number (modify (uncurry (bop (**))))
+f'expt = binary g'number (modify (uncurry (bop' (**))))
 
 -- | sqrt
 f'sqrt :: Fn
-f'sqrt = unary g'float (modify (uop sqrt))
+f'sqrt = unary g'number (modify (uop' sqrt))
 
 -- | exp
 f'exp :: Fn
-f'exp = unary g'float (modify (uop exp))
+f'exp = unary g'number (modify (uop' exp))
 
 -- | log
 f'log :: Fn
-f'log = unary g'float (modify (uop log))
+f'log = unary g'number (modify (uop' log))
 
 -- | sin
 f'sin :: Fn
-f'sin = unary g'float (modify (uop sin))
+f'sin = unary g'number (modify (uop' sin))
 
 -- | cos
 f'cos :: Fn
-f'cos = unary g'float (modify (uop cos))
+f'cos = unary g'number (modify (uop' cos))
 
 -- | tan
 f'tan :: Fn
-f'tan = unary g'float (modify (uop tan))
+f'tan = unary g'number (modify (uop' tan))
 
 -- | asin
 f'asin :: Fn
-f'asin = unary g'float (modify (uop asin))
+f'asin = unary g'number (modify (uop' asin))
 
 -- | acos
 f'acos :: Fn
-f'acos = unary g'float (modify (uop acos))
+f'acos = unary g'number (modify (uop' acos))
 
 -- | atan
 f'atan :: Fn
-f'atan = unary g'float (modify (uop atan))
+f'atan = unary g'number (modify (uop' atan))
 
 -- | truncate
 f'truncate :: Fn
@@ -613,43 +635,47 @@ f'ash = undefined
 
 -- | atom
 f'atom :: Fn
-f'atom = pred' $ \case
-  NIL       -> Bool True
-  Bool{}    -> Bool True
-  Int{}     -> Bool True
-  Float{}   -> Bool True
-  Symbol{}  -> Bool True
-  Keyword{} -> Bool True
-  String{}  -> Bool True
-  _         -> NIL
+f'atom = pred' atom
 
 -- | symbolp
 f'symbolp :: Fn
-f'symbolp = pred' $ \case
-  NIL      -> Bool True
-  Symbol{} -> Bool True
-  _        -> NIL
+f'symbolp = pred' symbolp
 
 -- | numberp
 f'numberp :: Fn
-f'numberp = pred' $ \case
-  Int{}   -> Bool True
-  Float{} -> Bool True
-  _       -> NIL
+f'numberp = pred' numberp
+
+-- | integerp
+f'integerp :: Fn
+f'integerp = pred' integerp
+
+-- | rationalp
+f'rationalp :: Fn
+f'rationalp = pred' rationalp
+
+-- | floatp
+f'floatp :: Fn
+f'floatp = pred' floatp
+
+-- | realp
+f'realp :: Fn
+f'realp = pred' realp
+
+-- | complexp
+f'complexp :: Fn
+f'complexp = pred' complexp
+
+-- | zerop
+f'zerop :: Fn
+f'zerop = undefined
 
 -- | stringp
 f'stringp :: Fn
-f'stringp = pred' $ \case
-  String{} -> Bool True
-  _        -> NIL
+f'stringp = pred' stringp
 
 -- | listp
 f'listp :: Fn
-f'listp = pred' $ \case
-  NIL    -> Bool True
-  Cons{} -> Bool True
-  List{} -> Bool True
-  _      -> NIL
+f'listp = pred' listp
 
 -- | characterp
 f'characterp :: Fn
@@ -684,15 +710,11 @@ f'boundp s = g'unary s >>= eval >>= g'symbol >>= \t@(_, Symbol k) ->
 
 -- | vectorp
 f'vectorp :: Fn
-f'vectorp = pred' $ \case
-  Vector{} -> Bool True
-  _        -> NIL
+f'vectorp = pred' vectorp
 
 -- | hash-table-p
 f'hashtablep :: Fn
-f'hashtablep = pred' $ \case
-  HashTable{} -> Bool True
-  _           -> NIL
+f'hashtablep = pred' hashtablep
 
 -- | account-p
 f'accoutp :: Fn
@@ -971,22 +993,21 @@ g'notnil s = get s >>= \case
 -- | Guard for symbols
 g'symbol :: T Sexp Sexp
 g'symbol s = get s >>= \case
-  Symbol{} -> pure s
-  a        -> err [errEval, errNotSymbol, show' a]
+  a | symbolp a -> pure s
+  a             -> err [errEval, errNotSymbol, show' a]
 
 -- | Guard for numbers
 g'number :: T Sexp Sexp
 g'number s = get s >>= \case
-  Int{}   -> pure s
-  Float{} -> pure s
-  a       -> err [errEval, errNotNumber, show' a]
+  a | numberp a -> pure s
+  a             -> err [errEval, errNotNumber, show' a]
 
 -- | Guard for boolean
 g'bool :: T Sexp Sexp
 g'bool s = get s >>= \case
-  NIL     -> pure s
-  Float{} -> pure s
-  a       -> err [errEval, errNotNumber, show' a]
+  NIL    -> pure s
+  Bool{} -> pure s
+  a      -> err [errEval, errNotNumber, show' a]
 
 -- | Guard for strings
 g'string :: T Sexp Sexp
@@ -1005,15 +1026,15 @@ g'list s = get s >>= \case
 -- | Ensure that the state is an integer S-exp
 g'integer :: T Sexp Sexp
 g'integer s = g'number s >>= get >>= \case
-  i@Int{} -> put i s
-  a       -> err [errEval, errNotInteger, show' a]
+  Int{} -> pure s
+  a     -> err [errEval, errNotInteger, show' a]
 
 -- | Ensure that the state is a float S-exp
 g'float :: T Sexp Sexp
 g'float s = g'number s >>= get >>= \case
-  Int i     -> put (Float . fromIntegral $ i) s
-  r@Float{} -> put r s
-  a         -> err [errEval, errNotFloat, show' a]
+  Int i   -> put (Float . fromIntegral $ i) s
+  Float{} -> pure s
+  a       -> err [errEval, errNotFloat, show' a]
 
 -- | Ensure that the state is a non-zero S-exp
 g'nzero :: T Sexp Sexp
@@ -1034,24 +1055,104 @@ g'undef'lkey k s@(Env {..}, _) = case M.lookup k env'l of
 ----------
 
 instance Eq Sexp where
-  NIL       == NIL       = True
   Bool    _ == Bool    _ = True
-  Int     a == Int     b = a == b
-  Float   a == Float   b = a == b
+  Char    a == Char    b = a == b
+  String  a == String  b = a == b
   Symbol  a == Symbol  b = a == b
   Keyword a == Keyword b = a == b
-  String  a == String  b = a == b
-  a         == b         = nilp a && nilp b
+  a == b | nilp a && nilp b       = nilp a == nilp b
+         | numberp a && numberp b = toNum a == toNum b
+         | otherwise              = False
 
 
 instance Ord Sexp where
-  Int     a <= Int     b = a <= b
-  Float   a <= Float   b = a <= b
+  Bool    a <= Bool    b = a <= b
+  Char    a <= Char    b = a <= b
+  String  a <= String  b = a <= b
   Symbol  a <= Symbol  b = a <= b
   Keyword a <= Keyword b = a <= b
-  String  a <= String  b = a <= b
-  _         <= _         = False
+  a <= b | nilp a && nilp b   = nilp a <= nilp b
+         | realp a && realp b = (fst . toNum $ a) <= (fst . toNum $ b)
+         | otherwise          = False
 
+
+instance Num Sexp where
+  signum      = undefined
+  fromInteger = Int
+  abs         = \case
+    Complex x -> Float (magnitude x)
+    x | fst (toNum x) >= 0 -> x
+      | otherwise          -> negate x
+
+  -- negate = uop negate
+  a + b = bop'num (+) a b
+  a - b = bop'num (+) a (negate b)
+  a * b = bop'num (*) a b
+
+
+instance Fractional Sexp where
+  fromRational = Rational
+  Int a / Int b = Rational $ fromIntegral a / fromIntegral b
+  a     / b     = case bop'frac (/) a b of
+    Left  e -> die [errEval, errNotAllowed, e]
+    Right x -> x
+
+
+-- | Binary arithmetic operator builder (num)
+uop :: (forall a . Num a => a -> a) -> Sexp -> RE Sexp
+uop op = \case
+  Int      a -> pure . Int $ op a
+  Rational a -> reduce . Rational $ op a
+  a          -> uop' op a
+
+-- | Binary arithmetic operator builder (floating)
+uop' :: (forall a . (Num a, Floating a) => a -> a) -> Sexp -> RE Sexp
+uop' op = \case
+  Complex a -> reduce . Complex $ op a
+  a         -> reduce . Float . op . fst . toNum $ a
+
+-- | Binary operator builder for Num instance
+bop'num :: (forall a . Num a => a -> a -> a) -> Sexp -> Sexp -> Sexp
+bop'num op x y = case (x, y) of
+  (Int a, Int b) -> Int $ a `op` b
+  (a    , b    ) -> case bop'frac op a b of
+    Left  e -> die [errEval, errNotAllowed, e]
+    Right x -> x
+
+-- | Binary arithmetic operator builder (fractional)
+bop'frac
+  :: (forall a . (Num a, Fractional a) => a -> a -> a)
+  -> Sexp
+  -> Sexp
+  -> RE Sexp
+bop'frac op x y = case (x, y) of
+  (Int      a, Rational b) -> reduce . Rational $ fromIntegral a `op` b
+  (Int      a, Float b   ) -> reduce . Float $ fromIntegral a `op` b
+  (Rational a, Rational b) -> reduce . Rational $ a `op` b
+  (Rational a, Float b   ) -> reduce . Float $ fromRational a `op` b
+  (Float    a, Float b   ) -> reduce . Float $ a `op` b
+  (Complex  a, b         ) -> reduce . Complex $ a `op` uncurry (:+) (toNum b)
+  (a         , b         ) -> bop'frac op b a
+
+-- | Binary arithmetic operator builder (integral)
+bop
+  :: (forall a . (Ord a, Num a, Integral a) => a -> a -> a)
+  -> Sexp
+  -> Sexp
+  -> RE Sexp
+bop op x y = case (x, y) of
+  (Int a, Int b) -> pure . Int $ a `op` b
+  _              -> undefined
+
+-- | Binary arithmetic operator builder (floating)
+bop'
+  :: (forall a . (Num a, Floating a) => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
+bop' op x y = case (x, y) of
+  (Int a, Int b) ->
+    pure . Int . floor @Double $ fromIntegral a `op` fromIntegral b
+  (Complex a, b        ) -> reduce . Complex $ a `op` uncurry (:+) (toNum b)
+  (a        , Complex b) -> reduce . Complex $ uncurry (:+) (toNum a) `op` b
+  (a        , b        ) -> reduce . Float $ on op (fst . toNum) a b
 
 -- | Check if the given S-exp is identical to 'NIL'
 nilp :: Sexp -> Bool
@@ -1064,17 +1165,134 @@ nilp = \case
   (Backquote (List [])) -> True
   _                     -> False
 
--- |
+-- | Check if the given S-exp is an atom
 atom :: Sexp -> Bool
 atom = \case
-  NIL       -> True
-  Bool{}    -> True
-  Int{}     -> True
-  Float{}   -> True
-  Symbol{}  -> True
-  Keyword{} -> True
-  String{}  -> True
-  _         -> False
+  a | nilp a -> True
+  Bool{}     -> True
+  Int{}      -> True
+  Rational{} -> True
+  Float{}    -> True
+  Complex{}  -> True
+  Char{}     -> True
+  String{}   -> True
+  Symbol{}   -> True
+  Keyword{}  -> True
+  _          -> False
+
+-- | Check if the given S-exp is a symbol
+symbolp :: Sexp -> Bool
+symbolp = \case
+  a | nilp a -> True
+  Symbol{}   -> True
+  _          -> False
+
+-- | Check if the given S-exp is a string
+stringp :: Sexp -> Bool
+stringp = \case
+  String{} -> True
+  _        -> False
+
+-- | Check if the given S-exp is a list
+listp :: Sexp -> Bool
+listp = \case
+  a | nilp a -> True
+  Cons{}     -> True
+  List{}     -> True
+  _          -> False
+
+-- | Check if the given S-exp is a vector
+vectorp :: Sexp -> Bool
+vectorp = \case
+  Vector{} -> True
+  _        -> False
+
+-- | Check if the given S-exp is a hash-table
+hashtablep :: Sexp -> Bool
+hashtablep = \case
+  HashTable{} -> True
+  _           -> False
+
+-- | Unbox an S-exp object related to number
+toNum :: Sexp -> (Double, Double)
+toNum = \case
+  Int      x -> (fromIntegral x, 0)
+  Rational x -> (fromRational x, 0)
+  Float    x -> (x, 0)
+  Complex  x -> (realPart x, imagPart x)
+  a          -> die [errEval, errNotNumber, show' a]
+
+-- | Normalize (zero-imaginary) complex and (reducible) rational number if possible
+reduce :: Sexp -> RE Sexp
+reduce = \case
+  a@Complex{} | (snd . toNum $ a) == 0 -> pure . Float . fst . toNum $ a
+              | otherwise              -> pure a
+  a@(Rational r) -> case (numerator r, denominator r) of
+    (_, 0) -> err [errEval, errDivByZero, show' a]
+    (n, d) | d == gcd n d -> pure . Int $ quot n d
+           | otherwise    -> pure a
+  a@Int{}   -> pure a
+  a@Float{} -> pure a
+  a         -> err [errEval, errNotNumber, show' a]
+
+-- | Check if the given S-exp is a number
+numberp :: Sexp -> Bool
+numberp x = realp x || complexp x
+
+-- | Check if the given S-exp is a complex number
+complexp :: Sexp -> Bool
+complexp x = case reduce x of
+  Left  _ -> False
+  Right a -> case a of
+    Complex{} -> True
+    _         -> False
+
+-- | Complex number builder
+complex :: Sexp -> Sexp -> Sexp
+complex a b = case reduce c of
+  Left  _ -> NIL
+  Right x -> x
+  where c = Complex (on (:+) (fst . toNum) a b)
+
+-- | Check if the given S-exp is a real number
+realp :: Sexp -> Bool
+realp x = case reduce x of
+  Left  _ -> False
+  Right a -> integerp a || rationalp a || floatp a
+
+-- | Check if the given S-exp is an integer
+integerp :: Sexp -> Bool
+integerp x = case reduce x of
+  Left  _ -> False
+  Right a -> case a of
+    Int{} -> True
+    _     -> False
+
+-- | Check if the given S-exp is a rational number
+rationalp :: Sexp -> Bool
+rationalp = \case
+  Rational{} -> True
+  _          -> False
+
+-- | Check if the given S-exp is a floating number
+floatp :: Sexp -> Bool
+floatp x = case reduce x of
+  Left  _ -> False
+  Right a -> case a of
+    Float{} -> True
+    _       -> False
+
+-- | Convert to LISP boolean notations
+t'nil :: Bool -> Sexp
+t'nil = \case
+  True -> Bool True
+  _    -> NIL
+
+-- |
+not' :: Sexp -> Bool
+not' = \case
+  a | nilp a -> True
+  _          -> False
 
 -- |
 or' :: Sexp -> Sexp -> RE Sexp
@@ -1117,20 +1335,6 @@ cdr s = g'list s >>= get >>= \case
   List (_ : xs) -> put (List xs) s
   _             -> put NIL s
 
--- | Concatenates all the elements of the state result
-concat' :: T Sexp Sexp
-concat' s = get s >>= \case
-  a | nilp a -> put NIL s
-  List l     -> put l s >>= go []
-  a          -> err [errEval, errNotList, show' a]
- where
-  go r s@(_, xs) = case xs of
-    []       -> put (concat . reverse $ r) s >>= modify (pure . List)
-    x : rest -> case x of
-      NIL    -> put rest s >>= go r
-      List l -> put rest s >>= go (l : r)
-      a      -> err [errEval, errNotList, show' a]
-
 -- | Turn the state result to its head value
 head' :: String -> T [a] a
 head' msg s = g'nempty msg s >>= modify (pure . head)
@@ -1172,8 +1376,43 @@ arity p s@(_, x : args)
 arity _ _ = err [errEval, errNoArgs, "arity"]
 
 -- | Predicate builder
-pred' :: (Sexp -> Sexp) -> T [Sexp] Sexp
-pred' p s = g'unary s >>= eval >>= modify (pure . p)
+pred' :: (Sexp -> Bool) -> T [Sexp] Sexp
+pred' p s = g'unary s >>= eval >>= modify (pure . t'nil . p)
+
+-- | Unary function builder
+unary :: T Sexp Sexp -> T Sexp Sexp -> Fn
+unary g f = g'unary >=> eval >=> g >=> f
+
+-- | Binary function builder
+binary :: T Sexp Sexp -> T (Sexp, Sexp) Sexp -> Fn
+binary g f = g'binary >=> bimapM (eval >=> g) >=> f
+
+-- | N-fold function builder (arithmetic)
+nfold :: T Sexp Sexp -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
+nfold g f msg = g'nary >=> mapM' (eval >=> g) >=> foldNums f msg
+
+-- | N-fold function builder (logical)
+nfold' :: T Sexp Sexp -> (Sexp -> Sexp -> Bool) -> String -> Fn
+nfold' g op msg =
+  g'nary >=> g'nempty msg >=> mapM' (eval >=> g) >=> \s@(_, l) ->
+    put (and $ zipWith op l (tail l)) s >>= get >>= \case
+      False -> put NIL s
+      _     -> put (Bool True) s
+
+-- | Fold S-exp numbers using the given binary arithemetic operator.
+foldNums :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
+foldNums f o s = get s >>= \case
+  [] -> case o of
+    "+" -> put (Int 0) s
+    "*" -> put (Int 1) s
+    _   -> err [errEval, errNoArgs, o]
+  [x] -> case o of
+    "-" -> put x s >>= modify (f (Int 0))
+    "/" -> put x s >>= g'nzero >>= modify (f (Int 1))
+    _   -> put x s
+  (x : xs) -> case o of
+    "/" -> put xs s >>= mapM' g'nzero >>= modify (foldM f x)
+    _   -> put xs s >>= modify (foldM f x)
 
 -- | Map the list-form state result 'ST' to an action.
 mapM' :: T a b -> T [a] [b]
@@ -1207,6 +1446,20 @@ foldrM f s = get s >>= \case
   go a t@(_, xs) = case xs of
     []       -> put a t
     x : rest -> put rest t >>= go a >>= \u@(_, v) -> put (x, v) u >>= f
+
+-- | Concatenates all the elements of the state result
+concat' :: T Sexp Sexp
+concat' s = get s >>= \case
+  a | nilp a -> put NIL s
+  List l     -> put l s >>= go []
+  a          -> err [errEval, errNotList, show' a]
+ where
+  go r s@(_, xs) = case xs of
+    []       -> put (concat . reverse $ r) s >>= modify (pure . List)
+    x : rest -> case x of
+      NIL    -> put rest s >>= go r
+      List l -> put rest s >>= go (l : r)
+      a      -> err [errEval, errNotList, show' a]
 
 -- | Evaluate backquoted S-exp
 eval'backquote :: Int -> T Sexp Sexp
@@ -1318,62 +1571,6 @@ defsym :: (String -> T Sexp Sexp) -> Fn
 defsym f s = g'binary s >>= get >>= \case
   (x@(Symbol k), a) -> put a s >>= eval >>= f k >>= put x
   x                 -> err [errEval, errNotSymbol, show' (fst x)]
-
--- | Unary arithmetic operator builder
-uop
-  :: (forall a . (Num a, RealFrac a, Floating a) => a -> a) -> Sexp -> RE Sexp
-uop f = \case
-  Int   a -> pure . Int . floor . f @Double . fromIntegral $ a
-  Float a -> pure . Float . f $ a
-  _       -> err [errEval, errNotAllowed, "uop"]
-
--- | Binary arithmetic operator builder
-bop
-  :: (forall a . (Num a, RealFrac a, Floating a) => a -> a -> a)
-  -> Sexp
-  -> Sexp
-  -> RE Sexp
-bop op x y = case (x, y) of
-  (Int   a, Int b  ) -> pure . Float $ fromIntegral a `op` fromIntegral b
-  (Int   a, Float b) -> pure . Float $ fromIntegral a `op` b
-  (Float a, Int b  ) -> pure . Float $ a `op` fromIntegral b
-  (Float a, Float b) -> pure . Float $ a `op` b
-  _                  -> err [errEval, errNotAllowed, "bop"]
-
--- | Unary function builder
-unary :: T Sexp Sexp -> T Sexp Sexp -> Fn
-unary g f = g'unary >=> eval >=> g >=> f
-
--- | Binary function builder
-binary :: T Sexp Sexp -> T (Sexp, Sexp) Sexp -> Fn
-binary g f = g'binary >=> bimapM (eval >=> g) >=> f
-
--- | N-fold function builder (arithmetic)
-nfold :: T Sexp Sexp -> (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-nfold g f msg = g'nary >=> mapM' (eval >=> g) >=> foldNums f msg
-
--- | N-fold function builder (logical)
-nfold' :: T Sexp Sexp -> (Sexp -> Sexp -> Bool) -> String -> Fn
-nfold' g op msg =
-  g'nary >=> g'nempty msg >=> mapM' (eval >=> g) >=> \s@(_, l) ->
-    put (and $ zipWith op l (tail l)) s >>= get >>= \case
-      False -> put NIL s
-      _     -> put (Bool True) s
-
--- | Fold S-exp numbers using the given binary arithemetic operator.
-foldNums :: (Sexp -> Sexp -> RE Sexp) -> String -> Fn
-foldNums f o s = get s >>= \case
-  [] -> case o of
-    "+" -> put (Int 0) s
-    "*" -> put (Int 1) s
-    _   -> err [errEval, errNoArgs, o]
-  [x] -> case o of
-    "-" -> put x s >>= modify (f (Int 0))
-    "/" -> put x s >>= g'nzero >>= modify (f (Int 1))
-    _   -> put x s
-  (x : xs) -> case o of
-    "/" -> put xs s >>= mapM' g'nzero >>= modify (foldM f x)
-    _   -> put xs s >>= modify (foldM f x)
 
 -- | LISP built-in functions
 built'in :: [(String, Fn)]
@@ -1587,12 +1784,12 @@ built'in =
   , ("atom"                 , f'atom)
   , ("symbolp"              , f'symbolp)
   , ("numberp"              , f'numberp)
-  , ("integerp"             , undefined)
-  , ("rationalp"            , undefined)
-  , ("floatp"               , undefined)
-  , ("realp"                , undefined)
-  , ("complexp"             , undefined)
-  , ("zerop"                , undefined)
+  , ("integerp"             , f'integerp)
+  , ("rationalp"            , f'rationalp)
+  , ("floatp"               , f'floatp)
+  , ("realp"                , f'realp)
+  , ("complexp"             , f'complexp)
+  , ("zerop"                , f'zerop)
   , ("stringp"              , f'stringp)
   , ("listp"                , f'listp)
   -- character fn
@@ -1626,10 +1823,14 @@ print' = outputStrLn . show'
 -- | Stringify S-expression
 show' :: Sexp -> String
 show' = \case
-  NIL                 -> "nil"
-  Bool      _         -> "t"
-  Int       intger    -> show intger
-  Float     float     -> show float
+  NIL          -> "nil"
+  Bool  _      -> "t"
+  Int   intger -> show intger
+  Float float  -> show float
+  Rational rational ->
+    show (numerator rational) ++ "/" ++ show (denominator rational)
+  Complex complex ->
+    "#C(" ++ unwords [show (realPart complex), show (imagPart complex)] ++ ")"
   Symbol    symbol    -> symbol
   Keyword   keyword   -> keyword
   Char      char      -> "#\\" ++ char
@@ -1665,6 +1866,9 @@ deriving instance Pretty Sexp
 
 deriving instance Pretty Env
 
+
+die :: [String] -> a
+die = errorWithoutStackTrace . unwords
 
 err :: [String] -> RE a
 err = Left . unwords

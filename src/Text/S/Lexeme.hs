@@ -357,7 +357,7 @@ skipc def = skipMany $ linec def <|> blockc def
 
 -- | Parses a single line comment
 linec :: Stream s => LanguageDef s -> ParserS s String
-linec def = some p *> (manyTill eol anychar <|> manyTill eof anychar)
+linec def = some p *> (manyTill eol (anycharBut '\n') <|> manyTill eof anychar)
   where p = defCommentLine def
 {-# INLINABLE linec #-}
 

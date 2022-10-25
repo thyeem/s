@@ -52,7 +52,7 @@ module Text.S.Internal
   , ttf
   , tsf
   , unwrap
-  , error'
+  , die
   , CondExpr(..)
   , (?)
   , Pretty(..)
@@ -197,7 +197,7 @@ instance Monoid Source where
 
 appendSource :: Source -> Source -> Source
 appendSource s1@Source{} s2@Source{}
-  | sourceName s1 /= sourceName s2 = error' "two source names do not match"
+  | sourceName s1 /= sourceName s2 = die "two source names do not match"
   | s1 < s2                        = s2
   | otherwise                      = s1
 {-# INLINE appendSource #-}
@@ -460,7 +460,7 @@ ts :: Stream s => ParserS s a -> s -> s
 ts parser = sOnly . parse' parser
  where
   sOnly (Ok _ (State s _ _)) = s
-  sOnly (Error state       ) = error' . show . stateMesssages $ state
+  sOnly (Error state       ) = die . show . stateMesssages $ state
 
 -- | Tests parsers and its combinators with the given file, then print it.
 -- The same as 't', but parse to test with files.
@@ -478,17 +478,17 @@ tsf :: FilePath -> ParserS Text a -> IO Text
 tsf file parser = sOnly <$> parseFile parser file
  where
   sOnly (Ok _ (State s _ _)) = s
-  sOnly (Error state       ) = error' . show . stateMesssages $ state
+  sOnly (Error state       ) = die . show . stateMesssages $ state
 
 -- | Unwraps 'Result' @a s@, then gets 'Ok' @ok@ or 'Error' @err@.
 unwrap :: Stream s => Result a s -> a
 unwrap = \case
   Ok ok _     -> ok
-  Error state -> error' . show $ state
+  Error state -> die . show $ state
 
 -- | Raise error without annoying stacktrace
-error' :: String -> a
-error' = errorWithoutStackTrace
+die :: String -> a
+die = errorWithoutStackTrace
 
 -- | Conditional expression of if-then-else
 data CondExpr a = a ::: a
