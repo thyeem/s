@@ -1,6 +1,7 @@
 {-# Language DeriveAnyClass #-}
 {-# Language FlexibleInstances #-}
 {-# Language LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# Language OverloadedStrings #-}
 {-# Language RankNTypes #-}
 {-# Language RecordWildCards #-}
@@ -37,8 +38,10 @@ import           System.Console.Haskeline       ( InputT
                                                 )
 import           System.Directory               ( getHomeDirectory )
 import           System.FilePath                ( (</>) )
-import           System.Random                  ( mkStdGen
+import           System.Random                  ( StdGen
+                                                , mkStdGen
                                                 , randomR
+                                                , randomRIO
                                                 )
 import           Text.S                         ( ParserS
                                                 , Pretty(pretty)
@@ -133,7 +136,8 @@ put' env (_, x) = pure (env, x)
 ----------
 -- | SLISP environment
 data Env = Env
-  { env'g :: M.Map String Sexp
+  { env'r :: StdGen
+  , env'g :: M.Map String Sexp
   , env'l :: M.Map String Sexp
   , env'f :: M.Map String Fn
   }
@@ -144,15 +148,15 @@ instance Semigroup Env where
   (<>) = undefined
 
 instance Monoid Env where
-  mempty = Env mempty mempty mempty
+  mempty = Env (mkStdGen 0) mempty mempty mempty
 
 -- | Empty environment
 null'env :: ST Sexp
 null'env = (mempty, NIL)
 
 -- | Initialize SLISP environment
-init'env :: ST Sexp
-init'env = (Env mempty mempty (M.fromList built'in), NIL)
+init'env :: Int -> ST Sexp
+init'env seed = (Env (mkStdGen seed) mempty mempty (M.fromList built'in), NIL)
 
 -- | Insert a symbol-value key and a S-exp to the env
 set'venv :: String -> T Sexp Sexp
@@ -643,14 +647,7 @@ f'phase = unary g'number (modify (pure . Float . phase . unComplex))
 
 -- | random
 f'random :: Fn
-f'random = unary
-  g'number
-  (\s@(_, x) -> case x of
-    Float a -> put (Float . random $ a) s
-    Int   a -> put (Int . random $ a) s
-    _       -> err [errEval, errNotAllowed, "random"]
-  )
-  where random x = fst $ randomR (0, x) (mkStdGen 1)
+f'random = unary g'real random
 
 -- | ash
 f'ash :: Fn
@@ -1342,6 +1339,28 @@ reduce = \case
   a@Float{} -> pure a
   a         -> err [errEval, errNotNumber, show' a]
 
+-- | Generate a uniform random number smaller than the given real number
+random :: T Sexp Sexp
+random s@(_, x) = g'real s >>= get'rng >>= \t@(_, g) ->
+  put NIL t >>= set'genv "*random-seed*" >>= \u@(env, _) ->
+    let rand r a = randomR (0, a) r
+        update a = env { env'r = snd (rand g a) }
+    in  case x of
+          Int a -> put (Int . fst $ rand g a) u >>= put' (update a)
+          a     -> put (Float . fst $ rand g (fst . toNum $ a)) u
+            >>= put' (update (fst . toNum $ a))
+
+-- | Get random number generator from the given Env
+get'rng :: T a StdGen
+get'rng s@(env, _) = from'genv' "*random-seed*" s >>= get >>= \case
+  NIL -> put (env'r env) s
+  a
+    | integerp a
+    -> let env'r = mkStdGen (fromIntegral . unInt $ a)
+       in  put' (env { env'r }) s >>= put env'r
+    | otherwise
+    -> err [errEval, "Invalid random-seed used:", show' a]
+
 -- | Build functions to get a list item by index
 nth :: Int -> T Sexp Sexp
 nth i s = get s >>= \case
@@ -1993,9 +2012,10 @@ errNotAllowed = "Operation not allowed:"
 -- | REPL for SLISP
 sl :: IO ()
 sl = do
+  seed        <- randomRIO (minBound :: Int, maxBound :: Int)
   historyFile <- getHomeDirectory <&> (</> ".slisp")
   runInputT (defaultSettings { historyFile = Just historyFile })
-            (loop init'env print')
+            (loop (init'env seed) print')
  where
   repl s@(env, _) printer str = case read' str >>= eval . (env, ) of
     Left  err      -> outputStrLn err >> loop s printer
@@ -2023,13 +2043,14 @@ sl = do
       Just x  -> mlLoop ((x ++ " ") : xs) s printer
 
 -- Run SLISP externally: READ-EVAL
-re :: String -> RE (ST Sexp)
-re stream = read' stream >>= flip put init'env >>= eval
+re :: String -> T Sexp Sexp
+re stream s = read' stream >>= flip put s >>= eval
 
 -- Run SLISP externally: READ-EVAL-PRINT
 rep :: String -> IO ()
 rep stream = do
-  case re stream of
+  seed <- randomRIO (minBound :: Int, maxBound :: Int)
+  case re stream (init'env seed) of
     Left  err    -> putStrLn err
     Right (_, x) -> putStrLn (show' x)
 
@@ -2049,6 +2070,9 @@ __ = outputStrLn mempty
 d'symbolv :: MonadIO m => Env -> InputT m ()
 d'symbolv Env {..} =
   __
+    >> outputStrLn "*** random number generator state ***"
+    >> outputStrLn (show env'r)
+    >> __
     >> outputStrLn "*** global symbol values: [(symbol \"key\", S-exp)] ***"
     >> pretty' (M.toList env'g)
     >> __

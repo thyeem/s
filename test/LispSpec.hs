@@ -10,7 +10,7 @@ spec = do
 
 t :: String -> String
 t stream = do
-  case re stream of
+  case re stream (init'env 0) of
     Left  err    -> err
     Right (_, e) -> show' e
 
