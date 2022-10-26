@@ -502,11 +502,11 @@ f'GE = nfold' g'number (>=) ">="
 
 -- | min
 f'min :: Fn
-f'min = nfold g'number (bop'int min) "min"
+f'min = nfold g'real (bop'real min) "min"
 
 -- | max
 f'max :: Fn
-f'max = nfold g'number (bop'int max) "max"
+f'max = nfold g'real (bop'real max) "max"
 
 -- | (+)
 f'add :: Fn
@@ -530,27 +530,15 @@ f'mod = binary g'real (modify (uncurry (bop'real mod')))
 
 -- | numerator
 f'numerator :: Fn
-f'numerator = unary
-  g'rational
-  (\s@(_, Rational r) -> put r s >>= modify (pure . Int . numerator))
+f'numerator = unary g'rational (modify (pure . Int . numerator . unRat))
 
 -- | denominator
 f'denominator :: Fn
-f'denominator = unary
-  g'rational
-  (\s@(_, Rational r) -> put r s >>= modify (pure . Int . denominator))
+f'denominator = unary g'rational (modify (pure . Int . denominator . unRat))
 
 -- | rem
 f'rem :: Fn
 f'rem = binary g'real (modify (uncurry (bop'real mod')))
-
--- | gcd
-f'gcd :: Fn
-f'gcd = binary g'integer (modify (uncurry (bop'int gcd)))
-
--- | lcm
-f'lcm :: Fn
-f'lcm = binary g'integer (modify (uncurry (bop'int lcm)))
 
 -- | expt
 f'expt :: Fn
@@ -592,21 +580,29 @@ f'acos = unary g'number (modify (uop'flt acos))
 f'atan :: Fn
 f'atan = unary g'number (modify (uop'flt atan))
 
+-- | gcd
+f'gcd :: Fn
+f'gcd = binary g'integer (modify (uncurry (bop'int gcd)))
+
+-- | lcm
+f'lcm :: Fn
+f'lcm = binary g'integer (modify (uncurry (bop'int lcm)))
+
 -- | truncate
 f'truncate :: Fn
-f'truncate = undefined
-
--- | round
-f'round :: Fn
-f'round = undefined
-
--- | ceiling
-f'ceiling :: Fn
-f'ceiling = undefined
+f'truncate = unary g'real (modify (uop'int truncate))
 
 -- | floor
 f'floor :: Fn
-f'floor = undefined
+f'floor = unary g'real (modify (uop'int floor))
+
+-- | round
+f'round :: Fn
+f'round = unary g'real (modify (uop'int round))
+
+-- | ceiling
+f'ceiling :: Fn
+f'ceiling = unary g'real (modify (uop'int ceiling))
 
 -- | float
 f'float :: Fn
@@ -630,23 +626,20 @@ f'1m = unary pure (modify (uop'num (subtract 1)))
 
 -- | realpart
 f'realpart :: Fn
-f'realpart = unary g'complex (modify (pure . Float . fst . toNum))
+f'realpart = unary g'number (modify (pure . Float . fst . toNum))
 
 -- | imagpart
 f'imagpart :: Fn
-f'imagpart = unary g'complex (modify (pure . Float . snd . toNum))
+f'imagpart = unary g'number (modify (pure . Float . snd . toNum))
 
 -- | conjugate
 f'conjugate :: Fn
-f'conjugate = unary
-  g'complex
-  (\s@(_, Complex c) -> put c s >>= modify (pure . Complex . conjugate))
+f'conjugate =
+  unary g'number (modify (reduce . Complex . conjugate . unComplex))
 
 -- | phase
 f'phase :: Fn
-f'phase = unary
-  g'complex
-  (\s@(_, Complex c) -> put c s >>= modify (pure . Float . phase))
+f'phase = unary g'number (modify (pure . Float . phase . unComplex))
 
 -- | random
 f'random :: Fn
@@ -1015,12 +1008,6 @@ g'bound :: T Sexp Sexp
 g'bound s = eval s >>= g'symbol >>= get >>= \(Symbol k) -> from'venv k s
 
 -- | Guard for symbols
-g'notnil :: T Sexp Sexp
-g'notnil s = get s >>= \case
-  NIL -> err [errEval, errUnexpected, "NOT-NIL."]
-  _   -> pure s
-
--- | Guard for symbols
 g'symbol :: T Sexp Sexp
 g'symbol s = get s >>= \case
   a | symbolp a -> pure s
@@ -1073,13 +1060,13 @@ g'float s = g'number s >>= get >>= \case
 g'real :: T Sexp Sexp
 g'real s = g'number s >>= get >>= \case
   a | realp a -> pure s
-  a           -> err [errEval, errNotFloat, show' a]
+  a           -> err [errEval, errNotReal, show' a]
 
 -- | Ensure that the state is a complex S-exp
 g'complex :: T Sexp Sexp
 g'complex s = g'number s >>= get >>= \case
   a | complexp a -> pure s
-  a              -> err [errEval, errNotRational, show' a]
+  a              -> err [errEval, errNotComplex, show' a]
 
 -- | Ensure that the state is a non-zero S-exp
 g'nzero :: T Sexp Sexp
@@ -1194,7 +1181,7 @@ complexp x = case reduce x of
 -- | Complex number builder
 complex :: Sexp -> Sexp -> Sexp
 complex a b = case reduce c of
-  Left  _ -> NIL
+  Left  e -> die [errSys, e]
   Right x -> x
   where c = Complex (on (:+) (fst . toNum) a b)
 
@@ -1250,14 +1237,34 @@ and' a b = case (a, b) of
   (NIL, _) -> pure NIL
   (_  , b) -> pure b
 
--- | Unbox an S-exp object related to number
+-- | Unbox an S-exp number object and convet it into complex-form (partial)
 toNum :: Sexp -> (Double, Double)
 toNum = \case
   Int      x -> (fromIntegral x, 0)
   Rational x -> (fromRational x, 0)
   Float    x -> (x, 0)
   Complex  x -> (realPart x, imagPart x)
-  a          -> die [errEval, errNotNumber, show' a]
+  a          -> die [errSys, show' a]
+
+-- | Unbox an S-exp number object (partial)
+unInt :: Sexp -> Integer
+unInt = \case
+  Int x -> x
+  a     -> die [errSys, show' a]
+
+-- | Unbox an S-exp number object (partial)
+unRat :: Sexp -> Rational
+unRat = \case
+  Rational x -> x
+  a          -> die [errSys, show' a]
+
+-- | Unbox an S-exp number object (partial)
+unFloat :: Sexp -> Double
+unFloat = fst . toNum
+
+-- | Unbox an S-exp number object (partial)
+unComplex :: Sexp -> Complex Double
+unComplex = uncurry (:+) . toNum
 
 -- | Unary arithmetic (num) operator builder
 uop'num :: (forall a . Num a => a -> a) -> Sexp -> RE Sexp
@@ -1265,6 +1272,11 @@ uop'num op = \case
   Int      a -> pure . Int $ op a
   Rational a -> reduce . Rational $ op a
   a          -> uop'flt op a
+
+-- | Unary arithmetic (integral) operator builder
+uop'int :: (forall a . RealFrac a => a -> Integer) -> Sexp -> RE Sexp
+uop'int op = \case
+  a -> pure . Int . op . fst . toNum $ a
 
 -- | Unary arithmetic (floating) operator builder
 uop'flt :: (forall a . (Num a, Floating a) => a -> a) -> Sexp -> RE Sexp
@@ -1298,9 +1310,7 @@ bop'frac op x y = case (x, y) of
 -- | Binary arithmetic (integral) operator builder
 bop'int
   :: (forall a . (Ord a, Integral a) => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
-bop'int op x y = case (x, y) of
-  (Int a, Int b) -> pure . Int $ a `op` b
-  _              -> err [errEval]
+bop'int op x y = pure . Int $ unInt x `op` unInt y
 
 -- | Binary arithmetic (real) operator builder
 bop'real
@@ -1439,6 +1449,10 @@ foldNum f o s = get s >>= \case
   (x : xs) -> case o of
     "/" -> put xs s >>= mapM' g'nzero >>= modify (foldM f x)
     _   -> put xs s >>= modify (foldM f x)
+
+-- | Mirros 'Data.Bifunctor.bimap', but use one function when mapping over
+bimap' :: (a -> b) -> (a, a) -> (b, b)
+bimap' f (x, y) = (f x, f y)
 
 -- | Map the list-form state result 'ST' to an action.
 mapM' :: T a b -> T [a] [b]
@@ -1906,6 +1920,9 @@ errRepl = "*** REPL error ***"
 errRead :: String
 errRead = "*** Read error ***"
 
+errSys :: String
+errSys = "*** SYSTEM BROKEN *** Entering unreachable area. Fix it:"
+
 errInvalidFn :: String
 errInvalidFn = "Invalid function:"
 
@@ -1939,6 +1956,9 @@ errNotFloat = "Not a floating number:"
 errNotRational :: String
 errNotRational = "Not a rational number:"
 
+errNotReal :: String
+errNotReal = "Not a real number:"
+
 errNotComplex :: String
 errNotComplex = "Not a complex number:"
 
@@ -1962,9 +1982,6 @@ errDivByZero = "Arithmetic error: DIVISION-BY-ZERO"
 
 errNotInBackquote :: String
 errNotInBackquote = "Not inside backquote:"
-
-errUnexpected :: String
-errUnexpected = "Expected:"
 
 errNotAllowed :: String
 errNotAllowed = "Operation not allowed:"
