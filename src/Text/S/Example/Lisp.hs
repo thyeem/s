@@ -1341,14 +1341,14 @@ reduce = \case
 
 -- | Generate a uniform random number smaller than the given real number
 random :: T Sexp Sexp
-random s@(_, x) = g'real s >>= get'rng >>= \t@(_, g) ->
-  put NIL t >>= set'genv "*random-seed*" >>= \u@(env, _) ->
-    let rand r a = randomR (0, a) r
-        update a = env { env'r = snd (rand g a) }
-    in  case x of
-          Int a -> put (Int . fst $ rand g a) u >>= put' (update a)
-          a     -> put (Float . fst $ rand g (fst . toNum $ a)) u
-            >>= put' (update (fst . toNum $ a))
+random s@(_, x) = g'real s >>= get'rng >>= \t@(env, g) ->
+  let r a = randomR (0, a) g
+      rand a = fst . r $ a
+      next a = env { env'r = snd . r $ a }
+  in  case x of
+        Int a -> put (Int . rand $ a) t >>= put' (next a)
+        a     -> put (Float . rand . fst . toNum $ a) t
+          >>= put' (next . fst . toNum $ a)
 
 -- | Get random number generator from the given Env
 get'rng :: T a StdGen
@@ -1357,7 +1357,7 @@ get'rng s@(env, _) = from'genv' "*random-seed*" s >>= get >>= \case
   a
     | integerp a
     -> let env'r = mkStdGen (fromIntegral . unInt $ a)
-       in  put' (env { env'r }) s >>= put env'r
+       in  put' (env { env'r }) s >>= put env'r >>= del'genv "*random-seed*"
     | otherwise
     -> err [errEval, "Invalid random-seed used:", show' a]
 
