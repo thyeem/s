@@ -22,7 +22,9 @@ import           Data.Function                  ( on )
 import           Data.Functor                   ( ($>)
                                                 , (<&>)
                                                 )
-import           Data.List                      ( sort )
+import           Data.List                      ( sort
+                                                , transpose
+                                                )
 import qualified Data.Map                      as M
 import           Data.Ratio                     ( (%)
                                                 , denominator
@@ -86,7 +88,6 @@ data Sexp = NIL
           | Comma       Sexp
           | At          Sexp
           | Cons        Sexp Sexp
-          | Seq         [Sexp]
           | List        [Sexp]
           | Vector      (V.Vector Sexp)
           | HashTable   (M.Map String Sexp)
@@ -407,7 +408,6 @@ eval s = get s >>= \case
   Symbol    k  -> from'venv k s
   Quote     a  -> put a s
   Backquote a  -> put a s >>= eval'backquote 1
-  Seq       xs -> put xs s >>= eval'seq
   List      xs -> put xs s >>= apply
   a@Cons{}     -> err [errEval, errInvalidFn, show' a]
   a@Comma{}    -> err [errEval, errNotInBackquote, show' a]
@@ -594,19 +594,19 @@ f'lcm = binary g'integer (modify (uncurry (bop'int lcm)))
 
 -- | truncate
 f'truncate :: Fn
-f'truncate = unary g'real (modify (uop'int truncate))
+f'truncate = unary g'real (modify (uop'realInt truncate))
 
 -- | floor
 f'floor :: Fn
-f'floor = unary g'real (modify (uop'int floor))
+f'floor = unary g'real (modify (uop'realInt floor))
 
 -- | round
 f'round :: Fn
-f'round = unary g'real (modify (uop'int round))
+f'round = unary g'real (modify (uop'realInt round))
 
 -- | ceiling
 f'ceiling :: Fn
-f'ceiling = unary g'real (modify (uop'int ceiling))
+f'ceiling = unary g'real (modify (uop'realInt ceiling))
 
 -- | float
 f'float :: Fn
@@ -863,15 +863,6 @@ f'cdddar = g'unary >=> eval >=> car >=> cdr >=> cdr >=> cdr
 f'cddddr :: Fn
 f'cddddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> cdr
 
--- | eq
-f'eq :: Fn
-f'eq s = g'binary s >>= bimapM eval >>= \t@(_, (a, b)) ->
-  put (t'nil $ (typeOf a == typeOf b) && a == b) t
-
--- | equal
-f'equal :: Fn
-f'equal = f'eq
-
 -- | nth
 f'nth :: Fn
 f'nth s = g'binary s >>= bimapM eval >>= \t@(_, (n, l)) ->
@@ -921,6 +912,15 @@ f'tenth s = g'unary s >>= eval >>= nth 9
 f'rest :: Fn
 f'rest = f'cdr
 
+-- | eq
+f'eq :: Fn
+f'eq s = g'binary s >>= bimapM eval >>= \t@(_, (a, b)) ->
+  put (t'nil $ (typeOf a == typeOf b) && a == b) t
+
+-- | equal
+f'equal :: Fn
+f'equal = f'eq
+
 -- | append
 f'append :: Fn
 f'append s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
@@ -938,7 +938,10 @@ f'nthcdr = undefined
 
 -- | butlast
 f'butlast :: Fn
-f'butlast = undefined
+f'butlast s = g'unary s >>= eval >>= \t@(_, x) -> case x of
+  NIL     -> put NIL t
+  List xs -> put xs t >>= modify (pure . List . init)
+  a       -> err [errEval, errNotList, show' a]
 
 -- | reverse
 f'reverse :: Fn
@@ -954,11 +957,35 @@ f'sort s = g'unary s >>= eval >>= \t@(_, x) -> case x of
   List xs -> put xs t >>= mapM' g'real >>= modify (pure . List . sort)
   a       -> err [errEval, errNotList, show' a]
 
+-- | length
+f'length :: Fn
+f'length s = g'unary s >>= eval >>= \t@(_, x) -> case x of
+  NIL     -> put (Int 0) t
+  List xs -> put xs t >>= modify (pure . Int . fromIntegral . length)
+  a       -> err [errEval, errNotSeq, show' a]
+
 -- | make-hash-table
 f'makeHashTable :: Fn
 f'makeHashTable = undefined
 
--- | rest
+-- | mapcar
+f'mapcar :: Fn
+f'mapcar s = g'nary s >>= mapM' eval >>= \t@(_, f : xs) -> case xs of
+  a | not $ all listp' a ->
+    err [errEval, errNotList, "NOT EVERY argument is a list"]
+  a | all nilp a -> put NIL t
+  a ->
+    let nargs = length $ filter (not . nilp) a
+        largs = filter ((== nargs) . length) (transpose (unList <$> a))
+    in  put largs t
+          >>= mapM' (modify (pure . ([NIL, Quote f] ++)) >=> f'funcall)
+          >>= modify (pure . List)
+
+-- | mapc
+f'mapc :: Fn
+f'mapc = undefined
+
+-- | defun
 f'defun :: Fn
 f'defun = undefined
 
@@ -1029,7 +1056,7 @@ g'nempty msg s = get s >>= \case
   [] -> err [errEval, errNoArgs, msg]
   _  -> pure s
 
--- | Guard for non-empty S-exp list ([nil] if fail)
+-- | Guard for non-empty S-exp list ([nil] if empty)
 g'nempty' :: T [Sexp] [Sexp]
 g'nempty' s = get s >>= \case
   [] -> put [NIL] s
@@ -1175,8 +1202,14 @@ stringp = \case
 -- | Check if the given S-exp is a list
 listp :: Sexp -> Bool
 listp = \case
+  a | listp' a -> True
+  Cons{}       -> True
+  _            -> False
+
+-- | Check if the given S-exp is a proper list
+listp' :: Sexp -> Bool
+listp' = \case
   a | nilp a -> True
-  Cons{}     -> True
   List{}     -> True
   _          -> False
 
@@ -1303,9 +1336,9 @@ uop'num op = \case
   Rational a -> reduce . Rational $ op a
   a          -> uop'flt op a
 
--- | Unary arithmetic (integral) operator builder
-uop'int :: (forall a . RealFrac a => a -> Integer) -> Sexp -> RE Sexp
-uop'int op = \case
+-- | Unary arithmetic (real -> integral) operator builder
+uop'realInt :: (forall a . RealFrac a => a -> Integer) -> Sexp -> RE Sexp
+uop'realInt op = \case
   a -> pure . Int . op . fst . toNum $ a
 
 -- | Unary arithmetic (floating) operator builder
@@ -1581,6 +1614,12 @@ typeOf = \case
   a | nilp a    -> "null"
     | otherwise -> "undefined"
 
+-- | Unbox an S-exp list object (partial)
+unList :: Sexp -> [Sexp]
+unList = \case
+  List xs -> xs
+  a       -> die [errSys, show' a]
+
 -- | Evaluate backquoted S-exp
 eval'backquote :: Int -> T Sexp Sexp
 eval'backquote d s = get s >>= \case
@@ -1683,7 +1722,7 @@ deflet f o s = g'nary s >>= get >>= \case
   Quote x@Symbol{} : rest -> put (List [List [x, NIL]] : rest) s >>= deflet f o
   Quote (List a)   : rest -> put (List [List a] : rest) s >>= deflet f o
   List a : rest ->
-    put a s >>= local >>= f >>= put (Seq rest) >>= eval >>= global s
+    put a s >>= local >>= f >>= put rest >>= eval'seq >>= global s
   _ -> err [errEval, errMalformed, o]
 
 -- | function builder of defining symbol values
@@ -1773,7 +1812,7 @@ built'in =
   , ("string-trim"          , undefined)
   -- cl-ppcre:split
   , ("reduce"               , undefined)
-  , ("length"               , undefined)
+  , ("length"               , f'length)
   , ("search"               , undefined)
   , ("subseq"               , undefined)
   , ("code-char"            , undefined)
@@ -1839,7 +1878,8 @@ built'in =
   , ("sort"                 , f'sort)
   , ("remove-duplicates"    , undefined)
   , ("member"               , undefined)
-  , ("mapcar"               , undefined)
+  , ("mapcar"               , f'mapcar)
+  , ("mapc"                 , f'mapc)
   , ("remove-if-not"        , undefined)
   , ("every"                , undefined)
   , ("some"                 , undefined)
@@ -1950,7 +1990,6 @@ show' = \case
   Backquote sexp      -> "`" ++ show' sexp
   At        sexp      -> ",@" ++ show' sexp
   Comma     sexp      -> "," ++ show' sexp
-  Seq       seq       -> show' (List seq)
   Vector    vector    -> "#(" ++ unwords (show' <$> V.toList vector) ++ ")"
   HashTable map       -> show map
   Function name fn    -> unwords [show fn, name]
@@ -2037,6 +2076,9 @@ errNotComplex = "Not a complex number:"
 
 errNotList :: String
 errNotList = "Not a list:"
+
+errNotSeq :: String
+errNotSeq = "Not a sequence:"
 
 errMalformed :: String
 errMalformed = "Malformed:"
