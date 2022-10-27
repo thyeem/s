@@ -506,11 +506,11 @@ f'GE = nfold' g'number (>=) ">="
 
 -- | min
 f'min :: Fn
-f'min = nfold g'real (bop'real min) "min"
+f'min = nfold g'real (bop'ord min) "min"
 
 -- | max
 f'max :: Fn
-f'max = nfold g'real (bop'real max) "max"
+f'max = nfold g'real (bop'ord max) "max"
 
 -- | (+)
 f'add :: Fn
@@ -687,7 +687,7 @@ f'complexp = pred' complexp
 
 -- | zerop
 f'zerop :: Fn
-f'zerop = undefined
+f'zerop = pred' zerop
 
 -- | stringp
 f'stringp :: Fn
@@ -927,6 +927,10 @@ f'append s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
       v      -> put (xs <> [v]) t >>= foldrM cons
     a -> err [errEval, errNotList, show' a]
 
+-- | append
+f'makeHashTable :: Fn
+f'makeHashTable = undefined
+
 -- | rest
 f'defun :: Fn
 f'defun = undefined
@@ -1065,12 +1069,6 @@ g'complex s = g'number s >>= get >>= \case
   a | complexp a -> pure s
   a              -> err [errEval, errNotComplex, show' a]
 
--- | Ensure that the state is a non-zero S-exp
-g'nzero :: T Sexp Sexp
-g'nzero s = get s >>= \case
-  a | numberp a && (fst . toNum $ a) == 0 -> err [errEval, errDivByZero]
-  _ -> pure s
-
 -- | Ensure that the given key is not defined in the local env
 g'undef'lkey :: String -> T Sexp Sexp
 g'undef'lkey k s@(Env {..}, _) = case M.lookup k env'l of
@@ -1174,6 +1172,10 @@ complexp x = case reduce x of
   Right a -> case a of
     Complex{} -> True
     _         -> False
+
+-- | Check if the given S-exp is equal to zero
+zerop :: Sexp -> Bool
+zerop x = numberp x && (fst . toNum $ x) == 0
 
 -- | Complex number builder
 complex :: Sexp -> Sexp -> Sexp
@@ -1281,11 +1283,15 @@ uop'flt op = \case
   Complex a -> reduce . Complex $ op a
   a         -> reduce . Float . op . fst . toNum $ a
 
--- | Binary arithmetic (num) operator builder (num)
+-- | Binary arithmetic (num) operator builder
 bop'num :: (forall a . Num a => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
 bop'num op x y = case (x, y) of
   (Int a, Int b) -> pure . Int $ a `op` b
   (a    , b    ) -> bop'frac op a b
+
+-- | Binary arithmetic (ord) operator builder
+bop'ord :: (forall a . Ord a => a -> a -> a) -> Sexp -> Sexp -> RE Sexp
+bop'ord op x y = pure $ x `op` y
 
 -- | Binary arithmetic (fractional) operator builder
 bop'frac
@@ -1332,7 +1338,7 @@ reduce = \case
   a@Complex{} | (snd . toNum $ a) == 0 -> pure . Float . fst . toNum $ a
               | otherwise              -> pure a
   a@(Rational r) -> case (numerator r, denominator r) of
-    (_, 0) -> err [errEval, errDivByZero, show' a]
+    (_, 0) -> err [errEval, errDivByZero]
     (n, d) | d == gcd n d -> pure . Int $ quot n d
            | otherwise    -> pure a
   a@Int{}   -> pure a
@@ -1463,11 +1469,14 @@ foldNum f o s = get s >>= \case
     _   -> err [errEval, errNoArgs, o]
   [x] -> case o of
     "-" -> put x s >>= modify (f (Int 0))
-    "/" -> put x s >>= g'nzero >>= modify (f (Int 1))
-    _   -> put x s
+    "/" | zerop x   -> err [errEval, errDivByZero]
+        | otherwise -> put x s >>= modify (f (Int 1))
+    _ -> put x s
   (x : xs) -> case o of
-    "/" -> put xs s >>= mapM' g'nzero >>= modify (foldM f x)
-    _   -> put xs s >>= modify (foldM f x)
+    "/" | any zerop xs -> err [errEval, errDivByZero]
+        | otherwise    -> put xs s >>= modify (foldM f x)
+
+    _ -> put xs s >>= modify (foldM f x)
 
 -- | Mirros 'Data.Bifunctor.bimap', but use one function when mapping over
 bimap' :: (a -> b) -> (a, a) -> (b, b)
@@ -1791,7 +1800,7 @@ built'in =
   , ("aref"                 , undefined)
   , ("coerce"               , undefined)
   , ("map"                  , undefined)
-  , ("make-hash-table"      , undefined)
+  , ("make-hash-table"      , f'makeHashTable)
   , ("hash-table-count"     , undefined)
   , ("get-hash"             , undefined)
   , ("nth-value"            , undefined)
