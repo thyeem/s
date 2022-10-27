@@ -736,6 +736,16 @@ f'vectorp = pred' vectorp
 f'hashtablep :: Fn
 f'hashtablep = pred' hashtablep
 
+-- | oddp
+f'oddp :: Fn
+f'oddp =
+  g'unary >=> eval >=> g'integer >=> modify (pure . true't . odd . unInt)
+
+-- | evenp
+f'evenp :: Fn
+f'evenp =
+  g'unary >=> eval >=> g'integer >=> modify (pure . true't . even . unInt)
+
 -- | list
 f'list :: Fn
 f'list s = g'nary s >>= mapM' eval >>= modify (pure . List)
@@ -1402,6 +1412,10 @@ uop'num op = \case
   Rational a -> reduce . Rational $ op a
   a          -> uop'flt op a
 
+-- | Unary arithmetic (integral) operator builder
+uop'int :: (forall a . Integral a => a -> a) -> Sexp -> RE Sexp
+uop'int op x = pure . Int $ op . unInt $ x
+
 -- | Unary arithmetic (real -> integral) operator builder
 uop'realInt :: (forall a . RealFrac a => a -> Integer) -> Sexp -> RE Sexp
 uop'realInt op = \case
@@ -2009,6 +2023,8 @@ built'in =
   , ("realp"                , f'realp)
   , ("complexp"             , f'complexp)
   , ("zerop"                , f'zerop)
+  , ("oddp"                 , f'oddp)
+  , ("evenp"                , f'evenp)
   , ("stringp"              , f'stringp)
   , ("listp"                , f'listp)
   -- character fn
