@@ -1029,10 +1029,14 @@ f'when s = g'nary s >>= get >>= \case
     NIL -> put NIL t
     _   -> put rest t >>= eval'body
 
-
 -- | unless
-f'unles :: Fn
-f'unles = undefined
+f'unless :: Fn
+f'unless s = g'nary s >>= get >>= \case
+  []       -> err [errEval, errNoArgs, "unless"]
+  [ a ]    -> put a s >>= eval >>= put NIL
+  a : rest -> put a s >>= eval >>= nil't >>= \t@(_, v) -> case v of
+    NIL -> put NIL t
+    _   -> put rest t >>= eval'body
 
 -- | cond
 f'cond :: Fn
@@ -1332,6 +1336,12 @@ t'nil :: T Sexp Sexp
 t'nil s = get s >>= \case
   a | nilp a -> put NIL s
   _          -> put (Bool True) s
+
+-- | The same as 't`nil', but nil when S-exp is evaluated as true
+nil't :: T Sexp Sexp
+nil't s = get s >>= \case
+  a | nilp a -> put (Bool True) s
+  _          -> put NIL s
 
 -- | Logical 'not'
 not' :: Sexp -> Bool
@@ -1959,6 +1969,7 @@ built'in =
   , ("dotimes"              , f'dotimes)
   , ("if"                   , f'if)
   , ("when"                 , f'when)
+  , ("unless"               , f'unless)
   , ("cond"                 , f'cond)
   , ("error"                , f'error)
   -- EXCEPTIONS: 'skip
