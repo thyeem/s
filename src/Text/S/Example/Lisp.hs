@@ -16,7 +16,12 @@ import           Control.Monad                  ( (>=>)
                                                 , foldM
                                                 )
 import           Control.Monad.IO.Class         ( MonadIO )
-import           Data.Complex
+import           Data.Complex                   ( Complex(..)
+                                                , conjugate
+                                                , imagPart
+                                                , phase
+                                                , realPart
+                                                )
 import           Data.Fixed                     ( mod' )
 import           Data.Function                  ( on )
 import           Data.Functor                   ( ($>)
@@ -647,7 +652,7 @@ f'phase = unary g'number (modify (pure . Float . phase . unComplex))
 
 -- | random
 f'random :: Fn
-f'random = g'unary >=> g'real >=> random
+f'random = unary g'real random
 
 -- | ash
 f'ash :: Fn
@@ -978,6 +983,10 @@ f'length s = g'unary s >>= eval >>= \t@(_, x) -> case x of
 f'makeHashTable :: Fn
 f'makeHashTable = undefined
 
+-- | member
+f'member :: Fn
+f'member = undefined
+
 -- | mapcar
 f'mapcar :: Fn
 f'mapcar s = g'nary s >>= mapM' eval >>= \t@(_, f : xs) -> case xs of
@@ -985,14 +994,11 @@ f'mapcar s = g'nary s >>= mapM' eval >>= \t@(_, f : xs) -> case xs of
     err [errEval, errNotList, "NOT EVERY argument is a list"]
   a | all nilp a -> put NIL t
   a ->
-    let
-      nargs = length $ filter (not . nilp) a
-      largs = filter ((== nargs) . length) (transpose (unList <$> a))
-    in
-      put largs t
-      >>= mapM'
-            (modify (pure . ([NIL, Quote f] ++) . (Quote <$>)) >=> f'funcall)
-      >>= modify (pure . List)
+    let nargs = length $ filter (not . nilp) a
+        largs = filter ((== nargs) . length) (transpose (unList <$> a))
+    in  put largs t
+          >>= mapM' (modify (pure . (f :) . (Quote <$>)) >=> apply)
+          >>= modify (pure . List)
 
 -- | mapc
 f'mapc :: Fn
@@ -1697,6 +1703,7 @@ typeOf = \case
 -- | Unbox an S-exp list object (partial)
 unList :: Sexp -> [Sexp]
 unList = \case
+  NIL     -> []
   List xs -> xs
   a       -> die [errSys, show' a]
 
@@ -1957,7 +1964,7 @@ built'in =
   , ("reverse"              , f'reverse)
   , ("sort"                 , f'sort)
   , ("remove-duplicates"    , undefined)
-  , ("member"               , undefined)
+  , ("member"               , f'member)
   , ("mapcar"               , f'mapcar)
   , ("mapc"                 , f'mapc)
   , ("remove-if-not"        , undefined)
@@ -2101,7 +2108,7 @@ deriving instance Pretty Env
 
 
 die :: [String] -> a
-die = errorWithoutStackTrace . unwords
+die = error . unwords
 
 err :: [String] -> RE a
 err = Left . unwords
