@@ -998,7 +998,7 @@ f'lambda = undefined
 
 -- | progn
 f'progn :: Fn
-f'progn = undefined
+f'progn = g'nary >=> eval'body
 
 -- | loop
 f'loop :: Fn
@@ -1018,7 +1018,12 @@ f'dotimes = undefined
 
 -- | if
 f'if :: Fn
-f'if = undefined
+f'if s = g'nary s >>= get >>= \case
+  []              -> err [errEval, errNoArgs, "if"]
+  [       a ]     -> err [errEval, errWrongNargs, "if,", show' a]
+  a : if' : else' -> put a s >>= eval >>= t'nil >>= \t@(_, v) -> case v of
+    NIL -> put else' t >>= eval'body
+    _   -> put if' t >>= eval
 
 -- | when
 f'when :: Fn
@@ -1097,7 +1102,7 @@ g'evenary = arity (\x -> x /= 0 && even x)
 g'tuple :: T [Sexp] (Sexp, Sexp)
 g'tuple = \case
   s@(_, [x, y]) -> put (x, y) s
-  a             -> err [errEval, errWrongNargs, show . length $ a]
+  a             -> err [errEval, errWrongNargs, "tuple,", show . length $ a]
 
 -- | Guard for non-empty S-exp list
 g'nempty :: String -> T [a] [a]
