@@ -22,6 +22,7 @@ import           Data.Function                  ( on )
 import           Data.Functor                   ( ($>)
                                                 , (<&>)
                                                 )
+import           Data.List                      ( sort )
 import qualified Data.Map                      as M
 import           Data.Ratio                     ( (%)
                                                 , denominator
@@ -402,23 +403,22 @@ type Fn = T [Sexp] Sexp
 -- | EVAL
 eval :: T Sexp Sexp
 eval s = get s >>= \case
-  a | nilp a               -> put NIL s
-  Symbol k                 -> from'venv k s
-  Quote  a                 -> put a s
-  List   xs@(Symbol{} : _) -> put xs s >>= apply
-  List   (   a        : _) -> err [errEval, errInvalidFn, show' a]
-  a@Cons{}                 -> err [errEval, errInvalidFn, show' a]
-  a@Comma{}                -> err [errEval, errNotInBackquote, show' a]
-  a@At{}                   -> err [errEval, errNotInBackquote, show' a]
-  Seq       xs             -> put xs s >>= eval'seq
-  Backquote a              -> put a s >>= eval'backquote 1
-  a                        -> put a s
+  a | nilp a   -> put NIL s
+  Symbol    k  -> from'venv k s
+  Quote     a  -> put a s
+  Backquote a  -> put a s >>= eval'backquote 1
+  Seq       xs -> put xs s >>= eval'seq
+  List      xs -> put xs s >>= apply
+  a@Cons{}     -> err [errEval, errInvalidFn, show' a]
+  a@Comma{}    -> err [errEval, errNotInBackquote, show' a]
+  a@At{}       -> err [errEval, errNotInBackquote, show' a]
+  a            -> put a s
 
 -- | Apply the function of symbol name to the given arguments
 apply :: Fn
 apply s = head' "apply" s >>= get >>= \case
   Symbol k -> from'fenv k s >>= \(_, fn) -> fn s
-  a        -> err [errEval, errNotSymbol, show' a]
+  a        -> err [errEval, errInvalidFn, show' a]
 
 -- | set
 f'set :: Fn
@@ -736,10 +736,6 @@ f'vectorp = pred' vectorp
 f'hashtablep :: Fn
 f'hashtablep = pred' hashtablep
 
--- | account-p
-f'accoutp :: Fn
-f'accoutp = undefined
-
 -- | list
 f'list :: Fn
 f'list s = g'nary s >>= mapM' eval >>= modify (pure . List)
@@ -936,7 +932,29 @@ f'append s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
       v      -> put (xs <> [v]) t >>= foldrM cons
     a -> err [errEval, errNotList, show' a]
 
--- | append
+-- | nthcdr
+f'nthcdr :: Fn
+f'nthcdr = undefined
+
+-- | butlast
+f'butlast :: Fn
+f'butlast = undefined
+
+-- | reverse
+f'reverse :: Fn
+f'reverse s = g'unary s >>= eval >>= \t@(_, x) -> case x of
+  NIL     -> put NIL t
+  List xs -> put xs t >>= modify (pure . List . reverse)
+  a       -> err [errEval, errNotList, show' a]
+
+-- | sort
+f'sort :: Fn
+f'sort s = g'unary s >>= eval >>= \t@(_, x) -> case x of
+  NIL     -> put NIL t
+  List xs -> put xs t >>= mapM' g'real >>= modify (pure . List . sort)
+  a       -> err [errEval, errNotList, show' a]
+
+-- | make-hash-table
 f'makeHashTable :: Fn
 f'makeHashTable = undefined
 
@@ -1758,8 +1776,6 @@ built'in =
   , ("length"               , undefined)
   , ("search"               , undefined)
   , ("subseq"               , undefined)
-  -- CHARACTER LITERAL
-  -- #\a #\space #\newline #\tab ..
   , ("code-char"            , undefined)
   , ("char-code"            , undefined)
   , ("char"                 , undefined)
@@ -1769,6 +1785,7 @@ built'in =
   , ("decode-universal-time", undefined)
   , ("encode-universal-time", undefined)
   -- multiple-value-bind
+  -- values
   , ("list"                 , f'list)
   , ("cons"                 , f'cons)
   , ("car"                  , f'car)
@@ -1815,12 +1832,11 @@ built'in =
   , ("ninth"                , f'ninth)
   , ("tenth"                , f'tenth)
   , ("rest"                 , f'rest)
-  , ("position"             , undefined)
   , ("append"               , f'append)
-  , ("nthcdr"               , undefined)
-  , ("butlast"              , undefined)
-  , ("reverse"              , undefined)
-  , ("sort"                 , undefined)
+  , ("nthcdr"               , f'nthcdr)
+  , ("butlast"              , f'butlast)
+  , ("reverse"              , f'reverse)
+  , ("sort"                 , f'sort)
   , ("remove-duplicates"    , undefined)
   , ("member"               , undefined)
   , ("mapcar"               , undefined)
@@ -1841,11 +1857,6 @@ built'in =
   , ("nth-value"            , undefined)
   , ("remhash"              , undefined)
   , ("maphash"              , undefined)
-  , ("defstruct"            , undefined)
-  , ("account-id"           , undefined)
-  -- MULTIPLE-VALUES: 'skip
-  -- defclass
-  -- OBJECTS: 'skip
   , ("defun"                , f'defun)
   , ("lambda"               , undefined)
   , ("progn"                , undefined)
@@ -1904,7 +1915,6 @@ built'in =
   , ("boundp"               , f'boundp)
   , ("vectorp"              , f'vectorp)
   , ("hash-table-p"         , f'hashtablep)
-  , ("account-p"            , undefined)
   , ("macro-function"       , undefined)
   , ("typep"                , undefined)
   , ("symbol-value"         , f'symbolValue)
