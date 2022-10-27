@@ -915,7 +915,7 @@ f'rest = f'cdr
 -- | eq
 f'eq :: Fn
 f'eq s = g'binary s >>= bimapM eval >>= \t@(_, (a, b)) ->
-  put (t'nil $ (typeOf a == typeOf b) && a == b) t
+  put (true't $ (typeOf a == typeOf b) && a == b) t
 
 -- | equal
 f'equal :: Fn
@@ -992,6 +992,18 @@ f'mapc = undefined
 f'defun :: Fn
 f'defun = undefined
 
+-- | lambda
+f'lambda :: Fn
+f'lambda = undefined
+
+-- | progn
+f'progn :: Fn
+f'progn = undefined
+
+-- | loop
+f'loop :: Fn
+f'loop = undefined
+
 -- | do
 f'do :: Fn
 f'do = undefined
@@ -999,6 +1011,36 @@ f'do = undefined
 -- | dolist
 f'dolist :: Fn
 f'dolist = undefined
+
+-- | dotimes
+f'dotimes :: Fn
+f'dotimes = undefined
+
+-- | if
+f'if :: Fn
+f'if = undefined
+
+-- | when
+f'when :: Fn
+f'when s = g'nary s >>= get >>= \case
+  []       -> err [errEval, errNoArgs, "when"]
+  [ a ]    -> put a s >>= eval >>= put NIL
+  a : rest -> put a s >>= eval >>= t'nil >>= \t@(_, v) -> case v of
+    NIL -> put NIL t
+    _   -> put rest t >>= eval'body
+
+
+-- | unless
+f'unles :: Fn
+f'unles = undefined
+
+-- | cond
+f'cond :: Fn
+f'cond = undefined
+
+-- | error
+f'error :: Fn
+f'error = undefined
 
 -- | eval
 f'eval :: Fn
@@ -1279,11 +1321,17 @@ floatp x = case reduce x of
     Float{} -> True
     _       -> False
 
--- | Convert to LISP boolean notations
-t'nil :: Bool -> Sexp
-t'nil = \case
+-- | Convert true/false to LISP boolean notations t/nil
+true't :: Bool -> Sexp
+true't = \case
   True -> Bool True
   _    -> NIL
+
+-- | Convert any S-exp to boolean expression t or nil
+t'nil :: T Sexp Sexp
+t'nil s = get s >>= \case
+  a | nilp a -> put NIL s
+  _          -> put (Bool True) s
 
 -- | Logical 'not'
 not' :: Sexp -> Bool
@@ -1505,7 +1553,7 @@ arity _ _ = err [errEval, errNoArgs, "arity"]
 
 -- | Predicate builder
 pred' :: (Sexp -> Bool) -> T [Sexp] Sexp
-pred' p s = g'unary s >>= eval >>= modify (pure . t'nil . p)
+pred' p s = g'unary s >>= eval >>= modify (pure . true't . p)
 
 -- | Unary function builder
 unary :: T Sexp Sexp -> T Sexp Sexp -> Fn
@@ -1686,9 +1734,9 @@ spliceable = \case
   At{}            -> True
   _               -> False
 
--- | Evaluate a sequence
-eval'seq :: T [Sexp] Sexp
-eval'seq = mapM' eval >=> last_
+-- | Evaluate body-part in a form
+eval'body :: T [Sexp] Sexp
+eval'body = mapM' eval >=> last_
 
 -- | Sequentially bind a sequence (let*-like)
 bind'seq :: T [Sexp] [Sexp]
@@ -1725,7 +1773,7 @@ deflet f o s = g'nary s >>= get >>= \case
   Quote x@Symbol{} : rest -> put (List [List [x, NIL]] : rest) s >>= deflet f o
   Quote (List a)   : rest -> put (List [List a] : rest) s >>= deflet f o
   List a : rest ->
-    put a s >>= local >>= f >>= put rest >>= eval'seq >>= global s
+    put a s >>= local >>= f >>= put rest >>= eval'body >>= global s
   _ -> err [errEval, errMalformed, o]
 
 -- | function builder of defining symbol values
@@ -1901,18 +1949,18 @@ built'in =
   , ("remhash"              , undefined)
   , ("maphash"              , undefined)
   , ("defun"                , f'defun)
-  , ("lambda"               , undefined)
-  , ("progn"                , undefined)
+  , ("lambda"               , f'lambda)
+  , ("progn"                , f'progn)
   , ("prog1"                , undefined)
   , ("prog2"                , undefined)
-  , ("loop"                 , undefined)
+  , ("loop"                 , f'loop)
   , ("do"                   , f'do)
   , ("dolist"               , f'dolist)
-  , ("dotimes"              , undefined)
-  , ("if"                   , undefined)
-  , ("when"                 , undefined)
-  , ("cond"                 , undefined)
-  , ("error"                , undefined)
+  , ("dotimes"              , f'dotimes)
+  , ("if"                   , f'if)
+  , ("when"                 , f'when)
+  , ("cond"                 , f'cond)
+  , ("error"                , f'error)
   -- EXCEPTIONS: 'skip
   -- handler-case
   -- define-condition
