@@ -647,7 +647,7 @@ f'phase = unary g'number (modify (pure . Float . phase . unComplex))
 
 -- | random
 f'random :: Fn
-f'random = unary g'real random
+f'random = g'unary >=> g'real >=> random
 
 -- | ash
 f'ash :: Fn
@@ -975,11 +975,14 @@ f'mapcar s = g'nary s >>= mapM' eval >>= \t@(_, f : xs) -> case xs of
     err [errEval, errNotList, "NOT EVERY argument is a list"]
   a | all nilp a -> put NIL t
   a ->
-    let nargs = length $ filter (not . nilp) a
-        largs = filter ((== nargs) . length) (transpose (unList <$> a))
-    in  put largs t
-          >>= mapM' (modify (pure . ([NIL, Quote f] ++)) >=> f'funcall)
-          >>= modify (pure . List)
+    let
+      nargs = length $ filter (not . nilp) a
+      largs = filter ((== nargs) . length) (transpose (unList <$> a))
+    in
+      put largs t
+      >>= mapM'
+            (modify (pure . ([NIL, Quote f] ++) . (Quote <$>)) >=> f'funcall)
+      >>= modify (pure . List)
 
 -- | mapc
 f'mapc :: Fn
