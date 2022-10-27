@@ -490,19 +490,19 @@ f'NE = nfold' g'number (/=) "/="
 
 -- | <
 f'LT :: Fn
-f'LT = nfold' g'number (<) "<"
+f'LT = nfold' g'real (<) "<"
 
 -- | >
 f'GT :: Fn
-f'GT = nfold' g'number (>) ">"
+f'GT = nfold' g'real (>) ">"
 
 -- | <=
 f'LE :: Fn
-f'LE = nfold' g'number (<=) "<="
+f'LE = nfold' g'real (<=) "<="
 
 -- | >=
 f'GE :: Fn
-f'GE = nfold' g'number (>=) ">="
+f'GE = nfold' g'real (>=) ">="
 
 -- | min
 f'min :: Fn
@@ -867,6 +867,15 @@ f'cdddar = g'unary >=> eval >=> car >=> cdr >=> cdr >=> cdr
 f'cddddr :: Fn
 f'cddddr = g'unary >=> eval >=> cdr >=> cdr >=> cdr >=> cdr
 
+-- | eq
+f'eq :: Fn
+f'eq s = g'binary s >>= bimapM eval >>= \t@(_, (a, b)) ->
+  put (t'nil $ (typeOf a == typeOf b) && a == b) t
+
+-- | equal
+f'equal :: Fn
+f'equal = f'eq
+
 -- | nth
 f'nth :: Fn
 f'nth s = g'binary s >>= bimapM eval >>= \t@(_, (n, l)) ->
@@ -961,6 +970,10 @@ f'apply s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
         List l -> put (f : i <> l) t >>= apply
         e      -> err [errEval, errNotList, show' e]
   _ -> err [errEval, errNotAllowed, "f'apply"]
+
+-- | type-of
+f'typeOf :: Fn
+f'typeOf s = g'unary s >>= eval >>= modify (pure . Symbol . typeOf)
 
 -- | symbol-value
 f'symbolValue :: Fn
@@ -1529,6 +1542,27 @@ concat' s = get s >>= \case
       List l -> put rest s >>= go (l : r)
       a      -> err [errEval, errNotList, show' a]
 
+-- | Return the defined type of given S-exp
+typeOf :: Sexp -> String
+typeOf = \case
+  Bool{}      -> "boolean"
+  Int{}       -> "integer"
+  Rational{}  -> "rational"
+  Float{}     -> "float"
+  Complex{}   -> "complex"
+  Symbol{}    -> "symbol"
+  Char{}      -> "char"
+  String a    -> "char-array(" ++ show (length a) ++ ")"
+  Quote{}     -> "cons"
+  Backquote{} -> "cons"
+  Cons{}      -> "cons"
+  List{}      -> "cons"
+  Vector{}    -> "vector"
+  Function{}  -> "symbol"
+  Macro{}     -> "symbol"
+  a | nilp a    -> "null"
+    | otherwise -> "undefined"
+
 -- | Evaluate backquoted S-exp
 eval'backquote :: Int -> T Sexp Sexp
 eval'backquote d s = get s >>= \case
@@ -1767,7 +1801,8 @@ built'in =
   , ("cddadr"               , f'cddadr)
   , ("cdddar"               , f'cdddar)
   , ("cddddr"               , f'cddddr)
-  , ("equal"                , undefined)
+  , ("eq"                   , f'eq)
+  , ("equal"                , f'equal)
   , ("nth"                  , f'nth)
   , ("first"                , f'first)
   , ("second"               , f'second)
@@ -1845,7 +1880,7 @@ built'in =
   , ("apply"                , f'apply)
   , ("defmacro"             , undefined)
   , ("macroexpand"          , undefined)
-  , ("type-of"              , undefined)
+  , ("type-of"              , f'typeOf)
   , ("describe"             , undefined)
   , ("atom"                 , f'atom)
   , ("symbolp"              , f'symbolp)
