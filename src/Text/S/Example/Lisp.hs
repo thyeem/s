@@ -2,6 +2,7 @@
 {-# Language FlexibleInstances #-}
 {-# Language LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ParallelListComp #-}
 {-# Language OverloadedStrings #-}
 {-# Language RankNTypes #-}
 {-# Language RecordWildCards #-}
@@ -421,9 +422,13 @@ eval s = get s >>= \case
 
 -- | Apply the function of symbol name to the given arguments
 apply :: Fn
-apply s = head' "apply" s >>= get >>= \case
+apply s@(_, f : args) = case f of
   Symbol k -> from'fenv k s >>= \(_, fn) -> fn s
-  a        -> err [errEval, errInvalidFn, show' a]
+  List l@(Symbol "lambda" : _) ->
+    put l s >>= apply >>= modify (pure . (: args)) >>= apply
+  Function _ fn -> fn s
+  a             -> err [errEval, errInvalidFn, show' a]
+apply _ = err [errEval, errNoArgs, "apply"]
 
 -- | set
 f'set :: Fn
@@ -1004,13 +1009,36 @@ f'mapcar s = g'nary s >>= mapM' eval >>= \t@(_, f : xs) -> case xs of
 f'mapc :: Fn
 f'mapc = undefined
 
+-- | pop
+f'pop :: Fn
+f'pop = undefined
+
+-- | push
+f'push :: Fn
+f'push = undefined
+
 -- | defun
 f'defun :: Fn
 f'defun = undefined
 
 -- | lambda
 f'lambda :: Fn
-f'lambda = undefined
+f'lambda s = g'nary s >>= get >>= \case
+  List args : body -> put args s >>= mapM' g'symbol >>= put
+    (Function
+      "lambda"
+      (\t -> g'nary t >>= get >>= \case
+        xs
+          | length xs /= length args
+          -> err [errEval, errWrongNargs, show' (List xs)]
+          | otherwise
+          -> put ([ List [a, b] | a <- args | b <- xs ]) t
+            >>= bind'par
+            >>= put body
+            >>= eval'body
+      )
+    )
+  _ -> err [errEval, errMalformed, "lambda"]
 
 -- | progn
 f'progn :: Fn
@@ -1118,7 +1146,7 @@ g'evenary = arity (\x -> x /= 0 && even x)
 g'tuple :: T [Sexp] (Sexp, Sexp)
 g'tuple = \case
   s@(_, [x, y]) -> put (x, y) s
-  a             -> err [errEval, errWrongNargs, "tuple,", show . length $ a]
+  a             -> err [errEval, errWrongNargs, "tuple,", show (length a)]
 
 -- | Guard for non-empty S-exp list
 g'nempty :: String -> T [a] [a]
@@ -1970,8 +1998,8 @@ built'in =
   , ("remove-if-not"        , undefined)
   , ("every"                , undefined)
   , ("some"                 , undefined)
-  , ("push"                 , undefined)
-  , ("pop"                  , undefined)
+  , ("push"                 , f'push)
+  , ("pop"                  , f'pop)
   , ("assoc"                , undefined)
   , ("vector"               , undefined)
   , ("elt"                  , undefined)
