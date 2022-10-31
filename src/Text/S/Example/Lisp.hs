@@ -1033,9 +1033,11 @@ f'lambda s = g'nary s >>= get >>= \case
           -> err [errEval, errWrongNargs, show' (List xs)]
           | otherwise
           -> put ([ List [a, b] | a <- args | b <- xs ]) t
+            >>= local
             >>= bind'par
             >>= put body
             >>= eval'body
+            >>= global t
       )
     )
   _ -> err [errEval, errMalformed, "lambda"]
@@ -1106,12 +1108,16 @@ f'funcall s = modify (pure . (<> [NIL])) s >>= f'apply
 -- | apply
 f'apply :: Fn
 f'apply s = g'nary s >>= mapM' eval >>= \t@(_, x) -> case x of
-  (f : args) ->
-    put f t >>= g'symbol >>= put args >>= init' (show' f) >>= get >>= \i ->
-      put args t >>= last' (show' f) >>= get >>= \case
-        NIL    -> put (f : i) t >>= apply
-        List l -> put (f : i <> l) t >>= apply
-        e      -> err [errEval, errNotList, show' e]
+  (f : args) -> case f of
+    a
+      | symbolp a || functionp a ->  put args t
+      >>= init' (show' f)
+      >>= get
+      >>= \i -> put args t >>= last' (show' f) >>= get >>= \case
+            NIL    -> put (f : i) t >>= apply
+            List l -> put (f : i <> l) t >>= apply
+            e      -> err [errEval, errNotList, show' e]
+      | otherwise -> err [errEval, "Neither a symbol nor a function:", show' a]
   _ -> err [errEval, errNotAllowed, "f'apply"]
 
 -- | type-of
@@ -1316,6 +1322,12 @@ vectorp :: Sexp -> Bool
 vectorp = \case
   Vector{} -> True
   _        -> False
+
+-- | Check if the given S-exp is a function
+functionp :: Sexp -> Bool
+functionp = \case
+  Function{} -> True
+  _          -> False
 
 -- | Check if the given S-exp is a hash-table
 hashtablep :: Sexp -> Bool
@@ -1723,8 +1735,8 @@ typeOf = \case
   Cons{}      -> "cons"
   List{}      -> "cons"
   Vector{}    -> "vector"
-  Function{}  -> "symbol"
-  Macro{}     -> "symbol"
+  Function{}  -> "function"
+  Macro{}     -> "macro"
   a | nilp a    -> "null"
     | otherwise -> "undefined"
 
