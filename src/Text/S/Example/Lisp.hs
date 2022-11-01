@@ -254,7 +254,8 @@ local s@(env@Env {..}, _) =
 
 -- | When getting out from local-scope
 global :: ST b -> T a a
-global (g@Env{}, _) s@(l@Env{}, _) = put' (g { env'g = env'g l }) s
+global (g@Env{}, _) s@(l@Env{}, _) =
+  put' (g { env'r = env'r l, env'g = env'g l }) s
 
 -- | Deactivate local env and use only global env
 xlocal :: T a a
@@ -1537,14 +1538,11 @@ reduce = \case
 
 -- | Generate a uniform random number smaller than the given real number
 random :: T Sexp Sexp
-random s@(_, x) = g'real s >>= get'rng >>= \t@(env, g) ->
-  let r a = randomR (0, a) g
-      rand a = fst . r $ a
-      next a = env { env'r = snd . r $ a }
-  in  case x of
-        Int a -> put (Int . rand $ a) t >>= put' (next a)
-        a     -> put (Float . rand . fst . toNum $ a) t
-          >>= put' (next . fst . toNum $ a)
+random s@(_, x) = g'real s >>= get'rng >>= \t@(_, g) -> case x of
+  Int a -> put (randomR (0, a) g) t >>= \u@(env, r) ->
+    modify (pure . Int . fst) u >>= put' (env { env'r = snd r })
+  a -> put (randomR (0, fst (toNum a)) g) t >>= \u@(env, r) ->
+    modify (pure . Float . fst) u >>= put' (env { env'r = snd r })
 
 -- | Get random number generator from the given Env
 get'rng :: T a StdGen
