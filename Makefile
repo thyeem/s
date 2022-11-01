@@ -1,4 +1,4 @@
-bin := sl
+bin := s
 ghc := --with-compiler=ghc-8.10.7
 opts := --ghc-options="-Wall -Wno-name-shadowing -Wno-orphans"
 fast := $(ghc) --ghc-options=-O0 $(opts)
