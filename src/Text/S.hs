@@ -7,7 +7,7 @@
 -- Stability   : experimental
 --
 -- The parser-S is a generalized parser and its combinator easy-to-read.
--- It is designed to focused on usability, scalability and non-verbosity.
+-- It is designed to focus on usability, scalability and non-verbosity.
 --
 -----------------------------------------------------------------------------
 
