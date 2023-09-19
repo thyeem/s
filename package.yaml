@@ -1,0 +1,92 @@
+name: s
+version: 0.1.0.6
+github: thyeem/s
+license: MIT
+author: Francis Lim, Jongwhan Lee
+maintainer: thyeem@gmail.com
+copyright: 2022-2023 Francis
+synopsis: parser combinators
+category: parsing
+description: |
+  The parser-S is a generalized parser combinator easy-to-read.
+  It is designed to focused on usability, scalability and non-verbosity.
+  .
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+dependencies:
+- base
+- bytestring
+- containers
+- deepseq
+- directory
+- filepath
+- haskeline
+- parallel
+- pretty-simple
+- random
+- raw-strings-qq
+- text
+- vector
+
+ghc-options:
+- -Wall
+- -Wno-name-shadowing
+- -Wno-orphans
+
+library:
+  source-dirs: src
+
+executables:
+  s-demo:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -dynamic
+    - -feager-blackholing
+    - -fexpose-all-unfoldings
+    - -g0
+    - -eventlog
+    dependencies:
+    - base
+    - containers
+    - directory
+    - filepath
+    - haskeline
+    - text
+    - vector
+    - s
+    when:
+    - condition: false
+      other-modules: Paths_s
+
+
+tests:
+  unit:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options:
+    - -threaded
+    dependencies:
+    - base
+    - hspec
+    - hspec-discover
+    - QuickCheck
+    - s
+    # verbatim: |
+    # build-tool-depends:
+      # hspec-discover:hspec-discover
+
+  doctest:
+    main: doctests.hs
+    source-dirs: test
+    ghc-options:
+    - -threaded
+    dependencies:
+    - base
+    - doctest

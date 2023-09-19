@@ -1,6 +1,9 @@
 # mac
 .DS_Store
 
+# windows
+Thumbs.db
+
 # emacs
 [#]*[#]
 
@@ -14,8 +17,9 @@
 # Makefile
 *.d
 
-# windows
-Thumbs.db
+# python
+*.ipynb_checkpoints
+__pycache__
 
 # haskell
 .stack-work/
@@ -23,14 +27,8 @@ dist-newstyle/
 dist/
 newdist/
 *.hi
-*.o
-cabal.project.local
-stack.yaml
-stack.yaml.lock
 .hspec-failures
 
-# python
-*.ipynb_checkpoints
-__pycache__
-
 # bin
+s
+s-demo

@@ -1,36 +1,21 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
 
 module Text.S.Example.CSV where
 
-import           Control.Applicative            ( (<|>) )
-import           Data.Vector                    ( Vector )
-import qualified Data.Vector                   as V
-import           Text.S                         ( ParserS
-                                                , Pretty
-                                                , Stream
-                                                , between
-                                                , eof
-                                                , eol
-                                                , many
-                                                , noneOf
-                                                , sepBy
-                                                , symbol
-                                                )
+import           Control.Applicative ( (<|>) )
 
+import           Text.S              ( ParserS, Stream, between, eof, eol, many,
+                                       noneOf, sepBy, symbol )
 
 -- | CSV data is a Record set
 type CSV = [Record]
 
--- | Record is represented as Vector of string field elements
-type Record = Vector String
+-- | Record is represented as List of string field elements
+type Record = [String]
 
-deriving instance Pretty Record
-
+-- data Field
 -- $setup
 -- >>> import Text.S
-
 -- | Parse multiple CSV records separated by end-of-line or @EOL@
 --
 -- >>> r1 = "\"Letter\",\"Frequency\",\"Percentage\""
@@ -75,8 +60,8 @@ deriving instance Pretty Record
 -- ]
 --
 parseCSV :: Stream s => ParserS s CSV
-parseCSV = filter (not . null) <$> sepBy eol parseRecord
 {-# INLINE parseCSV #-}
+parseCSV = filter (not . null) <$> sepBy eol parseRecord
 
 -- | Parse Comma-separated values from a single 'Record'
 --
@@ -90,14 +75,14 @@ parseCSV = filter (not . null) <$> sepBy eol parseRecord
 -- ]
 --
 parseRecord :: Stream s => ParserS s Record
-parseRecord = V.fromList . filter (not . null) <$> sepBy (symbol ",") (go [])
- where
-  go x = field >>= \f -> if null f then pure x else go (x <> f)
-  field  = quoted <|> many (noneOf ",\n\r")
-  quoted = show <$> between (symbol "\"") (symbol "\"") (many $ noneOf "\"")
 {-# INLINE parseRecord #-}
+parseRecord = sepBy (symbol ",") field
+  where
+    field = quoted <|> unquoted
+    quoted = between (symbol "\"") (symbol "\"") (many $ noneOf "\"")
+    unquoted = many (noneOf ",\n\r\"")
 
 -- | Wrapper for 'parseCSV' to check if it ends with @EOF@
 csvParser :: Stream s => ParserS s CSV
-csvParser = parseCSV <* eof
 {-# INLINE csvParser #-}
+csvParser = parseCSV <* eof

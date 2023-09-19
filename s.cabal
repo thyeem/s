@@ -1,113 +1,138 @@
-cabal-version:      3.6
-name:               s
-version:            0.1.0.0
+cabal-version: 1.12
 
-synopsis:           parser combinators
-description:        The parser-S is a generalized parser combinator easy-to-read.
-                    It is designed to focused on usability, scalability and non-verbosity.
-                    .
-category:           Parsing
-author:             Francis Lim
-maintainer:         thyeem@gmail.com
-license:            MIT
-license-file:       LICENSE
-build-type:         Simple
+-- This file has been generated from package.yaml by hpack version 0.35.1.
+--
+-- see: https://github.com/sol/hpack
 
-extra-source-files: README.md
+name:           s
+version:        0.1.0.6
+synopsis:       parser combinators
+description:    The parser-S is a generalized parser combinator easy-to-read.
+                It is designed to focused on usability, scalability and non-verbosity.
+                .
+category:       parsing
+homepage:       https://github.com/thyeem/s#readme
+bug-reports:    https://github.com/thyeem/s/issues
+author:         Francis Lim, Jongwhan Lee
+maintainer:     thyeem@gmail.com
+copyright:      2022-2023 Francis
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/thyeem/s
 
 library
-    hs-source-dirs:
-        src
-    build-depends:
-        base
-      , bytestring
-      , containers
-      , deepseq
-      , directory
-      , filepath
-      , haskeline
-      , parallel
-      , pretty-simple
-      , random
-      , raw-strings-qq
-      , text
-      , vector
-    exposed-modules:
-        Text.S
-        Text.S.Base
-        Text.S.Combinator
-        Text.S.Expr
-        Text.S.Internal
-        Text.S.Language
-        Text.S.Lexeme
-        Text.S.Example.CSV
-        Text.S.Example.Calc
-        Text.S.Example.JSON
-        Text.S.Example.Markdown
-    default-language: Haskell2010
+  exposed-modules:
+      Text.S
+      Text.S.Base
+      Text.S.Combinator
+      Text.S.Example.Calc
+      Text.S.Example.CSV
+      Text.S.Example.JSON
+      Text.S.Example.Markdown
+      Text.S.Expr
+      Text.S.Internal
+      Text.S.Language
+      Text.S.Lexeme
+  other-modules:
+      Paths_s
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans
+  build-depends:
+      base
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , filepath
+    , haskeline
+    , parallel
+    , pretty-simple
+    , random
+    , raw-strings-qq
+    , text
+    , vector
+  default-language: Haskell2010
 
-executable s
-    hs-source-dirs:
-        app
-    main-is:
-        Main.hs
-    build-depends:
-        base
-      , containers
-      , directory
-      , filepath
-      , haskeline
-      , text
-      , s
-      , vector
-
-test-suite test
-    type:
-        exitcode-stdio-1.0
-    hs-source-dirs:
-        test
-    main-is:
-        Spec.hs
-    build-tool-depends:
-        hspec-discover:hspec-discover >=2.0 && <3.0
-    ghc-options:
-        -threaded
-    build-depends:
-        base
-      , hspec
-      , hspec-discover
-      , QuickCheck
-      , s
-    default-language: Haskell2010
+executable s-demo
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -threaded -rtsopts -with-rtsopts=-N -dynamic -feager-blackholing -fexpose-all-unfoldings -g0 -eventlog
+  build-depends:
+      base
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , filepath
+    , haskeline
+    , parallel
+    , pretty-simple
+    , random
+    , raw-strings-qq
+    , s
+    , text
+    , vector
+  default-language: Haskell2010
 
 test-suite doctest
-    type:
-        exitcode-stdio-1.0
-    hs-source-dirs:
-        test
-    main-is:
-        doctests.hs
-    ghc-options:
-        -threaded
-    build-depends:
-        base
-      , doctest
-    default-language: Haskell2010
+  type: exitcode-stdio-1.0
+  main-is: doctests.hs
+  other-modules:
+      Spec
+      Paths_s
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -threaded
+  build-depends:
+      base
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , doctest
+    , filepath
+    , haskeline
+    , parallel
+    , pretty-simple
+    , random
+    , raw-strings-qq
+    , text
+    , vector
+  default-language: Haskell2010
 
-benchmark bench
-    type:
-        exitcode-stdio-1.0
-    hs-source-dirs:
-        bench
-    main-is:
-        Benchmarks.hs
-    build-depends:
-        base
-        , s
-        , criterion
-        , split
-        , attoparsec
-        , megaparsec
-        , flatparse
-        , parsec
-    default-language: Haskell2010
+test-suite unit
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_s
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -threaded
+  build-depends:
+      QuickCheck
+    , base
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , filepath
+    , haskeline
+    , hspec
+    , hspec-discover
+    , parallel
+    , pretty-simple
+    , random
+    , raw-strings-qq
+    , s
+    , text
+    , vector
+  default-language: Haskell2010
