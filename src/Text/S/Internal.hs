@@ -6,34 +6,31 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
------------------------------------------------------------------------------
--- |
--- Module      : Text.S.Internal
--- License     : MIT
--- Maintainer  : Francis Lim <thyeem@gmail.com>
--- Stability   : experimental
---
--- This module implements internal process the parser really does.
---
--- One of core works is to design the parser as a Monad instance
--- while defining several primitive data types surrounding it.
---
------------------------------------------------------------------------------
+{- |
+ Module      : Text.S.Internal
+ License     : MIT
+ Maintainer  : Francis Lim <thyeem@gmail.com>
+ Stability   : experimental
 
+ This module implements internal process the parser really does.
+
+ One of core works is to design the parser as a Monad instance
+ while defining several primitive data types surrounding it.
+-}
 module Text.S.Internal
   ( Parser
   , Text
   , ByteString
   , LazyText
   , LazyByteString
-  , Stream(..)
-  , Source(..)
+  , Stream (..)
+  , Source (..)
   , initSource
-  , Message(..)
-  , Result(..)
-  , State(..)
+  , Message (..)
+  , Result (..)
+  , State (..)
   , initState
-  , ParserS(..)
+  , ParserS (..)
   , void
   , (<?>)
   , label
@@ -53,57 +50,53 @@ module Text.S.Internal
   , tsf
   , unwrap
   , die
-  , CondExpr(..)
+  , CondExpr (..)
   , (?)
-  , Pretty(..)
-  ) where
+  , Pretty (..)
+  , liftA2
+  , (<|>)
+  )
+where
 
-import           Control.Applicative            ( Alternative(..)
-                                                , liftA2
-                                                )
-import           Control.Monad                  ( MonadPlus(..) )
-import qualified Data.ByteString.Char8         as C
-import qualified Data.ByteString.Lazy.Char8    as CL
-import           Data.Functor                   ( void )
-import           Data.List                      ( intercalate
-                                                , uncons
-                                                )
-import qualified Data.Text                     as T
-import qualified Data.Text.IO                  as TIO
-import qualified Data.Text.Lazy                as TL
-import qualified Data.Text.Lazy.IO             as TLIO
-import           Text.Pretty.Simple             ( pShowNoColor )
+import Control.Applicative (Alternative (..), liftA2)
+import Control.Monad (MonadPlus (..))
+import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString.Lazy.Char8 as CL
+import Data.Functor (void)
+import Data.List (intercalate, uncons)
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.IO as TLIO
+import Text.Pretty.Simple (pShowNoColor)
 
+{- | ParserS currently supports stream types the following:
 
+ * 'Text'
+ * 'LazyText'
+ * 'String'
+ * 'ByteString'
+ * 'LazyByteString'.
 
+ By default, the 'ParserS' 'Stream' is set to 'Text'.
+ Choose a stream type according to your preference:
 
--- | ParserS currently supports stream types the following:
---
--- * 'Text'
--- * 'LazyText'
--- * 'String'
--- * 'ByteString'
--- * 'LazyByteString'.
---
--- By default, the 'ParserS' 'Stream' is set to 'Text'.
--- Choose a stream type according to your preference:
---
--- * Set the parser stream to 'LazyText' comes from 'Data.Text.Lazy'
---
--- >>> type Parser = ParserS LazyText
---
--- * Set the parser stream to 'String' or ['Char']
---
--- >>> type Parser = ParserS String
---
--- * Set the parser stream to 'ByteString' comes from 'Data.ByteString.Char8'
---
--- >>> type Parser = ParserS ByteString
---
--- * Set the parser stream to 'LazyByteString' comes from 'Data.ByteString.Lazy.Char8'
---
--- >>> type Parser = ParserS LazyByteString
---
+ * Set the parser stream to 'LazyText' comes from 'Data.Text.Lazy'
+
+ >>> type Parser = ParserS LazyText
+
+ * Set the parser stream to 'String' or ['Char']
+
+ >>> type Parser = ParserS String
+
+ * Set the parser stream to 'ByteString' comes from 'Data.ByteString.Char8'
+
+ >>> type Parser = ParserS ByteString
+
+ * Set the parser stream to 'LazyByteString' comes from 'Data.ByteString.Lazy.Char8'
+
+ >>> type Parser = ParserS LazyByteString
+-}
 type Parser = ParserS Text
 
 type Text = T.Text
@@ -114,10 +107,6 @@ type LazyText = TL.Text
 
 type LazyByteString = CL.ByteString
 
-
--------------------------
--- Stream
--------------------------
 class Show s => Stream s where
   unCons :: s -> Maybe (Char, s)
   readStream :: FilePath -> IO s
@@ -173,56 +162,42 @@ instance Stream String where
   isEmpty = null
   {-# INLINE isEmpty #-}
 
-
--------------------------
--- Source
--------------------------
 data Source = Source
-  { sourceName   :: FilePath
-  , sourceLine   :: !Int
+  { sourceName :: FilePath
+  , sourceLine :: !Int
   , sourceColumn :: !Int
   }
   deriving (Show, Eq, Ord)
-
 
 instance Semigroup Source where
   (<>) = appendSource
   {-# INLINE (<>) #-}
 
-
 instance Monoid Source where
   mempty = Source "-" 1 1
   {-# INLINE mempty #-}
 
-
 appendSource :: Source -> Source -> Source
-appendSource s1@Source{} s2@Source{}
+appendSource s1@Source {} s2@Source {}
   | sourceName s1 /= sourceName s2 = die "two source names do not match"
-  | s1 < s2                        = s2
-  | otherwise                      = s1
+  | s1 < s2 = s2
+  | otherwise = s1
 {-# INLINE appendSource #-}
 
 initSource :: FilePath -> Source
 initSource file = Source file 1 1
 
-
--------------------------
--- Message
--------------------------
-data Message = Unexpected !String
-             | Expected !String
-             | Normal !String
-             deriving (Eq, Ord)
+data Message
+  = Unexpected !String
+  | Expected !String
+  | Normal !String
+  deriving (Eq, Ord)
 
 type Messages = [Message]
 
-
--------------------------
--- State
--------------------------
 data State s = State
-  { stateStream    :: s
-  , stateSource    :: !Source
+  { stateStream :: s
+  , stateSource :: !Source
   , stateMesssages :: !Messages
   }
   deriving (Show, Eq)
@@ -232,33 +207,26 @@ initState file stream = State stream (initSource file) mempty
 
 addMessage :: Message -> State s -> State s
 addMessage msg state@State {..} =
-  state { stateMesssages = stateMesssages <> [msg] }
+  state {stateMesssages = stateMesssages <> [msg]}
 {-# INLINE addMessage #-}
 
+data Result a s
+  = Ok !a !(State s)
+  | Error !(State s)
+  deriving (Show, Eq)
 
--------------------------
--- Result
--------------------------
-data Result a s = Ok a !(State s)
-                | Error !(State s)
-                deriving (Show, Eq)
-
-
--------------------------
--- Parser S
--------------------------
--- Defines a monad transformer 'ParserS' and its accessor 'runParser'.
+{- | Defines a monad transformer 'ParserS' and its accessor 'runParser'.
 --
 -- It self-describes the outline of the parsing process this parser does.
---
-newtype ParserS s a = ParserS {
-    runParser :: forall b.
-      State s ->                   -- state including stream input
-      (a -> State s -> b) ->       -- call @Ok@ when somthing comsumed
-      (State s -> b) ->            -- call @Error@ when nothing consumed
-      b
-    }
-
+-}
+newtype ParserS s a = ParserS
+  { runParser
+      :: forall b
+       . State s -- state including stream input
+      -> (a -> State s -> b) -- call @Ok@ when somthing comsumed
+      -> (State s -> b) -- call @Error@ when nothing consumed
+      -> b
+  }
 
 -- | Infix operator of flipped 'label'
 (<?>) :: ParserS s a -> String -> ParserS s a
@@ -266,15 +234,12 @@ newtype ParserS s a = ParserS {
 
 infixr 0 <?>
 
-
--- |
 label :: String -> ParserS s a -> ParserS s a
-label msg parser = ParserS $ \state@State{} fOk fError ->
-  let fError' s@State{} = fError $ addMessage expected s
+label msg parser = ParserS $ \state@State {} fOk fError ->
+  let fError' s@State {} = fError $ addMessage expected s
       expected = Expected . unwords $ ["->", "expected:", msg]
-  in  runParser parser state fOk fError'
+   in runParser parser state fOk fError'
 {-# INLINE label #-}
-
 
 instance Functor (ParserS s) where
   fmap = smap
@@ -283,12 +248,10 @@ instance Functor (ParserS s) where
   (<$) = fmap . const
   {-# INLINE (<$) #-}
 
-
 smap :: (a -> b) -> ParserS s a -> ParserS s b
 smap f parser =
   ParserS $ \state fOk fError -> runParser parser state (fOk . f) fError
 {-# INLINE smap #-}
-
 
 instance Applicative (ParserS s) where
   pure x = ParserS $ \state ok _ -> ok x state
@@ -303,13 +266,11 @@ instance Applicative (ParserS s) where
   (<*) = liftA2 const
   {-# INLINE (<*) #-}
 
-
 sap :: ParserS s (a -> b) -> ParserS s a -> ParserS s b
 sap f parser = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser parser state' (fOk . x) fError
-  in  runParser f state fOk' fError
+   in runParser f state fOk' fError
 {-# INLINE sap #-}
-
 
 instance Monad (ParserS s) where
   return = pure
@@ -324,9 +285,8 @@ instance Monad (ParserS s) where
 sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
 sbind parser f = ParserS $ \state fOk fError ->
   let fOk' x state' = runParser (f $! x) state' fOk fError
-  in  runParser parser state fOk' fError
+   in runParser parser state fOk' fError
 {-# INLINE sbind #-}
-
 
 instance Alternative (ParserS s) where
   empty = mzero
@@ -335,14 +295,12 @@ instance Alternative (ParserS s) where
   (<|>) = mplus
   {-# INLINE (<|>) #-}
 
-
 instance MonadPlus (ParserS s) where
   mzero = szero
   {-# INLINE mzero #-}
 
   mplus = splus
   {-# INLINE mplus #-}
-
 
 szero :: ParserS s a
 szero = fail mempty
@@ -353,61 +311,61 @@ splus p q = ParserS $ \state fOk fError ->
   let fError' _ = runParser q state fOk fError in runParser p state fOk fError'
 {-# INLINE splus #-}
 
-
 instance MonadFail (ParserS s) where
   fail msg =
-    ParserS $ \s@State{} _ fError -> fError $ addMessage (Normal msg) s
+    ParserS $ \s@State {} _ fError -> fError $ addMessage (Normal msg) s
   {-# INLINE fail #-}
 
--- |
 state :: Stream s => ParserS s (State s)
-state = ParserS $ \state@State{} fOk _ -> fOk state state
+state = ParserS $ \state@State {} fOk _ -> fOk state state
 
--- |
 stream :: Stream s => ParserS s s
 stream = ParserS $ \state@(State stream _ _) fOk _ -> fOk stream state
 
--- |
--- take'while :: Stream s => (a -> Bool) -> ParserS s [a]
--- take'while p = ParserS $ \state@(State stream src msgs) fOk fError ->
--- let cs = takeWhile p stream
--- in  if null cs
--- then fError
--- $ addMessage (Unexpected $ unwords ["failed to match:"]) state
--- else undefined
+{- |
+ take'while :: Stream s => (a -> Bool) -> ParserS s [a]
+ take'while p = ParserS $ \state@(State stream src msgs) fOk fError ->
+ let cs = takeWhile p stream
+ in  if null cs
+ then fError
+-}
 
--- | Tries to parse with @__parser__@ looking ahead without consuming any input.
---
--- In this case, not consuming any intut does not mean it does not fail at all.
--- Attempts to parse with the given parser, throwing an error if parsing fails.
---
--- See also 'ahead'
---
+{- $ addMessage (Unexpected $ unwords ["failed to match:"]) state
+ else undefined
+-}
+
+{- | Tries to parse with @__parser__@ looking ahead without consuming any input.
+
+ In this case, not consuming any intut does not mean it does not fail at all.
+ Attempts to parse with the given parser, throwing an error if parsing fails.
+
+ See also 'ahead'
+-}
 try :: ParserS s a -> ParserS s a
 try parser = ParserS $ \state fOk fError ->
   let fOk' x _ = fOk x state in runParser parser state fOk' fError
 {-# INLINE try #-}
 
--- | Tries to parse with @__parser__@ looking ahead without consuming any input.
--- This returns if the next parsing is successful instead of the parse result.
---
--- If succeeds then returns @__True__@, otherwise returns @__False__@.
---
--- See also 'assert'
---
+{- | Tries to parse with @__parser__@ looking ahead without consuming any input.
+ This returns if the next parsing is successful instead of the parse result.
+
+ If succeeds then returns @__True__@, otherwise returns @__False__@.
+
+ See also 'assert'
+-}
 ahead :: ParserS s a -> ParserS s Bool
 ahead parser = ParserS $ \state fOk _ ->
   let fOk' _ _ = fOk True state
       fError' _ = fOk False state
-  in  runParser parser state fOk' fError'
+   in runParser parser state fOk' fError'
 {-# INLINE ahead #-}
 
--- | Gets a char parser that satisfies the given predicate @(Char -> Bool)@.
---
--- This function describes every parsing work at a fundamental level.
---
--- Here is where each parsing job starts.
---
+{- | Gets a char parser that satisfies the given predicate @(Char -> Bool)@.
+
+ This function describes every parsing work at a fundamental level.
+
+ Here is where each parsing job starts.
+-}
 charParserOf :: Stream s => (Char -> Bool) -> ParserS s Char
 charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
   case unCons stream of
@@ -415,9 +373,11 @@ charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
       fError $ addMessage (Unexpected "EOF: reached to end-of-stream") state
     Just (c, cs)
       | p c -> fOk c (State cs (jump src c) msgs)
-      | otherwise -> fError $ addMessage
-        (Unexpected $ unwords ["failed. got unexpected character:", show c])
-        state
+      | otherwise ->
+          fError $
+            addMessage
+              (Unexpected $ unwords ["failed. got unexpected character:", show c])
+              state
 {-# INLINE charParserOf #-}
 
 -- | Update the cursor location in the Source by character
@@ -425,8 +385,9 @@ jump :: Source -> Char -> Source
 jump (Source n ln col) = \case
   '\n' -> Source n (ln + 1) 1
   '\t' -> Source n ln (move col 8)
-  _    -> Source n ln (col + 1)
-  where move col size = col + size - ((col - 1) `mod` size)
+  _ -> Source n ln (col + 1)
+ where
+  move col size = col + size - ((col - 1) `mod` size)
 {-# INLINE jump #-}
 
 -- | Takes a state and a parser, then parses it.
@@ -444,9 +405,6 @@ parseFile parser file = do
   let state = initState file stream
   return . parse parser $ state
 
--------------------------
--- Tester for ParserS
--------------------------
 -- | Tests parsers and its combinators with given stream, then print it.
 t :: (Stream s, Pretty s, Pretty a) => ParserS s a -> s -> IO ()
 t parser = pp . parse' parser
@@ -460,30 +418,33 @@ ts :: Stream s => ParserS s a -> s -> s
 ts parser = sOnly . parse' parser
  where
   sOnly (Ok _ (State s _ _)) = s
-  sOnly (Error state       ) = die . show . stateMesssages $ state
+  sOnly (Error state) = die . show . stateMesssages $ state
 
--- | Tests parsers and its combinators with the given file, then print it.
--- The same as 't', but parse to test with files.
+{- | Tests parsers and its combinators with the given file, then print it.
+ The same as 't', but parse to test with files.
+-}
 tf :: Pretty a => FilePath -> ParserS Text a -> IO ()
 tf file parser = parseFile parser file >>= pp
 
--- | The same as 'tf' but returns the unwrapped parse result, 'Ok', or 'Error'
--- The same as 'tt', but parse to test with files.
+{- | The same as 'tf' but returns the unwrapped parse result, 'Ok', or 'Error'
+ The same as 'tt', but parse to test with files.
+-}
 ttf :: FilePath -> ParserS Text a -> IO a
 ttf file parser = unwrap <$> parseFile parser file
 
--- | The same as 'tf' but returns 'Stream' @s@ only
--- The same as 'ts', but parse to test with files.
+{- | The same as 'tf' but returns 'Stream' @s@ only
+ The same as 'ts', but parse to test with files.
+-}
 tsf :: FilePath -> ParserS Text a -> IO Text
 tsf file parser = sOnly <$> parseFile parser file
  where
   sOnly (Ok _ (State s _ _)) = s
-  sOnly (Error state       ) = die . show . stateMesssages $ state
+  sOnly (Error state) = die . show . stateMesssages $ state
 
 -- | Unwraps 'Result' @a s@, then gets 'Ok' @ok@ or 'Error' @err@.
 unwrap :: Stream s => Result a s -> a
 unwrap = \case
-  Ok ok _     -> ok
+  Ok ok _ -> ok
   Error state -> die . show $ state
 
 -- | Raise error without annoying stacktrace
@@ -494,19 +455,20 @@ die = errorWithoutStackTrace
 data CondExpr a = a ::: a
 
 infixl 1 ?
+
 infixl 2 :::
 
--- | Tenary operator
---
--- (bool condition) ? (expression-if-true) ::: (expression-if-false)
+{- | Tenary operator
+ (bool condition) ? (expression-if-true) ::: (expression-if-false)
+-}
 (?) :: Bool -> CondExpr a -> a
-True  ? (x ::: _) = x
+True ? (x ::: _) = x
 False ? (_ ::: y) = y
-
 
 -------------------------
 -- Simple Pretty Print
 -------------------------
+
 -- | Pretty-Show and Pretty-Printer
 class Show a => Pretty a where
   pretty :: a -> TL.Text
@@ -515,68 +477,68 @@ class Show a => Pretty a where
   pp :: a -> IO ()
   pp = TLIO.putStrLn . pretty
 
-
 instance Show Message where
   show = \case
     Unexpected msg -> msg
-    Expected   msg -> msg
-    Normal     msg -> msg
-
+    Expected msg -> msg
+    Normal msg -> msg
 
 instance Pretty Source where
-  pretty Source {..} = TL.unwords
-    [ TL.pack sourceName
-    , "(line"
-    , TL.pack $ show sourceLine <> ","
-    , "column"
-    , TL.pack $ show sourceColumn <> "):"
-    ]
-
+  pretty Source {..} =
+    TL.unwords
+      [ TL.pack sourceName
+      , "(line"
+      , TL.pack $ show sourceLine <> ","
+      , "column"
+      , TL.pack $ show sourceColumn <> "):"
+      ]
 
 instance {-# OVERLAPPING #-} Pretty Messages where
   pretty msgs = TL.pack $ intercalate "\n\t" (show <$> msgs)
 
-
 instance (Show s, Pretty s) => Pretty (State s) where
-  pretty State {..} = TL.unlines
-    [pretty stateSource, pretty stateMesssages, "remains: ", pretty stateStream]
-
+  pretty State {..} =
+    TL.unlines
+      [pretty stateSource, pretty stateMesssages, "remains: ", pretty stateStream]
 
 instance (Show s, Pretty s, Pretty a) => Pretty (Result a s) where
   pretty = \case
     Ok ok s -> TL.unlines [pretty ok <> "\n", pretty s]
     Error s -> TL.unlines ["Error\n", pretty s]
 
-
 instance Pretty Int where
   pretty = TL.pack . show
-
 
 instance Pretty Integer where
   pretty = TL.pack . show
 
-
 instance Pretty Float where
   pretty = TL.pack . show
-
 
 instance Pretty Double where
   pretty = TL.pack . show
 
-
 instance Pretty Rational where
   pretty = TL.pack . show
 
+instance Show a => Pretty [a]
 
-instance Show a => Pretty [a] where
-instance (Show a, Show b) => Pretty (a,b) where
-instance (Show a, Show b, Show c) => Pretty (a,b,c) where
-instance (Show a, Show b, Show c, Show d) => Pretty (a,b,c,d) where
+instance (Show a, Show b) => Pretty (a, b)
+
+instance (Show a, Show b, Show c) => Pretty (a, b, c)
+
+instance (Show a, Show b, Show c, Show d) => Pretty (a, b, c, d)
 
 deriving instance Pretty Bool
+
 deriving instance Pretty Char
+
 deriving instance Pretty ()
+
 deriving instance Pretty Text
+
 deriving instance Pretty ByteString
+
 deriving instance Pretty LazyText
+
 deriving instance Pretty LazyByteString

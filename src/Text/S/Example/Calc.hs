@@ -1,11 +1,9 @@
 module Text.S.Example.Calc where
 
-import           Control.Applicative            ( (<|>) )
-import           Control.Monad.IO.Class         ( MonadIO )
-import qualified Data.Text.Lazy                as TL
-import           System.Console.Haskeline
-import           Text.S
-
+import Control.Monad.IO.Class (MonadIO)
+import qualified Data.Text.Lazy as TL
+import System.Console.Haskeline
+import Text.S
 
 -- | Expr parser for left-associative infix operators
 infixl' :: Stream s => ParserS s Double
@@ -39,7 +37,8 @@ prefix' = expr atom table
  where
   atom = strip number
   table =
-    [ [ prefixB "^" (**)
+    [
+      [ prefixB "^" (**)
       , prefixB "*" (*)
       , prefixB "/" (/)
       , prefixB "+" (+)
@@ -53,7 +52,8 @@ postfix' = expr atom table
  where
   atom = strip number
   table =
-    [ [ postfixB "^" (**)
+    [
+      [ postfixB "^" (**)
       , postfixB "*" (*)
       , postfixB "/" (/)
       , postfixB "+" (+)
@@ -68,31 +68,34 @@ print' = outputStrLn . TL.unpack . pretty
 -- | read-eval-print
 rep :: MonadIO m => ParserS String Double -> String -> InputT m ()
 rep parser input = case parse' parser input of
-  Ok ok state@(State s _ _) | null . stateStream $ state -> print' ok
-                            | otherwise                  -> err s
+  Ok ok state@(State s _ _)
+    | null . stateStream $ state -> print' ok
+    | otherwise -> err s
   Error (State s _ _) -> err s
-  where err s = print' . unwords $ ["*** Error ***", s]
+ where
+  err s = print' . unwords $ ["*** Error ***", s]
 
 -- | Expr calculator
 calc :: IO ()
 calc = runInputT defaultSettings intro
  where
   intro = do
-    input <- getInputLine
-      "Choose an Expr Calculators [infixl, infixr, prefix, postfix]: "
+    input <-
+      getInputLine
+        "Choose an Expr Calculators [infixl, infixr, prefix, postfix]: "
     case input of
-      Nothing        -> pure ()
-      Just "q"       -> pure ()
-      Just "infixl"  -> repl infixl'
-      Just "infixr"  -> repl infixr'
-      Just "prefix"  -> repl prefix'
+      Nothing -> pure ()
+      Just "q" -> pure ()
+      Just "infixl" -> repl infixl'
+      Just "infixr" -> repl infixr'
+      Just "prefix" -> repl prefix'
       Just "postfix" -> repl postfix'
-      Just _         -> intro
+      Just _ -> intro
 
   repl parser = do
     input <- getInputLine "calc> "
     case input of
-      Nothing    -> pure ()
-      Just ""    -> repl parser
-      Just "q"   -> intro
+      Nothing -> pure ()
+      Just "" -> repl parser
+      Just "q" -> intro
       Just input -> rep parser input *> repl parser
