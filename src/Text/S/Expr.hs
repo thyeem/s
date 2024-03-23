@@ -1,10 +1,9 @@
-{- |
- Module      : Text.S.Expr
- License     : MIT
-
- Maintainer  : Francis Lim <thyeem@gmail.com>
- Stability   : experimental
--}
+-- |
+-- Module      : Text.S.Expr
+-- License     : MIT
+--
+-- Maintainer  : Francis Lim <thyeem@gmail.com>
+-- Stability   : experimental
 module Text.S.Expr
   ( module Text.S.Expr
   )

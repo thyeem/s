@@ -1,10 +1,9 @@
-{- |
- Module      : Text.S.Language
- License     : MIT
-
- Maintainer  : Francis Lim <thyeem@gmail.com>
- Stability   : experimental
--}
+-- |
+-- Module      : Text.S.Language
+-- License     : MIT
+--
+-- Maintainer  : Francis Lim <thyeem@gmail.com>
+-- Stability   : experimental
 module Text.S.Language
   ( module Text.S.Language
   )

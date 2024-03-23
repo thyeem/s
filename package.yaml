@@ -1,10 +1,10 @@
 name: s
-version: 0.1.0.6
+version: 0.1.1
 github: thyeem/s
 license: MIT
-author: Francis Lim, Jongwhan Lee
+author: Francis Lim
 maintainer: thyeem@gmail.com
-copyright: 2022-2023 Francis
+copyright: 2022-2024 Francis
 synopsis: parser combinators
 category: parsing
 description: |
@@ -44,20 +44,14 @@ executables:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
-    - -threaded
     - -rtsopts
-    - -with-rtsopts=-N
-    - -dynamic
-    - -feager-blackholing
-    - -fexpose-all-unfoldings
+    - -with-rtsopts=-N1
+    - -O2
     - -g0
-    - -eventlog
     dependencies:
     - base
     - containers
     - directory
-    - filepath
-    - haskeline
     - text
     - vector
     - s
@@ -65,28 +59,16 @@ executables:
     - condition: false
       other-modules: Paths_s
 
-
 tests:
-  unit:
-    main: Spec.hs
-    source-dirs: test
-    ghc-options:
-    - -threaded
-    dependencies:
-    - base
-    - hspec
-    - hspec-discover
-    - QuickCheck
-    - s
-    # verbatim: |
-    # build-tool-depends:
-      # hspec-discover:hspec-discover
-
   doctest:
-    main: doctests.hs
-    source-dirs: test
+    main: Spec.hs
+    source-dirs:
+    - test
     ghc-options:
     - -threaded
+    - -O2
     dependencies:
     - base
+    - Glob
     - doctest
+    - s
