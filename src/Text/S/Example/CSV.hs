@@ -1,7 +1,7 @@
 module Text.S.Example.CSV where
 
 import Text.S
-  ( ParserS
+  ( S
   , Stream
   , eof
   , eol
@@ -64,7 +64,7 @@ type Record = [String]
 --     , ""coord":"[0.5,-1.5]"}"
 --     ]
 -- ]
-parseCSV :: Stream s => ParserS s CSV
+parseCSV :: Stream s => S s CSV
 parseCSV = filter (not . null) <$> sepBy eol parseRecord
 {-# INLINE parseCSV #-}
 
@@ -78,7 +78,7 @@ parseCSV = filter (not . null) <$> sepBy eol parseRecord
 -- , ""Gregory Peck""
 -- , ""To Kill a Mockingbird""
 -- ]
-parseRecord :: Stream s => ParserS s Record
+parseRecord :: Stream s => S s Record
 parseRecord = sepBy (symbol ",") field
  where
   field = concat <$> many (quoted <|> unquoted)
@@ -87,6 +87,6 @@ parseRecord = sepBy (symbol ",") field
 {-# INLINE parseRecord #-}
 
 -- | Wrapper for 'parseCSV' to check if it ends with @EOF@
-csvParser :: Stream s => ParserS s CSV
+csvParser :: Stream s => S s CSV
 csvParser = parseCSV <* eof
 {-# INLINE csvParser #-}

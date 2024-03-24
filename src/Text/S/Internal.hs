@@ -29,13 +29,13 @@ module Text.S.Internal
   , Result (..)
   , State (..)
   , initState
-  , ParserS (..)
+  , S (..)
   , void
   , (<?>)
   , label
   , try
   , forbid
-  , charParserOf
+  , charBy
   , parse
   , parse'
   , parseFile
@@ -69,7 +69,7 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TLIO
 import Text.Pretty.Simple (pShowNoColor)
 
--- | ParserS currently supports stream types the following:
+-- | Parser S currently supports stream types the following:
 --
 -- * 'Text'
 -- * 'LazyText'
@@ -77,25 +77,25 @@ import Text.Pretty.Simple (pShowNoColor)
 -- * 'ByteString'
 -- * 'LazyByteString'.
 --
--- By default, the 'ParserS' 'Stream' is set to 'Text'.
+-- By default, 'Stream' of Parser 'S' is set to 'Text'.
 -- Choose a stream type according to your preference:
 --
 -- * Set the parser stream to 'LazyText' comes from 'Data.Text.Lazy'
 --
--- >>> type Parser = ParserS LazyText
+-- >>> type Parser = S LazyText
 --
 -- * Set the parser stream to 'String' or ['Char']
 --
--- >>> type Parser = ParserS String
+-- >>> type Parser = S String
 --
 -- * Set the parser stream to 'ByteString' comes from 'Data.ByteString.Char8'
 --
--- >>> type Parser = ParserS ByteString
+-- >>> type Parser = S ByteString
 --
 -- * Set the parser stream to 'LazyByteString' comes from 'Data.ByteString.Lazy.Char8'
 --
--- >>> type Parser = ParserS LazyByteString
-type Parser = ParserS Text
+-- >>> type Parser = S LazyByteString
+type Parser = S Text
 
 type Text = T.Text
 
@@ -213,12 +213,12 @@ data Result a s
   | Error !(State s)
   deriving (Show, Eq)
 
--- Defines a monad transformer 'ParserS'
+-- Defines a monad transformer parser, 'S'
 --
 -- It self-describes the outline of the parsing process this parser does.
 --
-newtype ParserS s a = ParserS
-  { unParser
+newtype S s a = S
+  { unS
       :: forall b
        . State s -- state including stream input
       -> (a -> State s -> b) -- call @Ok@ when somthing comsumed
@@ -227,33 +227,33 @@ newtype ParserS s a = ParserS
   }
 
 -- | Infix operator of flipped 'label'
-(<?>) :: ParserS s a -> String -> ParserS s a
+(<?>) :: S s a -> String -> S s a
 (<?>) = flip label
 
 infixr 0 <?>
 
-label :: String -> ParserS s a -> ParserS s a
-label desc p = ParserS $ \state@State {} fOk fError ->
+label :: String -> S s a -> S s a
+label desc p = S $ \state@State {} fOk fError ->
   let fError' s@State {} = fError $ addMessage msg s
       msg = Expected . unwords $ ["->", "expected:", desc]
-   in unParser p state fOk fError'
+   in unS p state fOk fError'
 {-# INLINE label #-}
 
-instance Functor (ParserS s) where
+instance Functor (S s) where
   fmap = smap
   {-# INLINE fmap #-}
 
   (<$) = fmap . const
   {-# INLINE (<$) #-}
 
-smap :: (a -> b) -> ParserS s a -> ParserS s b
-smap f p = ParserS $ \state fOk fError ->
+smap :: (a -> b) -> S s a -> S s b
+smap f p = S $ \state fOk fError ->
   let fOk' a = fOk $! f a
-   in unParser p state fOk' fError
+   in unS p state fOk' fError
 {-# INLINE smap #-}
 
-instance Applicative (ParserS s) where
-  pure x = ParserS $ \state ok _ -> ok x state
+instance Applicative (S s) where
+  pure x = S $ \state ok _ -> ok x state
   {-# INLINE pure #-}
 
   (<*>) = sap
@@ -265,13 +265,13 @@ instance Applicative (ParserS s) where
   (<*) = liftA2 const
   {-# INLINE (<*) #-}
 
-sap :: ParserS s (a -> b) -> ParserS s a -> ParserS s b
-sap f p = ParserS $ \state fOk fError ->
-  let fOk' x state' = unParser p state' (\a s -> fOk (x $! a) s) fError
-   in unParser f state fOk' fError
+sap :: S s (a -> b) -> S s a -> S s b
+sap f p = S $ \state fOk fError ->
+  let fOk' x state' = unS p state' (\a s -> fOk (x $! a) s) fError
+   in unS f state fOk' fError
 {-# INLINE sap #-}
 
-instance Monad (ParserS s) where
+instance Monad (S s) where
   return = pure
   {-# INLINE return #-}
 
@@ -281,59 +281,59 @@ instance Monad (ParserS s) where
   (>>) = (*>)
   {-# INLINE (>>) #-}
 
-sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
-sbind p f = ParserS $ \state fOk fError ->
-  let fOk' x state' = unParser (f $! x) state' fOk fError
-   in unParser p state fOk' fError
+sbind :: S s a -> (a -> S s b) -> S s b
+sbind p f = S $ \state fOk fError ->
+  let fOk' x state' = unS (f $! x) state' fOk fError
+   in unS p state fOk' fError
 {-# INLINE sbind #-}
 
-instance Alternative (ParserS s) where
+instance Alternative (S s) where
   empty = mzero
   {-# INLINE empty #-}
 
   (<|>) = mplus
   {-# INLINE (<|>) #-}
 
-instance MonadPlus (ParserS s) where
+instance MonadPlus (S s) where
   mzero = szero
   {-# INLINE mzero #-}
 
   mplus = splus
   {-# INLINE mplus #-}
 
-szero :: ParserS s a
+szero :: S s a
 szero = fail mempty
 {-# INLINE szero #-}
 
-splus :: ParserS s a -> ParserS s a -> ParserS s a
-splus p q = ParserS $ \state fOk fError ->
-  let fError' _ = unParser q state fOk fError in unParser p state fOk fError'
+splus :: S s a -> S s a -> S s a
+splus p q = S $ \state fOk fError ->
+  let fError' _ = unS q state fOk fError in unS p state fOk fError'
 {-# INLINE splus #-}
 
-instance MonadFail (ParserS s) where
+instance MonadFail (S s) where
   fail msg =
-    ParserS $ \s@State {} _ fError -> fError $ addMessage (Normal msg) s
+    S $ \s@State {} _ fError -> fError $ addMessage (Normal msg) s
   {-# INLINE fail #-}
 
 -- | Tries to parse with @__p__@ looking ahead without consuming any input.
 --
 -- If parsing fails, an error is raised even if no input is consumed.
-try :: ParserS s a -> ParserS s a
-try p = ParserS $ \state fOk fError ->
-  let fOk' x _ = fOk x state in unParser p state fOk' fError
+try :: S s a -> S s a
+try p = S $ \state fOk fError ->
+  let fOk' x _ = fOk x state in unS p state fOk' fError
 {-# INLINE try #-}
 
 -- | Tries to parse with @__p__@ looking ahead without consuming any input.
 --
 -- Succeeds if the given parser does not match the next input.
 -- Otherwise raises an error.
-forbid :: Show a => ParserS s a -> ParserS s ()
-forbid p = ParserS $ \state fOk fError ->
+forbid :: Show a => S s a -> S s ()
+forbid p = S $ \state fOk fError ->
   let fOk' a _ =
         let msg = Unexpected (unwords ["Error, found forbidden token:", show a])
          in fError $ addMessage msg state
       fError' _ = fOk () state
-   in unParser p state fOk' fError'
+   in unS p state fOk' fError'
 {-# INLINE forbid #-}
 
 -- | Gets a char parser that satisfies the given predicate @(Char -> Bool)@.
@@ -341,8 +341,8 @@ forbid p = ParserS $ \state fOk fError ->
 -- This function describes every parsing work at a fundamental level.
 --
 -- Here is where each parsing job starts.
-charParserOf :: Stream s => (Char -> Bool) -> ParserS s Char
-charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
+charBy :: Stream s => (Char -> Bool) -> S s Char
+charBy p = S $ \state@(State stream src msgs) fOk fError ->
   case unCons stream of
     Nothing -> fError state
     Just (c, cs)
@@ -352,7 +352,7 @@ charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
             addMessage
               (Unexpected $ unwords ["Error, got unexpected character:", show c])
               state
-{-# INLINE charParserOf #-}
+{-# INLINE charBy #-}
 
 -- | Update the cursor location in the Source by character
 jump :: Source -> Char -> Source
@@ -365,26 +365,26 @@ jump (Source n ln col) = \case
 {-# INLINE jump #-}
 
 -- | Takes a state and a parser, then parses it.
-parse :: Stream s => ParserS s a -> State s -> Result a s
-parse p state = unParser p state Ok Error
+parse :: Stream s => S s a -> State s -> Result a s
+parse p state = unS p state Ok Error
 
 -- | The same as 'parse', but takes a stream instead of a state.
-parse' :: Stream s => ParserS s a -> s -> Result a s
+parse' :: Stream s => S s a -> s -> Result a s
 parse' p s = parse p (State s mempty mempty)
 
 -- | The same as 'parse', but takes the stream from a given file
-parseFile :: Stream s => ParserS s a -> FilePath -> IO (Result a s)
+parseFile :: Stream s => S s a -> FilePath -> IO (Result a s)
 parseFile p file = do
   stream <- readStream file
   let state = initState file stream
   return . parse p $ state
 
 -- | Tests parsers and its combinators with given stream, then print it.
-t :: (Stream s, Pretty s, Pretty a) => ParserS s a -> s -> IO ()
+t :: (Stream s, Pretty s, Pretty a) => S s a -> s -> IO ()
 t p = pp . parse' p
 
 -- | The same as 't' but returns the unwrapped 'Result' @a@, 'Ok', or 'Error'
-ta :: Stream s => ParserS s a -> s -> a
+ta :: Stream s => S s a -> s -> a
 ta p = unwrap . parse' p
  where
   unwrap = \case
@@ -392,7 +392,7 @@ ta p = unwrap . parse' p
     Error state -> die . TL.unpack . pretty . stateMesssages $ state
 
 -- | Tries to parse with 'parser' then returns 'Stream' @s@
-ts :: Stream s => ParserS s a -> s -> s
+ts :: Stream s => S s a -> s -> s
 ts p = stateStream . state . parse' p
  where
   state = \case

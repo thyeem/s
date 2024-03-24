@@ -27,31 +27,31 @@ import Text.S.Combinator
 import Text.S.Internal
 import Text.S.Language
 
-lexeme :: Stream s => ParserS s a -> ParserS s a
+lexeme :: Stream s => S s a -> S s a
 lexeme p = p <* skip
 
 -- | Parses any string symbol to comsume. The same as 'string'
-symbol :: Stream s => String -> ParserS s String
+symbol :: Stream s => String -> S s String
 symbol = string
 {-# INLINE symbol #-}
 
-letters :: (Stream s) => ParserS s String
+letters :: (Stream s) => S s String
 letters = some letter
 {-# INLINE letters #-}
 
-alphaNums :: (Stream s) => ParserS s String
+alphaNums :: (Stream s) => S s String
 alphaNums = some alphaNum
 {-# INLINE alphaNums #-}
 
-digits :: (Stream s) => ParserS s String
+digits :: (Stream s) => S s String
 digits = some digit
 {-# INLINE digits #-}
 
-specials :: (Stream s) => ParserS s String
+specials :: (Stream s) => S s String
 specials = some special
 {-# INLINE specials #-}
 
-spaces :: (Stream s) => ParserS s String
+spaces :: (Stream s) => S s String
 spaces = some space
 {-# INLINE spaces #-}
 
@@ -59,7 +59,7 @@ spaces = some space
 --
 -- >>> ta (parens letters) "(parser)"
 -- "parser"
-parens :: (Stream s) => ParserS s a -> ParserS s a
+parens :: (Stream s) => S s a -> S s a
 parens = between (symbol "(") (symbol ")")
 {-# INLINE parens #-}
 
@@ -67,7 +67,7 @@ parens = between (symbol "(") (symbol ")")
 --
 -- >>> ta (braces letters) "{parser}"
 -- "parser"
-braces :: (Stream s) => ParserS s a -> ParserS s a
+braces :: (Stream s) => S s a -> S s a
 braces = between (symbol "{") (symbol "}")
 {-# INLINE braces #-}
 
@@ -75,7 +75,7 @@ braces = between (symbol "{") (symbol "}")
 --
 -- >>> ta (angles letters) "<parser>"
 -- "parser"
-angles :: (Stream s) => ParserS s a -> ParserS s a
+angles :: (Stream s) => S s a -> S s a
 angles = between (symbol "<") (symbol ">")
 {-# INLINE angles #-}
 
@@ -83,7 +83,7 @@ angles = between (symbol "<") (symbol ">")
 --
 -- >>> ta (squares letters) "[parser]"
 -- "parser"
-squares :: Stream s => ParserS s a -> ParserS s a
+squares :: Stream s => S s a -> S s a
 squares = between (symbol "[") (symbol "]")
 {-# INLINE squares #-}
 
@@ -92,7 +92,7 @@ squares = between (symbol "[") (symbol "]")
 --
 -- >>> ta decimal "00123456789"
 -- 123456789
-decimal :: (Stream s, Num a) => ParserS s a
+decimal :: (Stream s, Num a) => S s a
 decimal = num 10 digits
 {-# INLINE decimal #-}
 
@@ -100,7 +100,7 @@ decimal = num 10 digits
 --
 -- >>> ta hexadecimal "0xCOVID-19"
 -- 12
-hexadecimal :: (Stream s, Num a) => ParserS s a
+hexadecimal :: (Stream s, Num a) => S s a
 hexadecimal = skipOptional (string "0x") *> num 16 (some hexDigit)
 {-# INLINE hexadecimal #-}
 
@@ -108,7 +108,7 @@ hexadecimal = skipOptional (string "0x") *> num 16 (some hexDigit)
 --
 -- >>> ta zeros "000002022"
 -- 2022
-zeros :: (Stream s, Num a) => ParserS s a
+zeros :: (Stream s, Num a) => S s a
 zeros = char '0' *> decimal
 {-# INLINE zeros #-}
 
@@ -116,7 +116,7 @@ zeros = char '0' *> decimal
 --
 -- >>> ta natural "27182818284"
 -- 27182818284
-natural :: Stream s => ParserS s Integer
+natural :: Stream s => S s Integer
 natural = try digit *> try (anycharBut '0') *> decimal
 {-# INLINE natural #-}
 
@@ -124,7 +124,7 @@ natural = try digit *> try (anycharBut '0') *> decimal
 --
 -- >>> ta (sign <*> floating)  "-273.15 in Celsius"
 -- -273.15
-sign :: (Stream s, Num a) => ParserS s (a -> a)
+sign :: (Stream s, Num a) => S s (a -> a)
 sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 {-# INLINE sign #-}
 
@@ -132,19 +132,19 @@ sign = (char '-' $> negate) <|> (char '+' $> id) <|> pure id
 --
 -- >>> ta (sign <*> integer)  "-273.15 in Celsius"
 -- -273
-integer :: Stream s => ParserS s Integer
+integer :: Stream s => S s Integer
 integer = sign <*> decimal
 {-# INLINE integer #-}
 
 -- | Convert a string parser into integer parser by evaluating the parsed with base
-num :: (Stream s, Num a) => a -> ParserS s String -> ParserS s a
+num :: (Stream s, Num a) => a -> S s String -> S s a
 num base parser = foldl' f 0 <$> parser
  where
   f x d = base * x + fromIntegral (digitToInt d)
 {-# INLINE num #-}
 
 -- | Parses general form of number (including float and integer)
-number :: Stream s => ParserS s Double
+number :: Stream s => S s Double
 number = float <|> (fromIntegral <$> integer)
 {-# INLINE number #-}
 
@@ -157,7 +157,7 @@ number = float <|> (fromIntegral <$> integer)
 --
 -- >>> ta float "3.1415926535e-5"
 -- 3.1415926535e-5
-float :: Stream s => ParserS s Double
+float :: Stream s => S s Double
 float = scientific <|> floating
 {-# INLINE float #-}
 
@@ -171,7 +171,7 @@ float = scientific <|> floating
 --
 -- >>> ta floatA "3.e-5"
 -- 3.0e-5
-floatA :: Stream s => ParserS s Double
+floatA :: Stream s => S s Double
 floatA = scientific' <|> floatingA
 {-# INLINE floatA #-}
 
@@ -185,7 +185,7 @@ floatA = scientific' <|> floatingA
 --
 -- >>> ta floatB ".1415926535e-5"
 -- 1.415926535e-6
-floatB :: Stream s => ParserS s Double
+floatB :: Stream s => S s Double
 floatB = scientific' <|> floatingB
 {-# INLINE floatB #-}
 
@@ -196,7 +196,7 @@ floatB = scientific' <|> floatingB
 --
 -- >>> ta floating "3.1415926535"
 -- 3.1415926535
-floating :: Stream s => ParserS s Double
+floating :: Stream s => S s Double
 floating = read <$> genFloating digits digits
 {-# INLINE floating #-}
 
@@ -207,7 +207,7 @@ floating = read <$> genFloating digits digits
 --
 -- >>> ta floatingA "3."
 -- 3.0
-floatingA :: Stream s => ParserS s Double
+floatingA :: Stream s => S s Double
 floatingA = read <$> genFloating digits (option "0" digits)
 {-# INLINE floatingA #-}
 
@@ -218,13 +218,13 @@ floatingA = read <$> genFloating digits (option "0" digits)
 --
 -- >>> ta floatingB ".1415926535"
 -- 0.1415926535
-floatingB :: Stream s => ParserS s Double
+floatingB :: Stream s => S s Double
 floatingB = read <$> genFloating (option "0" digits) digits
 {-# INLINE floatingB #-}
 
 -- | Parser builder for several types of floating numbers
 genFloating
-  :: Stream s => ParserS s String -> ParserS s String -> ParserS s String
+  :: Stream s => S s String -> S s String -> S s String
 genFloating wholeNumber decimalPart =
   foldl1'
     (liftA2 (<>))
@@ -242,7 +242,7 @@ genFloating wholeNumber decimalPart =
 --
 -- >>> ta scientific "2.7182818284E3"
 -- 2718.2818284
-scientific :: Stream s => ParserS s Double
+scientific :: Stream s => S s Double
 scientific = read <$> genScientific (genFloating digits digits)
 {-# INLINE scientific #-}
 
@@ -257,7 +257,7 @@ scientific = read <$> genScientific (genFloating digits digits)
 --
 -- >>> ta scientific' ".7182818284E3"
 -- 718.2818284
-scientific' :: Stream s => ParserS s Double
+scientific' :: Stream s => S s Double
 scientific' =
   read
     <$> ( genScientific (genFloating digits (option "0" digits))
@@ -266,7 +266,7 @@ scientific' =
 {-# INLINE scientific' #-}
 
 -- | Parser builder for several types of numbers in scientific format
-genScientific :: Stream s => ParserS s String -> ParserS s String
+genScientific :: Stream s => S s String -> S s String
 genScientific flt = liftA2 (<>) coeff expt
  where
   coeff = flt <|> int
@@ -281,31 +281,31 @@ genScientific flt = liftA2 (<>) coeff expt
 --
 -- >>> ta (strip float) "  3.1415926535"
 -- 3.1415926535
-strip :: (Stream s) => ParserS s a -> ParserS s a
+strip :: (Stream s) => S s a -> S s a
 strip = rstrip . lstrip
 {-# INLINE strip #-}
 
 -- | Remove any leading whitespaces when parsing with @p@
-lstrip :: (Stream s) => ParserS s a -> ParserS s a
+lstrip :: (Stream s) => S s a -> S s a
 lstrip p = skip *> p
 {-# INLINE lstrip #-}
 
 -- | Remove any trailing whitespaces when parsing with @p@
-rstrip :: (Stream s) => ParserS s a -> ParserS s a
+rstrip :: (Stream s) => S s a -> S s a
 rstrip p = p <* (skip <|> eof)
 {-# INLINE rstrip #-}
 
 -- | Guarantees one or more spaces, or @EOF@
-gap :: (Stream s) => ParserS s ()
+gap :: (Stream s) => S s ()
 gap = skipSome space <|> eof
 
 -- | Skips whitespaces
-skip :: (Stream s) => ParserS s ()
+skip :: (Stream s) => S s ()
 skip = skipMany space
 {-# INLINE skip #-}
 
 -- | Skips successive blanks
-skipb :: (Stream s) => ParserS s ()
+skipb :: (Stream s) => S s ()
 skipb = skipMany blank
 {-# INLINE skipb #-}
 
@@ -314,24 +314,24 @@ skipb = skipMany blank
 -- >>> input = "// LINE-COMMENT\n\r\n /*INNER BLOCK COMMENT*/ MUST-BE-HERE"
 -- >>> ts (skips def) input
 -- "MUST-BE-HERE"
-skips :: Stream s => LanguageDef s -> ParserS s ()
+skips :: Stream s => LanguageDef s -> S s ()
 skips def = skipMany $ choice [spaces, linec def, blockc def]
 {-# INLINE skips #-}
 
 -- | Skips line and block comments
-skipc :: Stream s => LanguageDef s -> ParserS s ()
+skipc :: Stream s => LanguageDef s -> S s ()
 skipc def = skipMany $ linec def <|> blockc def
 {-# INLINEABLE skipc #-}
 
 -- | Parses a single line comment
-linec :: Stream s => LanguageDef s -> ParserS s String
+linec :: Stream s => LanguageDef s -> S s String
 linec def = some p *> (manyTill eol (anycharBut '\n') <|> manyTill eof anychar)
  where
   p = defCommentLine def
 {-# INLINEABLE linec #-}
 
 -- | Parses a multi-line block comment
-blockc :: Stream s => LanguageDef s -> ParserS s String
+blockc :: Stream s => LanguageDef s -> S s String
 blockc def = some bra *> manyTill ket anychar
  where
   bra = defCommentBlockBegin def
@@ -339,7 +339,7 @@ blockc def = some bra *> manyTill ket anychar
 {-# INLINEABLE blockc #-}
 
 -- | Parses an identifier
-identifier :: Stream s => LanguageDef s -> ParserS s String
+identifier :: Stream s => LanguageDef s -> S s String
 identifier def = do
   let begin = defIdentifierBegin def
   let remainder = defIdentifierName def
@@ -364,7 +364,7 @@ identifier def = do
 --
 -- >>> ta (digits *> skip *> operator def) "3 + 4"
 -- "+"
-operator :: Stream s => LanguageDef s -> ParserS s String
+operator :: Stream s => LanguageDef s -> S s String
 operator def = do
   op <- specials
   if isReserved op
@@ -380,21 +380,21 @@ operator def = do
 -- >>> stream = "'\r', a carriage-return or '\n', a line-feed?"
 -- >>> ta charLit stream
 -- '\r'
-charLit :: Stream s => ParserS s Char
+charLit :: Stream s => S s Char
 charLit = charLit' def
 {-# INLINE charLit #-}
 
 -- | The same as 'charLit', but this reads 'defCharLiteralMark' from 'LanguageDef'
-charLit' :: Stream s => LanguageDef s -> ParserS s Char
+charLit' :: Stream s => LanguageDef s -> S s Char
 charLit' = genCharLit . defCharLiteralMark
 {-# INLINE charLit' #-}
 
 -- | Character literal parser builder
-genCharLit :: Stream s => ParserS s String -> ParserS s Char
+genCharLit :: Stream s => S s String -> S s Char
 genCharLit mark = between mark (mark <?> "end-of-char-literal") readChar
 {-# INLINE genCharLit #-}
 
-readChar :: Stream s => ParserS s Char
+readChar :: Stream s => S s Char
 readChar = do
   s <- try $ count 4 anychar <|> manyTill eof anychar
   case readLitChar s of
@@ -410,17 +410,17 @@ readChar = do
 --
 -- The following can be used, but not very efficient.
 -- >>> stringLit = string "\"" *> manyTill readChar (string "\"")
-stringLit :: Stream s => ParserS s String
+stringLit :: Stream s => S s String
 stringLit = stringLit' def
 {-# INLINE stringLit #-}
 
 -- | The same as 'stringLit', but this reads 'defStringLiteralMark' from 'LanguageDef'.
-stringLit' :: Stream s => LanguageDef s -> ParserS s String
+stringLit' :: Stream s => LanguageDef s -> S s String
 stringLit' = genStringLit . defStringLiteralMark
 {-# INLINE stringLit' #-}
 
 -- | String literal parser builder
-genStringLit :: Stream s => ParserS s String -> ParserS s String
+genStringLit :: Stream s => S s String -> S s String
 genStringLit mark = between mark mark (concat <$> many character)
  where
   character = nonEscaped <|> escaped

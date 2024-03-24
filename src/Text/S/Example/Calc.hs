@@ -6,7 +6,7 @@ import System.Console.Haskeline
 import Text.S
 
 -- | Expr parser for left-associative infix operators
-infixl' :: Stream s => ParserS s Double
+infixl' :: Stream s => S s Double
 infixl' = expr atom table
  where
   atom = strip number <|> parens infixl'
@@ -19,7 +19,7 @@ infixl' = expr atom table
     ]
 
 -- | Expr parser for right-associative infix operators
-infixr' :: Stream s => ParserS s Double
+infixr' :: Stream s => S s Double
 infixr' = expr atom table
  where
   atom = strip number <|> parens infixr'
@@ -32,7 +32,7 @@ infixr' = expr atom table
     ]
 
 -- | Expr parser for prefix operators
-prefix' :: Stream s => ParserS s Double
+prefix' :: Stream s => S s Double
 prefix' = expr atom table
  where
   atom = strip number
@@ -47,7 +47,7 @@ prefix' = expr atom table
     ]
 
 -- | Expr parser for postfix operators
-postfix' :: Stream s => ParserS s Double
+postfix' :: Stream s => S s Double
 postfix' = expr atom table
  where
   atom = strip number
@@ -66,7 +66,7 @@ print' :: (MonadIO m, Pretty a) => a -> InputT m ()
 print' = outputStrLn . TL.unpack . pretty
 
 -- | read-eval-print
-rep :: MonadIO m => ParserS String Double -> String -> InputT m ()
+rep :: MonadIO m => S String Double -> String -> InputT m ()
 rep parser input = case parse' parser input of
   Ok ok state@(State s _ _)
     | null . stateStream $ state -> print' ok

@@ -16,19 +16,19 @@ import Text.S.Internal
 data LanguageDef s = LanguageDef
   { defCaseSensitive :: Bool
   -- ^ Flag if the language letter is case-sensitive
-  , defCharLiteralMark :: ParserS s String
+  , defCharLiteralMark :: S s String
   -- ^ Characters assigned to indicate char literal region
-  , defStringLiteralMark :: ParserS s String
+  , defStringLiteralMark :: S s String
   -- ^ Characters assigned to indicate string literal region
-  , defCommentBlockBegin :: ParserS s String
+  , defCommentBlockBegin :: S s String
   -- ^ Characters assigned to start a block comment
-  , defCommentBlockEnd :: ParserS s String
+  , defCommentBlockEnd :: S s String
   -- ^ Characters assigned to end a block comment
-  , defCommentLine :: ParserS s String
+  , defCommentLine :: S s String
   -- ^ Characters assigned to start a single-line comment
-  , defIdentifierBegin :: ParserS s Char
+  , defIdentifierBegin :: S s Char
   -- ^ Characters assigned to start the name of identifiers
-  , defIdentifierName :: ParserS s String
+  , defIdentifierName :: S s String
   -- ^ Characters assigned identifier names except for its first letter
   , defKeywords :: [String]
   -- ^ List of reserved names
