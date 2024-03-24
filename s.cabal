@@ -65,7 +65,7 @@ executable s-demo
   main-is: Main.hs
   hs-source-dirs:
       app
-  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -rtsopts -with-rtsopts=-N1 -O2 -g0
+  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -O2 -g0
   build-depends:
       base
     , bytestring

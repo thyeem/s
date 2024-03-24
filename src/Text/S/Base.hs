@@ -17,7 +17,6 @@ import Data.Char
   , isSymbol
   )
 import Data.Functor (($>))
-import Data.Maybe (fromJust)
 import Text.S.Combinator
 import Text.S.Internal
 
@@ -188,13 +187,7 @@ space = charParserOf isSpace <?> "space"
 -- | Checks if the `State` applied to the parser is reached to
 -- @__EOF__@ or /End-of-Stream/
 eof :: Stream s => ParserS s ()
-eof =
-  label "end-of-stream" $
-    ParserS (\state@(State s _ _) fOk _ -> fOk s state)
-      >>= \s ->
-        if isEmpty s
-          then pure ()
-          else fail $ unwords ["No EOF. Found char:", show . fst . fromJust $ unCons s]
+eof = forbid anychar <?> "end-of-stream"
 {-# INLINE eof #-}
 
 -- | Parses if a character on parsing is in the given char-list
@@ -218,9 +211,8 @@ noneOf cs = charParserOf (`notElem` cs) <?> label'noneof
 {-# INLINE noneOf #-}
 
 -- | Check if a given char is one of whitespaces
-
---- This predicate gives correct answers for the ASCII encoding only.
 --
+-- This predicate gives correct answers for the ASCII encoding only.
 isSpace :: Char -> Bool
 isSpace c = (' ' == c) || ('\t' <= c && c <= '\r')
 {-# INLINE isSpace #-}

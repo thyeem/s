@@ -34,7 +34,7 @@ module Text.S.Internal
   , (<?>)
   , label
   , try
-  , ahead
+  , forbid
   , charParserOf
   , parse
   , parse'
@@ -233,10 +233,10 @@ newtype ParserS s a = ParserS
 infixr 0 <?>
 
 label :: String -> ParserS s a -> ParserS s a
-label msg parser = ParserS $ \state@State {} fOk fError ->
-  let fError' s@State {} = fError $ addMessage expected s
-      expected = Expected . unwords $ ["->", "expected:", msg]
-   in unParser parser state fOk fError'
+label desc p = ParserS $ \state@State {} fOk fError ->
+  let fError' s@State {} = fError $ addMessage msg s
+      msg = Expected . unwords $ ["->", "expected:", desc]
+   in unParser p state fOk fError'
 {-# INLINE label #-}
 
 instance Functor (ParserS s) where
@@ -247,9 +247,9 @@ instance Functor (ParserS s) where
   {-# INLINE (<$) #-}
 
 smap :: (a -> b) -> ParserS s a -> ParserS s b
-smap f parser = ParserS $ \state fOk fError ->
+smap f p = ParserS $ \state fOk fError ->
   let fOk' a = fOk $! f a
-   in unParser parser state fOk' fError
+   in unParser p state fOk' fError
 {-# INLINE smap #-}
 
 instance Applicative (ParserS s) where
@@ -266,8 +266,8 @@ instance Applicative (ParserS s) where
   {-# INLINE (<*) #-}
 
 sap :: ParserS s (a -> b) -> ParserS s a -> ParserS s b
-sap f parser = ParserS $ \state fOk fError ->
-  let fOk' x state' = unParser parser state' (\a s -> fOk (x $! a) s) fError
+sap f p = ParserS $ \state fOk fError ->
+  let fOk' x state' = unParser p state' (\a s -> fOk (x $! a) s) fError
    in unParser f state fOk' fError
 {-# INLINE sap #-}
 
@@ -282,9 +282,9 @@ instance Monad (ParserS s) where
   {-# INLINE (>>) #-}
 
 sbind :: ParserS s a -> (a -> ParserS s b) -> ParserS s b
-sbind parser f = ParserS $ \state fOk fError ->
+sbind p f = ParserS $ \state fOk fError ->
   let fOk' x state' = unParser (f $! x) state' fOk fError
-   in unParser parser state fOk' fError
+   in unParser p state fOk' fError
 {-# INLINE sbind #-}
 
 instance Alternative (ParserS s) where
@@ -315,29 +315,26 @@ instance MonadFail (ParserS s) where
     ParserS $ \s@State {} _ fError -> fError $ addMessage (Normal msg) s
   {-# INLINE fail #-}
 
--- | Tries to parse with @__parser__@ looking ahead without consuming any input.
+-- | Tries to parse with @__p__@ looking ahead without consuming any input.
 --
--- In this case, not consuming any intut does not mean it does not fail at all.
--- Attempts to parse with the given parser, throwing an error if parsing fails.
---
--- See also 'ahead'
+-- If parsing fails, an error is raised even if no input is consumed.
 try :: ParserS s a -> ParserS s a
-try parser = ParserS $ \state fOk fError ->
-  let fOk' x _ = fOk x state in unParser parser state fOk' fError
+try p = ParserS $ \state fOk fError ->
+  let fOk' x _ = fOk x state in unParser p state fOk' fError
 {-# INLINE try #-}
 
--- | Tries to parse with @__parser__@ looking ahead without consuming any input.
--- This returns if the next parsing is successful instead of the parse result.
+-- | Tries to parse with @__p__@ looking ahead without consuming any input.
 --
--- If succeeds then returns @__True__@, otherwise returns @__False__@.
---
--- See also 'assert'
-ahead :: ParserS s a -> ParserS s Bool
-ahead parser = ParserS $ \state fOk _ ->
-  let fOk' _ _ = fOk True state
-      fError' _ = fOk False state
-   in unParser parser state fOk' fError'
-{-# INLINE ahead #-}
+-- Succeeds if the given parser does not match the next input.
+-- Otherwise raises an error.
+forbid :: Show a => ParserS s a -> ParserS s ()
+forbid p = ParserS $ \state fOk fError ->
+  let fOk' a _ =
+        let msg = Unexpected (unwords ["Error, found forbidden token:", show a])
+         in fError $ addMessage msg state
+      fError' _ = fOk () state
+   in unParser p state fOk' fError'
+{-# INLINE forbid #-}
 
 -- | Gets a char parser that satisfies the given predicate @(Char -> Bool)@.
 --
@@ -347,14 +344,13 @@ ahead parser = ParserS $ \state fOk _ ->
 charParserOf :: Stream s => (Char -> Bool) -> ParserS s Char
 charParserOf p = ParserS $ \state@(State stream src msgs) fOk fError ->
   case unCons stream of
-    Nothing ->
-      fError $ addMessage (Unexpected "EOF: reached to end-of-stream") state
+    Nothing -> fError state
     Just (c, cs)
       | p c -> fOk c (State cs (jump src c) msgs)
       | otherwise ->
           fError $
             addMessage
-              (Unexpected $ unwords ["failed. got unexpected character:", show c])
+              (Unexpected $ unwords ["Error, got unexpected character:", show c])
               state
 {-# INLINE charParserOf #-}
 
@@ -370,26 +366,26 @@ jump (Source n ln col) = \case
 
 -- | Takes a state and a parser, then parses it.
 parse :: Stream s => ParserS s a -> State s -> Result a s
-parse parser state = unParser parser state Ok Error
+parse p state = unParser p state Ok Error
 
 -- | The same as 'parse', but takes a stream instead of a state.
 parse' :: Stream s => ParserS s a -> s -> Result a s
-parse' parser s = parse parser (State s mempty mempty)
+parse' p s = parse p (State s mempty mempty)
 
 -- | The same as 'parse', but takes the stream from a given file
 parseFile :: Stream s => ParserS s a -> FilePath -> IO (Result a s)
-parseFile parser file = do
+parseFile p file = do
   stream <- readStream file
   let state = initState file stream
-  return . parse parser $ state
+  return . parse p $ state
 
 -- | Tests parsers and its combinators with given stream, then print it.
 t :: (Stream s, Pretty s, Pretty a) => ParserS s a -> s -> IO ()
-t parser = pp . parse' parser
+t p = pp . parse' p
 
 -- | The same as 't' but returns the unwrapped 'Result' @a@, 'Ok', or 'Error'
 ta :: Stream s => ParserS s a -> s -> a
-ta parser = unwrap . parse' parser
+ta p = unwrap . parse' p
  where
   unwrap = \case
     Ok ok _ -> ok
@@ -397,7 +393,7 @@ ta parser = unwrap . parse' parser
 
 -- | Tries to parse with 'parser' then returns 'Stream' @s@
 ts :: Stream s => ParserS s a -> s -> s
-ts parser = stateStream . state . parse' parser
+ts p = stateStream . state . parse' p
  where
   state = \case
     Ok _ s -> s
@@ -456,7 +452,7 @@ instance (Show s, Pretty s) => Pretty (State s) where
 instance (Show s, Pretty s, Pretty a) => Pretty (Result a s) where
   pretty = \case
     Ok ok s -> TL.unlines [pretty ok <> "\n", pretty s]
-    Error s -> TL.unlines ["Error\n", pretty s]
+    Error s -> TL.unlines ["\n", pretty s]
 
 instance Pretty Int where
   pretty = TL.pack . show

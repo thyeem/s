@@ -51,6 +51,7 @@ def =
     , defReservedOps = []
     , defKeywords = []
     }
+{-# INLINE def #-}
 
 -- | Language definition of Haskell 2010
 haskelldef :: Stream s => LanguageDef s

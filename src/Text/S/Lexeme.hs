@@ -382,17 +382,17 @@ operator def = do
 -- '\r'
 charLit :: Stream s => ParserS s Char
 charLit = charLit' def
-{-# INLINEABLE charLit #-}
+{-# INLINE charLit #-}
 
 -- | The same as 'charLit', but this reads 'defCharLiteralMark' from 'LanguageDef'
 charLit' :: Stream s => LanguageDef s -> ParserS s Char
 charLit' = genCharLit . defCharLiteralMark
-{-# INLINEABLE charLit' #-}
+{-# INLINE charLit' #-}
 
 -- | Character literal parser builder
 genCharLit :: Stream s => ParserS s String -> ParserS s Char
 genCharLit mark = between mark (mark <?> "end-of-char-literal") readChar
-{-# INLINEABLE genCharLit #-}
+{-# INLINE genCharLit #-}
 
 readChar :: Stream s => ParserS s Char
 readChar = do
@@ -400,7 +400,7 @@ readChar = do
   case readLitChar s of
     [(a, s')] -> a <$ skipCount (length s - length s') anychar
     _ -> fail "failed to read any char literal"
-{-# INLINEABLE readChar #-}
+{-# INLINE readChar #-}
 
 -- | Parses a single @string literal@
 --
@@ -412,31 +412,31 @@ readChar = do
 -- >>> stringLit = string "\"" *> manyTill readChar (string "\"")
 stringLit :: Stream s => ParserS s String
 stringLit = stringLit' def
-{-# INLINEABLE stringLit #-}
+{-# INLINE stringLit #-}
 
 -- | The same as 'stringLit', but this reads 'defStringLiteralMark' from 'LanguageDef'.
 stringLit' :: Stream s => LanguageDef s -> ParserS s String
 stringLit' = genStringLit . defStringLiteralMark
-{-# INLINEABLE stringLit' #-}
+{-# INLINE stringLit' #-}
 
 -- | String literal parser builder
 genStringLit :: Stream s => ParserS s String -> ParserS s String
 genStringLit mark = between mark mark (concat <$> many character)
  where
   character = nonEscaped <|> escaped
-  nonEscaped = some (noneOf "\\\"")
+  -- TODO: improve performance (sequence-level rather than parser-level)
+  nonEscaped = some (forbid mark *> forbid (char '\\') *> anychar)
   escaped = do
     _ <- char '\\'
-    oneOf "\\\"0nrtbvf"
-      >>= \x -> pure $ case x of
-        '"' -> "\""
-        '\\' -> "\\"
-        '0' -> "\0"
-        'n' -> "\n"
-        'r' -> "\r"
-        't' -> "\t"
-        'b' -> "\b"
-        'v' -> "\v"
-        'f' -> "\f"
-        _ -> die "unreachable"
-{-# INLINEABLE genStringLit #-}
+    oneOf "\\\"0nrtbvf" >>= \x -> pure $ case x of
+      '"' -> "\""
+      '\\' -> "\\"
+      '0' -> "\0"
+      'n' -> "\n"
+      'r' -> "\r"
+      't' -> "\t"
+      'b' -> "\b"
+      'v' -> "\v"
+      'f' -> "\f"
+      _ -> die "unreachable"
+{-# INLINE genStringLit #-}
