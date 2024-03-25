@@ -32,26 +32,26 @@ lexeme p = p <* skip
 
 -- | Parses any string symbol to comsume. The same as 'string'
 symbol :: Stream s => String -> S s String
-symbol = string
+symbol = lexeme . string
 {-# INLINE symbol #-}
 
-letters :: (Stream s) => S s String
+letters :: Stream s => S s String
 letters = some letter
 {-# INLINE letters #-}
 
-alphaNums :: (Stream s) => S s String
+alphaNums :: Stream s => S s String
 alphaNums = some alphaNum
 {-# INLINE alphaNums #-}
 
-digits :: (Stream s) => S s String
+digits :: Stream s => S s String
 digits = some digit
 {-# INLINE digits #-}
 
-specials :: (Stream s) => S s String
+specials :: Stream s => S s String
 specials = some special
 {-# INLINE specials #-}
 
-spaces :: (Stream s) => S s String
+spaces :: Stream s => S s String
 spaces = some space
 {-# INLINE spaces #-}
 
@@ -59,7 +59,7 @@ spaces = some space
 --
 -- >>> ta (parens letters) "(parser)"
 -- "parser"
-parens :: (Stream s) => S s a -> S s a
+parens :: Stream s => S s a -> S s a
 parens = between (symbol "(") (symbol ")")
 {-# INLINE parens #-}
 
@@ -67,7 +67,7 @@ parens = between (symbol "(") (symbol ")")
 --
 -- >>> ta (braces letters) "{parser}"
 -- "parser"
-braces :: (Stream s) => S s a -> S s a
+braces :: Stream s => S s a -> S s a
 braces = between (symbol "{") (symbol "}")
 {-# INLINE braces #-}
 
@@ -75,7 +75,7 @@ braces = between (symbol "{") (symbol "}")
 --
 -- >>> ta (angles letters) "<parser>"
 -- "parser"
-angles :: (Stream s) => S s a -> S s a
+angles :: Stream s => S s a -> S s a
 angles = between (symbol "<") (symbol ">")
 {-# INLINE angles #-}
 
@@ -279,64 +279,44 @@ genScientific flt = liftA2 (<>) coeff expt
 -- Peeling whitespaces off is independent of any language syntax.
 -- Use this when you just want to strip whitespaces around targets
 --
--- >>> ta (strip float) "  3.1415926535"
+-- >>> ta (strip float) "  3.1415926535\n  "
 -- 3.1415926535
-strip :: (Stream s) => S s a -> S s a
-strip = rstrip . lstrip
+strip :: Stream s => S s a -> S s a
+strip = between skip skip
 {-# INLINE strip #-}
 
--- | Remove any leading whitespaces when parsing with @p@
-lstrip :: (Stream s) => S s a -> S s a
-lstrip p = skip *> p
-{-# INLINE lstrip #-}
-
--- | Remove any trailing whitespaces when parsing with @p@
-rstrip :: (Stream s) => S s a -> S s a
-rstrip p = p <* (skip <|> eof)
-{-# INLINE rstrip #-}
-
--- | Guarantees one or more spaces, or @EOF@
-gap :: (Stream s) => S s ()
-gap = skipSome space <|> eof
-
 -- | Skips whitespaces
-skip :: (Stream s) => S s ()
+skip :: Stream s => S s ()
 skip = skipMany space
 {-# INLINE skip #-}
 
--- | Skips successive blanks
-skipb :: (Stream s) => S s ()
-skipb = skipMany blank
-{-# INLINE skipb #-}
+-- | Guarantees one or more spaces, or @EOF@
+skip1 :: Stream s => S s ()
+skip1 = skipSome space <|> eof
 
 -- | Skips unnecesary whitespaces and comments
 --
 -- >>> input = "// LINE-COMMENT\n\r\n /*INNER BLOCK COMMENT*/ MUST-BE-HERE"
--- >>> ts (skips def) input
+-- >>> ts (skip' def) input
 -- "MUST-BE-HERE"
-skips :: Stream s => LanguageDef s -> S s ()
-skips def = skipMany $ choice [spaces, linec def, blockc def]
-{-# INLINE skips #-}
-
--- | Skips line and block comments
-skipc :: Stream s => LanguageDef s -> S s ()
-skipc def = skipMany $ linec def <|> blockc def
-{-# INLINEABLE skipc #-}
+skip' :: Stream s => LanguageDef s -> S s ()
+skip' def = skipMany $ choice [spaces, cmtL def, cmtB def]
+{-# INLINE skip' #-}
 
 -- | Parses a single line comment
-linec :: Stream s => LanguageDef s -> S s String
-linec def = some p *> (manyTill eol (anycharBut '\n') <|> manyTill eof anychar)
+cmtL :: Stream s => LanguageDef s -> S s String
+cmtL def = some p *> manyTill (void eol <|> eof) (anycharBut '\n')
  where
   p = defCommentLine def
-{-# INLINEABLE linec #-}
+{-# INLINEABLE cmtL #-}
 
 -- | Parses a multi-line block comment
-blockc :: Stream s => LanguageDef s -> S s String
-blockc def = some bra *> manyTill ket anychar
+cmtB :: Stream s => LanguageDef s -> S s String
+cmtB def = some bra *> manyTill ket anychar
  where
   bra = defCommentBlockBegin def
   ket = defCommentBlockEnd def
-{-# INLINEABLE blockc #-}
+{-# INLINEABLE cmtB #-}
 
 -- | Parses an identifier
 identifier :: Stream s => LanguageDef s -> S s String
@@ -347,7 +327,7 @@ identifier def = do
 
   if isReserved found
     then fail $ unwords ["reserved identifier used:", show found]
-    else skips def $> found
+    else skip' def $> found
  where
   isReserved name
     | caseSensitive = S.member name set
@@ -369,7 +349,7 @@ operator def = do
   op <- specials
   if isReserved op
     then fail $ unwords ["reserved operator used:", show op]
-    else skips def $> op
+    else skip' def $> op
  where
   isReserved o = S.member o set
   set = S.fromList (defReservedOps def)

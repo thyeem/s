@@ -20,16 +20,10 @@ dependencies:
 - base
 - bytestring
 - containers
-- deepseq
-- directory
-- filepath
 - haskeline
-- parallel
+- here
 - pretty-simple
-- random
-- raw-strings-qq
 - text
-- vector
 
 ghc-options:
 - -Wall
@@ -40,7 +34,7 @@ library:
   source-dirs: src
 
 executables:
-  s-demo:
+  s:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -48,10 +42,6 @@ executables:
     - -g0
     dependencies:
     - base
-    - containers
-    - directory
-    - text
-    - vector
     - s
     when:
     - condition: false

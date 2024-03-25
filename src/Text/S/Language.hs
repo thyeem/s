@@ -46,7 +46,7 @@ def =
     , defCommentBlockBegin = string "/*"
     , defCommentBlockEnd = string "*/"
     , defCommentLine = string "//"
-    , defIdentifierBegin = choice [char '_', alpha]
+    , defIdentifierBegin = char '_' <|> alpha
     , defIdentifierName = many alphaNum
     , defReservedOps = []
     , defKeywords = []
@@ -63,7 +63,7 @@ haskelldef =
     , defCommentBlockBegin = string "{-"
     , defCommentBlockEnd = string "-}"
     , defCommentLine = string "--"
-    , defIdentifierBegin = alpha
+    , defIdentifierBegin = char '_' <|> alpha
     , defIdentifierName = many $ choice [alphaNum, char '\'', char '_']
     , defReservedOps =
         [ "#"

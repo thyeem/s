@@ -32,8 +32,7 @@ newtype Key = K String
 parseJSON :: Stream s => S s JSON
 parseJSON =
   strip $
-    choice
-      [parseNULL, parseBool, parseNumber, parseString, parseArray, parseObject]
+    choice [parseString, parseObject, parseArray, parseNULL, parseBool, parseNumber]
 {-# INLINE parseJSON #-}
 
 -- | Parse JSON @__null__@ value
@@ -41,7 +40,7 @@ parseJSON =
 -- >>> ta parseNULL "null"
 -- NULL
 parseNULL :: Stream s => S s JSON
-parseNULL = NULL <$ strip (symbol "null")
+parseNULL = NULL <$ (symbol "null" <* skip)
 {-# INLINE parseNULL #-}
 
 -- | Parse JSON bool, @__true__@ and @__false__@
@@ -54,8 +53,8 @@ parseNULL = NULL <$ strip (symbol "null")
 parseBool :: Stream s => S s JSON
 parseBool = B <$> choice [true, false]
  where
-  true = True <$ strip (symbol "true")
-  false = False <$ strip (symbol "false")
+  true = True <$ (symbol "true" <* skip)
+  false = False <$ (symbol "false" <* skip)
 {-# INLINE parseBool #-}
 
 -- | Parse JSON @__number__@ like: @1234, 1.234, 1.234e-9,..@
@@ -63,7 +62,7 @@ parseBool = B <$> choice [true, false]
 -- >>> ta parseNumber "0.25"
 -- N (1 % 4)
 parseNumber :: Stream s => S s JSON
-parseNumber = N . toRational <$> strip number
+parseNumber = N . toRational <$> (number <* skip)
 {-# INLINE parseNumber #-}
 
 -- | Parse JSON @__string__@ like: @"json-parser",..@
@@ -71,7 +70,7 @@ parseNumber = N . toRational <$> strip number
 -- >>> ta parseString "\"JSON-parser\""
 -- Q "JSON-parser"
 parseString :: Stream s => S s JSON
-parseString = Q <$> strip stringLit
+parseString = Q <$> (stringLit <* skip)
 {-# INLINE parseString #-}
 
 -- | Parse JSON @__array__@ like: @[1, true, "", {}, [],..]@
@@ -92,7 +91,7 @@ parseObject =
   O
     <$> between (symbol "{") (symbol "}") (sepBy (symbol ",") parsePair)
  where
-  parseKey = K <$> strip stringLit
+  parseKey = K <$> (stringLit <* skip)
   parsePair = parseKey >>= \key -> Pair key <$> (symbol ":" *> parseJSON)
 {-# INLINE parseObject #-}
 

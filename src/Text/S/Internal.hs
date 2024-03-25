@@ -209,14 +209,13 @@ addMessage msg state@State {..} =
 {-# INLINE addMessage #-}
 
 data Result a s
-  = Ok a !(State s)
+  = Ok !a !(State s)
   | Error !(State s)
   deriving (Show, Eq)
 
--- Defines a monad transformer parser, 'S'
+-- | Defines a monad transformer parser, 'S'
 --
 -- It self-describes the outline of the parsing process this parser does.
---
 newtype S s a = S
   { unS
       :: forall b
@@ -253,7 +252,7 @@ smap f p = S $ \state fOk fError ->
 {-# INLINE smap #-}
 
 instance Applicative (S s) where
-  pure x = S $ \state ok _ -> ok x state
+  pure x = S $ \state fOk _ -> fOk x state
   {-# INLINE pure #-}
 
   (<*>) = sap
@@ -312,7 +311,7 @@ splus p q = S $ \state fOk fError ->
 
 instance MonadFail (S s) where
   fail msg =
-    S $ \s@State {} _ fError -> fError $ addMessage (Normal msg) s
+    S $ \state _ fError -> fError $ addMessage (Normal msg) state
   {-# INLINE fail #-}
 
 -- | Tries to parse with @__p__@ looking ahead without consuming any input.
@@ -358,7 +357,7 @@ charBy p = S $ \state@(State stream src msgs) fOk fError ->
 jump :: Source -> Char -> Source
 jump (Source n ln col) = \case
   '\n' -> Source n (ln + 1) 1
-  '\t' -> Source n ln (move col 8)
+  '\t' -> Source n ln (move col 4)
   _ -> Source n ln (col + 1)
  where
   move col size = col + size - ((col - 1) `mod` size)
