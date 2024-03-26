@@ -26,26 +26,13 @@ dependencies:
 - text
 
 ghc-options:
+- -O2
 - -Wall
 - -Wno-name-shadowing
 - -Wno-orphans
 
 library:
   source-dirs: src
-
-executables:
-  s:
-    main:                Main.hs
-    source-dirs:         app
-    ghc-options:
-    - -O2
-    - -g0
-    dependencies:
-    - base
-    - s
-    when:
-    - condition: false
-      other-modules: Paths_s
 
 tests:
   doctest:
@@ -54,7 +41,6 @@ tests:
     - test
     ghc-options:
     - -threaded
-    - -O2
     dependencies:
     - base
     - Glob

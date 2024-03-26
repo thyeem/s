@@ -30,5 +30,4 @@ newdist/
 .hspec-failures
 
 # bin
-s
-s-demo
+app/s

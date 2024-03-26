@@ -36,7 +36,7 @@ many p = some p <|> pure []
 
 -- | Tries to parse with parsers in the list untill one of them succeeds.
 --
--- >>> ta (choice [letter, special, digit]) "$parser"
+-- >>> ta (choice [alpha, special, digit]) "$parser"
 -- '$'
 choice :: MonadPlus m => [m a] -> m a
 choice = foldl' (<|>) mzero
@@ -56,7 +56,7 @@ option x p = p <|> return x
 --
 -- See also 'skipCount'
 --
--- >>> ta (count 6 letter) "Parser-Combinator"
+-- >>> ta (count 6 alpha) "Parser-Combinator"
 -- "Parser"
 count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
@@ -68,7 +68,7 @@ count = replicateM
 -- >>> ta (optionMaybe digits) "COVID-19"
 -- Nothing
 --
--- >>> ta (optionMaybe letters) "COVID-19"
+-- >>> ta (optionMaybe alphas) "COVID-19"
 -- Just "COVID"
 optionMaybe :: MonadPlus m => m a -> m (Maybe a)
 optionMaybe p = option Nothing (Just <$> p)
@@ -168,7 +168,7 @@ manyTill end p = someTill end p <|> (end $> [])
 --
 -- See also 'someTill''. It keeps the result of parser @__end__@.
 --
--- >>> p = someTill (string ":") (letter <|> space)
+-- >>> p = someTill (string ":") (alpha <|> space)
 -- >>> ta p "for x in xs: f(x)"
 -- "for x in xs"
 someTill :: MonadPlus m => m end -> m a -> m [a]
@@ -189,7 +189,7 @@ someTill end p = liftA2 (:) p (manyTill end p)
 -- >>> ta (manyTill' special p) "stop COVID-19"
 -- ("stop COVID",'-')
 --
--- >>> ta (manyTill' letters digit) "stop COVID-19"
+-- >>> ta (manyTill' alphas digit) "stop COVID-19"
 -- ("","stop")
 manyTill' :: MonadPlus m => m end -> m a -> m ([a], end)
 manyTill' end p = someTill' end p <|> (([],) <$> end)
@@ -219,7 +219,7 @@ someTill' end p = liftA2 f p (manyTill' end p) where f a = first (a :)
 -- >>> ts (skipOptional special) "$PARSER_COMBINATOR"
 -- "PARSER_COMBINATOR"
 --
--- >>> ts (skipOptional letter) "$PARSER_COMBINATOR"
+-- >>> ts (skipOptional alpha) "$PARSER_COMBINATOR"
 -- "$PARSER_COMBINATOR"
 skipOptional :: MonadPlus m => m a -> m ()
 skipOptional p = void p <|> pure ()
@@ -240,7 +240,7 @@ skipMany = void . many
 -- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
 -- then discards the result.
 --
--- >>> ts (skipSome (letter <|> char '-')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
+-- >>> ts (skipSome (alpha <|> char '-')) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
 -- "#-G-Ab-A-Bb-B"
 skipSome :: MonadPlus m => m a -> m ()
 skipSome p = p *> skipMany p

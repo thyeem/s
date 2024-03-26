@@ -44,7 +44,7 @@ library
       Paths_s
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans
+  ghc-options: -O2 -Wall -Wno-name-shadowing -Wno-orphans
   build-depends:
       base
     , bytestring
@@ -52,22 +52,6 @@ library
     , haskeline
     , here
     , pretty-simple
-    , text
-  default-language: Haskell2010
-
-executable s
-  main-is: Main.hs
-  hs-source-dirs:
-      app
-  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -O2 -g0
-  build-depends:
-      base
-    , bytestring
-    , containers
-    , haskeline
-    , here
-    , pretty-simple
-    , s
     , text
   default-language: Haskell2010
 
@@ -78,7 +62,7 @@ test-suite doctest
       Paths_s
   hs-source-dirs:
       test
-  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -threaded -O2
+  ghc-options: -O2 -Wall -Wno-name-shadowing -Wno-orphans -threaded
   build-depends:
       Glob
     , base

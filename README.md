@@ -1,23 +1,43 @@
 # s
 
-The `parser S` is a generalized parser combinator extremely easy-to-use. This project is heavily inspired by [`Parsec`](https://hackage.haskell.org/package/parsec).
-`parser S` was designed to focus on `USABILITY`, `SCALABILITY` and `NON-VERBOSITY`.
+`s` is a generalized parser combinator *extremely easy to use*. The letter `s` symbolizes _simplicity_.
 
-The letter `s` symbolizes simplicity.
+This project is heavily inspired by [`Parsec`](https://hackage.haskell.org/package/parsec), but has a completely **different goal**.   
+`s` focuses more on the essentials so that it helps _usability_ and _extensibility_.
 
-## Build
+### Build
 ```bash
-# Assume the Haskell GHC and cabal is installed
-
-# build: this yields ~80kB binary 'sl' in ./app directory.
-$ make release
+# not uploaded to the hackage yet
+$ git clone https://github.com/thyeem/s.git    
+$ stack build
 
 # doctest
-$ make doctest
+$ stack test
 
-# generate doc
-$ make doc
-
-# open doc
-$ make opendoc
+# generate/open doc
+$ stack haddock --open s
 ```
+
+### Examples
+
+#### sLISP 
+See [`sLISP`](https://github.com/thyeem/slisp), which is a pure-functional `LISP` implementation in `Haskell`.   
+`s` is used in the parsing part of _S-expression_ in `sLISP`.
+
+#### CSV parser
+_See `src/Text/S/Example/CSV.hs`_
+
+#### JSON parser
+_See `src/Text/S/Example/JSON.hs`_
+
+#### Generalized calculator
+_See `src/Text/S/Example/Calc.hs`_
+
+##### calculator REPL
+```haskell
+>>> import Text.S.Example.Calc (calc)
+>>> calc
+Choose an Expr Calculators [infixl, infixr, prefix, postfix]: 
+```
+
+

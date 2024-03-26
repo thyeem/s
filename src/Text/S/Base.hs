@@ -92,23 +92,15 @@ hexDigit = charBy isHexDigit <?> "hex-digit"
 -- >>> ta (some alpha) "stop COVID-19"
 -- "stop"
 alpha :: Stream s => S s Char
-alpha = charBy isAlpha <?> "letter"
+alpha = charBy isAlpha <?> "alphabetical-char"
 {-# INLINE alpha #-}
-
--- | The same as @__alpha__@
---
--- >>> ta (some letter) "COVID-19"
--- "COVID"
-letter :: Stream s => S s Char
-letter = alpha
-{-# INLINE letter #-}
 
 -- | Parses any alphabetical or numeric character, the same as @__[0-9a-zA-Z]__@
 --
 -- >>> ta (some alphaNum) "year2022"
 -- "year2022"
 alphaNum :: Stream s => S s Char
-alphaNum = charBy isAlphaNum <?> "letter-or-digit"
+alphaNum = charBy isAlphaNum <?> "alpha-or-digit"
 {-# INLINE alphaNum #-}
 
 -- | Parses any single lowercase letter, the same as @__[a-z]__@

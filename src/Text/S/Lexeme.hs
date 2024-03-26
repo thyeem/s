@@ -35,9 +35,9 @@ symbol :: Stream s => String -> S s String
 symbol = lexeme . string
 {-# INLINE symbol #-}
 
-letters :: Stream s => S s String
-letters = some letter
-{-# INLINE letters #-}
+alphas :: Stream s => S s String
+alphas = some alpha
+{-# INLINE alphas #-}
 
 alphaNums :: Stream s => S s String
 alphaNums = some alphaNum
@@ -57,7 +57,7 @@ spaces = some space
 
 -- | Parses string between parentheses
 --
--- >>> ta (parens letters) "(parser)"
+-- >>> ta (parens alphas) "(parser)"
 -- "parser"
 parens :: Stream s => S s a -> S s a
 parens = between (symbol "(") (symbol ")")
@@ -65,7 +65,7 @@ parens = between (symbol "(") (symbol ")")
 
 -- | Parses string between curly braces
 --
--- >>> ta (braces letters) "{parser}"
+-- >>> ta (braces alphas) "{parser}"
 -- "parser"
 braces :: Stream s => S s a -> S s a
 braces = between (symbol "{") (symbol "}")
@@ -73,7 +73,7 @@ braces = between (symbol "{") (symbol "}")
 
 -- | Parses string between angle brackets
 --
--- >>> ta (angles letters) "<parser>"
+-- >>> ta (angles alphas) "<parser>"
 -- "parser"
 angles :: Stream s => S s a -> S s a
 angles = between (symbol "<") (symbol ">")
@@ -81,7 +81,7 @@ angles = between (symbol "<") (symbol ">")
 
 -- | Parses string between square brackets
 --
--- >>> ta (squares letters) "[parser]"
+-- >>> ta (squares alphas) "[parser]"
 -- "parser"
 squares :: Stream s => S s a -> S s a
 squares = between (symbol "[") (symbol "]")
@@ -291,8 +291,8 @@ skip = skipMany space
 {-# INLINE skip #-}
 
 -- | Guarantees one or more spaces, or @EOF@
-skip1 :: Stream s => S s ()
-skip1 = skipSome space <|> eof
+gap :: Stream s => S s ()
+gap = skipSome space <|> eof
 
 -- | Skips unnecesary whitespaces and comments
 --
