@@ -16,7 +16,6 @@ module Text.S.Combinator
   )
 where
 
-import Control.Applicative ((<**>))
 import Control.Monad (MonadPlus (..), replicateM, replicateM_)
 import Data.Bifunctor (first)
 import Data.Functor (($>))
@@ -307,7 +306,7 @@ skipSomeTill end p = p *> skipManyTill end p
 -- binary operator that is between its operands and is left-associative.
 -- The result will be folded if the operation is evaluable.
 --
--- See also 'chainl' and 'chainr1'.
+-- See also 'chainl'.
 --
 -- >>> op = symbol "^" $> (^)
 -- >>> ta (chainl1 op (strip integer)) "2 ^ 3 ^ 4"
@@ -326,6 +325,15 @@ chainl1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainl1 op p = p >>= chainl op p
 {-# INLINE chainl1 #-}
 
+-- | Same as 'chainl1', but starts parsing from infix binary operator, @__op__@.
+--
+-- If it fails, it returns the given @a@-typed fallback value.
+--
+-- See also 'chainl1'.
+--
+-- >>> op = symbol "^" $> (^)
+-- >>> ta (chainl op (strip integer) 2) "^ 3 ^ 4"
+-- 4096
 chainl :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
 chainl op p = rest
  where
@@ -340,7 +348,7 @@ chainl op p = rest
 -- binary operator that is between its operands and is right-associative.
 -- The result will be folded if the operation is evaluable.
 --
--- See also 'chainr' and 'chainl1'.
+-- See also 'chainr'.
 --
 -- >>> op = symbol "^" $> (^)
 -- >>> ta (chainr1 op (strip integer)) "2 ^ 3 ^ 4"
@@ -359,6 +367,15 @@ chainr1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainr1 op p = p >>= chainr op p
 {-# INLINE chainr1 #-}
 
+-- | Same as 'chainr1', but starts parsing from infix binary operator, @__op__@.
+--
+-- If it fails, it returns the given @a@-typed fallback value.
+--
+-- See also 'chainr1'.
+--
+-- >>> op = symbol "^" $> (^)
+-- >>> ta (chainr op (strip integer) 2) "^ 3 ^ 4"
+-- 2417851639229258349412352
 chainr :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
 chainr op p = rest
  where
@@ -373,7 +390,7 @@ chainr op p = rest
 -- binary operator that precedes its operands.
 -- The result will be folded if the operation is evaluable.
 --
--- See also 'chainq1'.
+-- See also 'chainq'.
 --
 -- >>> op = strip (symbol "^") $> (^)
 -- >>> ta (chainp1 op (strip integer)) "^ ^ 2 3 4"
@@ -395,6 +412,16 @@ chainp1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainp1 op p = op <*> o <*> o where o = chainp1 op p <|> p
 {-# INLINE chainp1 #-}
 
+-- | Same as 'chainp1', but starts parsing from the second operand of
+-- the given operator, @__op__@ while taking the first operand as given.
+--
+-- If it fails, it returns the given @a@-typed fallback value.
+--
+-- See also 'chainp1'.
+--
+-- >>> op = strip (symbol "^") $> (^)
+-- >>> ta (chainp op (strip integer) 8) "^ 4"
+-- 4096
 chainp :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
 chainp op p x = op <*> pure x <*> o where o = chainp1 op p <|> p
 {-# INLINE chainp #-}
@@ -406,7 +433,7 @@ chainp op p x = op <*> pure x <*> o where o = chainp1 op p <|> p
 -- binary operator that follows its operands.
 -- The result will be folded if the operation is evaluable.
 --
--- See also 'chainp1'.
+-- See also 'chainq'.
 --
 -- >>> op = strip (symbol "^") $> (^)
 -- >>> ta (chainq1 op (strip integer)) "2 3 ^ 4 ^"
@@ -428,14 +455,20 @@ chainq1 :: MonadPlus m => m (a -> a -> a) -> m a -> m a
 chainq1 op p = p >>= chainq op p
 {-# INLINE chainq1 #-}
 
+-- | Same as 'chainq1', but starts parsing from the second operand of
+-- the given operator, @__op__@ while taking the first operand as given.
+--
+-- If it fails, it returns the given @a@-typed fallback value.
+--
+-- See also 'chainq1'.
+--
+-- >>> op = strip (symbol "^") $> (^)
+-- >>> ta (chainq op (strip integer) 8) "4 ^"
+-- 4096
 chainq :: MonadPlus m => m (a -> a -> a) -> m a -> a -> m a
 chainq op p = rest
  where
   rest x = find x <|> pure x
-  find x = (p >>= rest) >>= bind x
+  find x = chainq1 op p >>= bind x
   bind x y = op >>= rest . flip uncurry (x, y)
 {-# INLINE chainq #-}
-
-betweenOp :: MonadPlus m => m (a -> a) -> m (a -> a) -> m a -> m a
-betweenOp pre post p = (option id pre <*> p) <**> option id post
-{-# INLINE betweenOp #-}

@@ -11,8 +11,13 @@ infixl' = expr atom table
  where
   atom = strip number <|> parens infixl'
   table =
-    [ [prefixU "-" negate, prefixU "+" id]
-    , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
+    [ [prefixU "-" negate, prefixU "+" id] -- sign
+    ,
+      [ prefixU "++" (+ 1)
+      , postfixU "++" (+ 1)
+      , prefixU "--" (subtract 1)
+      , postfixU "--" (subtract 1)
+      ] -- increment/decrement operator
     , [infixL "^" (**)]
     , [infixL "*" (*), infixL "/" (/)]
     , [infixL "+" (+), infixL "-" (-)]
@@ -24,8 +29,13 @@ infixr' = expr atom table
  where
   atom = strip number <|> parens infixr'
   table =
-    [ [prefixU "-" negate, prefixU "+" id]
-    , [postfixU "++" (+ 1), postfixU "--" (subtract 1)]
+    [ [prefixU "-" negate, prefixU "+" id] -- sign
+    ,
+      [ prefixU "++" (+ 1)
+      , postfixU "++" (+ 1)
+      , prefixU "--" (subtract 1)
+      , postfixU "--" (subtract 1)
+      ] -- increment/decrement operators
     , [infixR "^" (**)]
     , [infixR "*" (*), infixR "/" (/)]
     , [infixR "+" (+), infixR "-" (-)]

@@ -9,6 +9,7 @@ module Text.S.Expr
   )
 where
 
+import Control.Applicative ((<**>))
 import Control.Monad (MonadPlus (mzero))
 import Data.Functor (($>))
 import Data.List (foldl')
@@ -40,22 +41,23 @@ type OperatorRecord s a =
 applyPriority :: S s a -> LevelPriority s a -> S s a
 applyPriority unit level = choice [expr'l, expr'r, expr'p, expr'q, term]
  where
-  (a, b, c, d, e, f) = foldl' (flip sortOp) ([], [], [], [], [], []) level
-  term = betweenOp (choice a) (choice b) unit
+  (a, b, c, d, e, f) = foldl' groupOp ([], [], [], [], [], []) level
+  term = (option id (choice a) <*> unit) <**> option id (choice b)
   expr'l = null c ? mzero ::: term >>= chainl (choice c) term
   expr'r = null d ? mzero ::: term >>= chainr (choice d) term
   expr'q = null f ? mzero ::: term >>= chainq (choice f) term
   expr'p = null e ? mzero ::: chainp1 (choice e) term
 {-# INLINEABLE applyPriority #-}
 
-sortOp :: Operator s a -> OperatorRecord s a -> OperatorRecord s a
-sortOp (PrefixU op) (a, b, c, d, e, f) = (op : a, b, c, d, e, f)
-sortOp (PostfixU op) (a, b, c, d, e, f) = (a, op : b, c, d, e, f)
-sortOp (InfixL op) (a, b, c, d, e, f) = (a, b, op : c, d, e, f)
-sortOp (InfixR op) (a, b, c, d, e, f) = (a, b, c, op : d, e, f)
-sortOp (PrefixB op) (a, b, c, d, e, f) = (a, b, c, d, op : e, f)
-sortOp (PostfixB op) (a, b, c, d, e, f) = (a, b, c, d, e, op : f)
-{-# INLINEABLE sortOp #-}
+groupOp :: OperatorRecord s a -> Operator s a -> OperatorRecord s a
+groupOp (a, b, c, d, e, f) op = case op of
+  PrefixU o -> (o : a, b, c, d, e, f)
+  PostfixU o -> (a, o : b, c, d, e, f)
+  InfixL o -> (a, b, o : c, d, e, f)
+  InfixR o -> (a, b, c, o : d, e, f)
+  PrefixB o -> (a, b, c, d, o : e, f)
+  PostfixB o -> (a, b, c, d, e, o : f)
+{-# INLINEABLE groupOp #-}
 
 -- | expression parser builder
 expr :: Stream s => S s a -> OperatorTable s a -> S s a
