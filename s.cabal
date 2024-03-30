@@ -7,8 +7,8 @@ cabal-version: 1.12
 name:           s
 version:        0.1.1
 synopsis:       parser combinators
-description:    The parser-S is a generalized parser combinator easy-to-read.
-                It is designed to focused on usability, scalability and non-verbosity.
+description:    's' is a generalized parser combinator extremely easy to use.
+                It is a frill-less design that focuses on the essence of parsing work
                 .
 category:       parsing
 homepage:       https://github.com/thyeem/s#readme
@@ -44,7 +44,7 @@ library
       Paths_s
   hs-source-dirs:
       src
-  ghc-options: -O2 -Wall -Wno-name-shadowing -Wno-orphans
+  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -O2
   build-depends:
       base
     , bytestring
@@ -61,7 +61,7 @@ test-suite doctest
       Paths_s
   hs-source-dirs:
       test
-  ghc-options: -threaded
+  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans -threaded
   build-depends:
       Glob
     , base

@@ -92,7 +92,7 @@ hexDigit = charBy isHexDigit <?> "hex-digit"
 -- >>> ta (some alpha) "stop COVID-19"
 -- "stop"
 alpha :: Stream s => S s Char
-alpha = charBy isAlpha <?> "alphabetical-char"
+alpha = charBy isAlpha <?> "alpha"
 {-# INLINE alpha #-}
 
 -- | Parses any alphabetical or numeric character, the same as @__[0-9a-zA-Z]__@

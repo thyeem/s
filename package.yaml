@@ -8,21 +8,23 @@ copyright: 2022-2024 Francis
 synopsis: parser combinators
 category: parsing
 description: |
-  The parser-S is a generalized parser combinator easy-to-read.
-  It is designed to focused on usability, scalability and non-verbosity.
+  's' is a generalized parser combinator extremely easy to use.
+  It is a frill-less design that focuses on the essence of parsing work
   .
 
 extra-source-files:
 - README.md
 - ChangeLog.md
 
+ghc-options:
+  - -Wall
+  - -Wno-name-shadowing
+  - -Wno-orphans
+
 library:
   source-dirs: src
   ghc-options:
   - -O2
-  - -Wall
-  - -Wno-name-shadowing
-  - -Wno-orphans
   dependencies:
   - base
   - bytestring

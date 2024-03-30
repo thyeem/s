@@ -51,18 +51,12 @@ module Text.S.Internal
   )
 where
 
-import Control.Applicative
-  ( Alternative (..)
-  , liftA2
-  )
+import Control.Applicative (Alternative (..), liftA2)
 import Control.Monad (MonadPlus (..))
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy.Char8 as CL
 import Data.Functor (void)
-import Data.List
-  ( intercalate
-  , uncons
-  )
+import Data.List (uncons)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as TL
@@ -205,7 +199,7 @@ initState file stream = State stream (initSource file) mempty
 
 addMessage :: Message -> State s -> State s
 addMessage msg state@State {..} =
-  state {stateMesssages = stateMesssages <> [msg]}
+  state {stateMesssages = stateMesssages ++ [msg]}
 {-# INLINE addMessage #-}
 
 data Result a s
@@ -232,8 +226,10 @@ newtype S s a = S
 infixr 0 <?>
 
 label :: String -> S s a -> S s a
-label desc p = S $ \state@State {} fOk fError ->
-  let fError' s@State {} = fError $ addMessage msg s
+label desc p = S $ \state fOk fError ->
+  let fError' s
+        | null desc = fError s
+        | otherwise = fError $ addMessage msg s
       msg = Expected . unwords $ ["->", "expected:", desc]
    in unS p state fOk fError'
 {-# INLINE label #-}
@@ -304,7 +300,15 @@ szero = fail mempty
 
 splus :: S s a -> S s a -> S s a
 splus p q = S $ \state fOk fError ->
-  let fError' _ = unS q state fOk fError in unS p state fOk fError'
+  let fError' state' =
+        let fError'' state'' = fError (merge state' state'')
+         in unS q state fOk fError''
+   in unS p state fOk fError'
+ where
+  merge s1@State {stateSource = src1} s2@State {stateSource = src2}
+    | src1 > src2 = s1
+    | src2 < src1 = s2
+    | otherwise = s1 {stateMesssages = stateMesssages s1 ++ stateMesssages s2}
 {-# INLINE splus #-}
 
 instance MonadFail (S s) where
@@ -347,7 +351,7 @@ charBy p = S $ \state@(State stream src msgs) fOk fError ->
       | otherwise ->
           fError $
             addMessage
-              (Unexpected $ unwords ["Error, got unexpected character:", show c])
+              (Unexpected $ unwords ["Error, got unexpected token:", show c])
               state
 {-# INLINE charBy #-}
 
@@ -439,17 +443,24 @@ instance Pretty Source where
       ]
 
 instance {-# OVERLAPPING #-} Pretty Messages where
-  pretty msgs = TL.pack $ intercalate "\n\t" (show <$> msgs)
+  pretty msgs = TL.pack $ concatMap (("\n\t" ++) . show) msgs
 
 instance (Show s, Pretty s) => Pretty (State s) where
   pretty State {..} =
     TL.unlines
-      [pretty stateSource, pretty stateMesssages, "remains: ", pretty stateStream]
+      [ pretty stateSource
+      , pretty stateMesssages
+      , TL.concat
+          [ "remains "
+          , TL.pack . show . subtract 2 . TL.length . pretty $ stateStream
+          , " char(s)."
+          ]
+      ]
 
 instance (Show s, Pretty s, Pretty a) => Pretty (Result a s) where
   pretty = \case
-    Ok ok s -> TL.unlines [pretty ok <> "\n", pretty s]
-    Error s -> TL.unlines ["\n", pretty s]
+    Ok ok s -> TL.intercalate "\n" [pretty ok, pretty s]
+    Error s -> TL.intercalate "\n" [mempty, pretty s]
 
 instance Pretty Int where
   pretty = TL.pack . show
