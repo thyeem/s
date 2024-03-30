@@ -25,7 +25,7 @@ import Text.S.Internal
 -- >>> ta (char 'p') "parser"
 -- 'p'
 char :: Stream s => Char -> S s Char
-char c = charBy (== c) <?> show [c]
+char c = charBy (== c) <?> show c
 {-# INLINE char #-}
 
 -- | Parses any single character
@@ -50,7 +50,7 @@ anycharBut c =
 -- >>> ta (string "par") "parser"
 -- "par"
 string :: Stream s => String -> S s String
-string s = mapM char s <?> show s
+string s = mapM char s <?> if length s > 1 then show s else mempty
 {-# INLINE string #-}
 
 -- | Parses any string and consumes everything

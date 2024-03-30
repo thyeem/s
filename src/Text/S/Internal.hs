@@ -246,9 +246,7 @@ instance Functor (S s) where
   {-# INLINE (<$) #-}
 
 smap :: (a -> b) -> S s a -> S s b
-smap f p = S $ \state fOk fError ->
-  let fOk' a = fOk $! f a
-   in unS p state fOk' fError
+smap f p = S $ \state fOk fError -> unS p state (fOk . f) fError
 {-# INLINE smap #-}
 
 instance Applicative (S s) where
@@ -258,7 +256,7 @@ instance Applicative (S s) where
   (<*>) = sap
   {-# INLINE (<*>) #-}
 
-  liftA2 f x = (<*>) (fmap f $! x)
+  liftA2 f x = (<*>) (fmap f x)
   {-# INLINE liftA2 #-}
 
   (<*) = liftA2 const
@@ -266,7 +264,7 @@ instance Applicative (S s) where
 
 sap :: S s (a -> b) -> S s a -> S s b
 sap f p = S $ \state fOk fError ->
-  let fOk' x state' = unS p state' (\a s -> fOk (x $! a) s) fError
+  let fOk' x state' = unS p state' (fOk . x) fError
    in unS f state fOk' fError
 {-# INLINE sap #-}
 
@@ -282,7 +280,7 @@ instance Monad (S s) where
 
 sbind :: S s a -> (a -> S s b) -> S s b
 sbind p f = S $ \state fOk fError ->
-  let fOk' x state' = unS (f $! x) state' fOk fError
+  let fOk' x state' = unS (f x) state' fOk fError
    in unS p state fOk' fError
 {-# INLINE sbind #-}
 
