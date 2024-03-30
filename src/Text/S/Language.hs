@@ -46,8 +46,8 @@ def =
     , defCommentBlockBegin = string "/*"
     , defCommentBlockEnd = string "*/"
     , defCommentLine = string "//"
-    , defIdentifierBegin = char '_' <|> alpha
-    , defIdentifierName = many alphaNum
+    , defIdentifierBegin = alpha <|> char '_'
+    , defIdentifierName = many $ alphaNum <|> char '_'
     , defReservedOps = []
     , defKeywords = []
     }
@@ -63,8 +63,8 @@ haskelldef =
     , defCommentBlockBegin = string "{-"
     , defCommentBlockEnd = string "-}"
     , defCommentLine = string "--"
-    , defIdentifierBegin = char '_' <|> alpha
-    , defIdentifierName = many $ choice [alphaNum, char '\'', char '_']
+    , defIdentifierBegin = alpha <|> char '_'
+    , defIdentifierName = many $ choice [alphaNum, char '_', char '\'']
     , defReservedOps =
         [ "#"
         , "'"
@@ -156,7 +156,7 @@ javaDef =
     , defCommentBlockBegin = string "/*"
     , defCommentBlockEnd = string "*/"
     , defCommentLine = string "//"
-    , defIdentifierBegin = alpha
+    , defIdentifierBegin = alpha <|> char '_'
     , defIdentifierName = many $ alphaNum <|> char '_'
     , defReservedOps =
         [ "!"
