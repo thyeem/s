@@ -24,14 +24,13 @@ module Text.S.Internal
   , LazyByteString
   , Stream (..)
   , Source (..)
-  , initSource
-  , Message (..)
+  , Error
   , Result (..)
   , State (..)
-  , initState
   , S (..)
   , void
   , (<?>)
+  , initState
   , label
   , try
   , forbid
@@ -55,8 +54,8 @@ import Control.Applicative (Alternative (..), liftA2)
 import Control.Monad (MonadPlus (..))
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy.Char8 as CL
-import Data.Functor (void)
-import Data.List (uncons)
+import Data.Functor (void, (<&>))
+import Data.List (intercalate, uncons)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as TL
@@ -103,6 +102,11 @@ class Show s => Stream s where
   unCons :: s -> Maybe (Char, s)
   readStream :: FilePath -> IO s
   isEmpty :: s -> Bool
+  takeStream :: (Char -> Bool) -> s -> [Char]
+  takeStream p s = case unCons s of
+    Just (c, cs) | p c -> c : takeStream p cs
+    _ -> mempty
+  {-# MINIMAL unCons, readStream, isEmpty #-}
 
 instance Stream ByteString where
   unCons = C.uncons
@@ -162,49 +166,52 @@ data Source = Source
   deriving (Show, Eq, Ord)
 
 instance Semigroup Source where
-  (<>) = appendSource
+  s1 <> s2
+    | sourceName s1 /= sourceName s2 = die "two source names do not match"
+    | s1 < s2 = s2
+    | otherwise = s1
   {-# INLINE (<>) #-}
 
 instance Monoid Source where
-  mempty = Source "-" 1 1
+  mempty = Source mempty 1 1
   {-# INLINE mempty #-}
 
-appendSource :: Source -> Source -> Source
-appendSource s1@Source {} s2@Source {}
-  | sourceName s1 /= sourceName s2 = die "two source names do not match"
-  | s1 < s2 = s2
-  | otherwise = s1
-{-# INLINE appendSource #-}
+updateSrc :: Source -> Char -> Source
+updateSrc src@Source {..} = \case
+  '\n' -> src {sourceLine = sourceLine + 1, sourceColumn = 1}
+  '\t' -> src {sourceColumn = move sourceColumn 4}
+  _ -> src {sourceColumn = sourceColumn + 1}
+ where
+  move col size = col + size - ((col - 1) `mod` size)
 
-initSource :: FilePath -> Source
-initSource file = Source file 1 1
+type Error = String
 
-data Message
-  = Unexpected !String
-  | Expected !String
-  | Normal !String
-  deriving (Eq, Ord)
-
-type Messages = [Message]
+joinError :: State s -> Error -> State s
+joinError state@State {..} error = state {stateErrors = stateErrors ++ [error]}
 
 data State s = State
   { stateStream :: s
   , stateSource :: !Source
-  , stateMesssages :: !Messages
+  , stateErrors :: ![Error]
+  , stateBuffer :: Text
   }
   deriving (Show, Eq)
 
-initState :: FilePath -> s -> State s
-initState file stream = State stream (initSource file) mempty
+-- | Initialize state
+initState :: Stream s => String -> s -> State s
+initState srcName s =
+  State s (mempty {sourceName = srcName}) mempty (updateBuf mempty s)
 
-addMessage :: Message -> State s -> State s
-addMessage msg state@State {..} =
-  state {stateMesssages = stateMesssages ++ [msg]}
-{-# INLINE addMessage #-}
+updateBuf :: Stream s => Text -> s -> Text
+updateBuf buf s = case unCons s of
+  Just (c, cs)
+    | c == '\n' || isEmpty buf -> T.pack $ takeStream (/= '\n') s
+    | otherwise -> buf
+  _ -> mempty
 
 data Result a s
   = Ok !a !(State s)
-  | Error !(State s)
+  | Err !(State s)
   deriving (Show, Eq)
 
 -- | Defines a monad transformer parser, 'S'
@@ -215,7 +222,7 @@ newtype S s a = S
       :: forall b
        . State s -- state including stream input
       -> (a -> State s -> b) -- call @Ok@ when somthing comsumed
-      -> (State s -> b) -- call @Error@ when nothing consumed
+      -> (State s -> b) -- call @Err@ when nothing consumed
       -> b
   }
 
@@ -226,12 +233,11 @@ newtype S s a = S
 infixr 0 <?>
 
 label :: String -> S s a -> S s a
-label desc p = S $ \state fOk fError ->
-  let fError' s
-        | null desc = fError s
-        | otherwise = fError $ addMessage msg s
-      msg = Expected . unwords $ ["->", "expected:", desc]
-   in unS p state fOk fError'
+label desc p = S $ \state fOk fErr ->
+  let fErr' s
+        | null desc = fErr s
+        | otherwise = fErr . joinError s $ unwords ["->", "expected:", desc]
+   in unS p state fOk fErr'
 {-# INLINE label #-}
 
 instance Functor (S s) where
@@ -242,7 +248,7 @@ instance Functor (S s) where
   {-# INLINE (<$) #-}
 
 smap :: (a -> b) -> S s a -> S s b
-smap f p = S $ \state fOk fError -> unS p state (fOk . f) fError
+smap f p = S $ \state fOk fErr -> unS p state (fOk . f) fErr
 {-# INLINE smap #-}
 
 instance Applicative (S s) where
@@ -259,9 +265,9 @@ instance Applicative (S s) where
   {-# INLINE (<*) #-}
 
 sap :: S s (a -> b) -> S s a -> S s b
-sap f p = S $ \state fOk fError ->
-  let fOk' x state' = unS p state' (fOk . x) fError
-   in unS f state fOk' fError
+sap f p = S $ \state fOk fErr ->
+  let fOk' x state' = unS p state' (fOk . x) fErr
+   in unS f state fOk' fErr
 {-# INLINE sap #-}
 
 instance Monad (S s) where
@@ -275,9 +281,9 @@ instance Monad (S s) where
   {-# INLINE (>>) #-}
 
 sbind :: S s a -> (a -> S s b) -> S s b
-sbind p f = S $ \state fOk fError ->
-  let fOk' x state' = unS (f x) state' fOk fError
-   in unS p state fOk' fError
+sbind p f = S $ \state fOk fErr ->
+  let fOk' x state' = unS (f x) state' fOk fErr
+   in unS p state fOk' fErr
 {-# INLINE sbind #-}
 
 instance Alternative (S s) where
@@ -299,29 +305,29 @@ szero = fail mempty
 {-# INLINE szero #-}
 
 splus :: S s a -> S s a -> S s a
-splus p q = S $ \state fOk fError ->
-  let fError' state' =
-        let fError'' state'' = fError (merge state' state'')
-         in unS q state fOk fError''
-   in unS p state fOk fError'
+splus p q = S $ \state fOk fErr ->
+  let fErr' state' =
+        let fErr'' state'' = fErr (merge state' state'')
+         in unS q state fOk fErr''
+   in unS p state fOk fErr'
  where
   merge s1@State {stateSource = src1} s2@State {stateSource = src2}
     | src1 > src2 = s1
-    | src2 < src1 = s2
-    | otherwise = s1 {stateMesssages = stateMesssages s1 ++ stateMesssages s2}
+    | src1 < src2 = s2
+    | otherwise = s1 {stateErrors = stateErrors s1 ++ stateErrors s2}
 {-# INLINE splus #-}
 
 instance MonadFail (S s) where
-  fail msg =
-    S $ \state _ fError -> fError $ addMessage (Normal msg) state
+  fail error =
+    S $ \state _ fErr -> fErr $ joinError state error
   {-# INLINE fail #-}
 
 -- | Tries to parse with @__p__@ looking ahead without consuming any input.
 --
 -- If parsing fails, an error is raised even if no input is consumed.
 try :: S s a -> S s a
-try p = S $ \state fOk fError ->
-  let fOk' x _ = fOk x state in unS p state fOk' fError
+try p = S $ \state fOk fErr ->
+  let fOk' x _ = fOk x state in unS p state fOk' fErr
 {-# INLINE try #-}
 
 -- | Tries to parse with @__p__@ looking ahead without consuming any input.
@@ -329,12 +335,12 @@ try p = S $ \state fOk fError ->
 -- Succeeds if the given parser does not match the next input.
 -- Otherwise raises an error.
 forbid :: Show a => S s a -> S s ()
-forbid p = S $ \state fOk fError ->
+forbid p = S $ \state fOk fErr ->
   let fOk' a _ =
-        let msg = Unexpected (unwords ["Error, found forbidden token:", show a])
-         in fError $ addMessage msg state
-      fError' _ = fOk () state
-   in unS p state fOk' fError'
+        let error = unwords ["Error, found forbidden token:", show a]
+         in fErr $ joinError state error
+      fErr' _ = fOk () state
+   in unS p state fOk' fErr'
 {-# INLINE forbid #-}
 
 -- | Gets a char parser that satisfies the given predicate @(Char -> Bool)@.
@@ -343,54 +349,39 @@ forbid p = S $ \state fOk fError ->
 --
 -- Here is where each parsing job starts.
 charBy :: Stream s => (Char -> Bool) -> S s Char
-charBy p = S $ \state@(State stream src msgs) fOk fError ->
-  case unCons stream of
-    Nothing -> fError state
+charBy p = S $ \state@(State s src msgs buf) fOk fErr ->
+  case unCons s of
+    Nothing -> fErr state
     Just (c, cs)
-      | p c -> fOk c (State cs (jump src c) msgs)
+      | p c -> fOk c (State cs (updateSrc src c) msgs (updateBuf buf s))
       | otherwise ->
-          fError $
-            addMessage
-              (Unexpected $ unwords ["Error, got unexpected token:", show c])
-              state
+          fErr . joinError state $
+            unwords ["Error, got unexpected token:", show c]
 {-# INLINE charBy #-}
-
--- | Update the cursor location in the Source by character
-jump :: Source -> Char -> Source
-jump (Source n ln col) = \case
-  '\n' -> Source n (ln + 1) 1
-  '\t' -> Source n ln (move col 4)
-  _ -> Source n ln (col + 1)
- where
-  move col size = col + size - ((col - 1) `mod` size)
-{-# INLINE jump #-}
 
 -- | Takes a state and a parser, then parses it.
 parse :: Stream s => S s a -> State s -> Result a s
-parse p state = unS p state Ok Error
+parse p state = unS p state Ok Err
 
--- | The same as 'parse', but takes a stream instead of a state.
+-- | The same as 'parse', but takes a in-memory stream instead of a state.
 parse' :: Stream s => S s a -> s -> Result a s
-parse' p s = parse p (State s mempty mempty)
+parse' p s = parse p (initState "<in-memory>" s)
 
 -- | The same as 'parse', but takes the stream from a given file
 parseFile :: Stream s => S s a -> FilePath -> IO (Result a s)
-parseFile p file = do
-  stream <- readStream file
-  let state = initState file stream
-  return . parse p $ state
+parseFile p file = readStream file <&> parse p . initState file
 
 -- | Tests parsers and its combinators with given stream, then print it.
 t :: (Stream s, Pretty s, Pretty a) => S s a -> s -> IO ()
 t p = pp . parse' p
 
--- | The same as 't' but returns the unwrapped 'Result' @a@, 'Ok', or 'Error'
+-- | The same as 't' but returns the unwrapped 'Result' @a@, 'Ok', or 'Err'
 ta :: Stream s => S s a -> s -> a
 ta p = unwrap . parse' p
  where
   unwrap = \case
     Ok ok _ -> ok
-    Error state -> die . TL.unpack . pretty . stateMesssages $ state
+    Err state -> die . TL.unpack . pretty . stateErrors $ state
 
 -- | Tries to parse with 'parser' then returns 'Stream' @s@
 ts :: Stream s => S s a -> s -> s
@@ -398,7 +389,7 @@ ts p = stateStream . state . parse' p
  where
   state = \case
     Ok _ s -> s
-    Error s -> s
+    Err s -> s
 
 -- | Raise error without annoying stacktrace
 die :: String -> a
@@ -426,41 +417,68 @@ class Show a => Pretty a where
   pp :: a -> IO ()
   pp = TLIO.putStrLn . pretty
 
-instance Show Message where
-  show = \case
-    Unexpected msg -> msg
-    Expected msg -> msg
-    Normal msg -> msg
-
 instance Pretty Source where
   pretty Source {..} =
     TL.unwords
       [ TL.pack sourceName
-      , "(line"
-      , TL.pack $ show sourceLine <> ","
+      , TL.pack "(line"
+      , TL.pack $ show sourceLine ++ ","
       , "column"
-      , TL.pack $ show sourceColumn <> "):"
+      , TL.pack $ show sourceColumn ++ ")"
       ]
 
-instance {-# OVERLAPPING #-} Pretty Messages where
-  pretty msgs = TL.pack $ concatMap (("\n\t" ++) . show) msgs
+instance {-# OVERLAPPING #-} Pretty [Error] where
+  pretty msgs = TL.pack $ concatMap ("\n\t" ++) msgs
 
 instance (Show s, Pretty s) => Pretty (State s) where
-  pretty State {..} =
+  pretty s@State {..} =
     TL.unlines
-      [ pretty stateSource
-      , pretty stateMesssages
-      , TL.concat
-          [ "remains "
-          , TL.pack . show . subtract 2 . TL.length . pretty $ stateStream
-          , " char(s)."
-          ]
+      [ "Source: "
+      , pretty stateSource
+      , mempty
+      , "Errors: "
+      , pretty $ filter (not . null) stateErrors
+      , mempty
+      , "Stream remaining (limited to 80 chars): "
+      , TL.take 80 (pretty stateStream)
       ]
+
+-- | Print where errors occurred using caret (^)
+caretError :: State s -> String
+caretError State {stateSource = Source {..}, ..} =
+  intercalate "\n" [x, o ++ T.unpack stateBuffer, x ++ caret]
+ where
+  x = replicate ((length . show $ sourceLine) + 1) ' ' ++ " | "
+  o = concat [" ", show sourceLine, " | "]
+  caret = replicate (sourceColumn - 1) ' ' ++ "^"
+
+-- | Print the number of chars remaining in the given stream
+charsLeft :: (Show s, Pretty s) => s -> String
+charsLeft s
+  | len == 0 = remains
+  | otherwise = remains ++ cut ++ ":\n\t" ++ take 80 (show s)
+ where
+  len = subtract 2 . TL.length $ pretty s
+  remains = concat ["remains ", show len, " char(s)"]
+  cut = if len > 80 then " (first 80 chars only)" else mempty
 
 instance (Show s, Pretty s, Pretty a) => Pretty (Result a s) where
   pretty = \case
-    Ok ok s -> TL.intercalate "\n" [pretty ok, pretty s]
-    Error s -> TL.intercalate "\n" [mempty, pretty s]
+    Ok ok s@State {..} ->
+      TL.unlines
+        [ pretty ok
+        , pretty stateSource
+        , mempty
+        , pretty $ charsLeft stateStream
+        ]
+    Err s@State {..} ->
+      TL.unlines
+        [ pretty stateSource
+        , TL.pack $ caretError s
+        , pretty $ filter (not . null) stateErrors
+        , mempty
+        , TL.pack $ charsLeft stateStream
+        ]
 
 instance Pretty Int where
   pretty = TL.pack . show
