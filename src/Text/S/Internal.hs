@@ -179,15 +179,7 @@ instance Monoid Source where
 updateSrc :: Source -> Char -> Source
 updateSrc src@Source {..} = \case
   '\n' -> src {sourceLine = sourceLine + 1, sourceColumn = 1}
-  '\t' -> src {sourceColumn = move sourceColumn 4}
   _ -> src {sourceColumn = sourceColumn + 1}
- where
-  move col size = col + size - ((col - 1) `mod` size)
-
-type Error = String
-
-joinError :: State s -> Error -> State s
-joinError state@State {..} error = state {stateErrors = stateErrors ++ [error]}
 
 data State s = State
   { stateStream :: s
@@ -197,6 +189,11 @@ data State s = State
   }
   deriving (Show, Eq)
 
+type Error = String
+
+joinError :: State s -> Error -> State s
+joinError state@State {..} error = state {stateErrors = stateErrors ++ [error]}
+
 -- | Initialize state
 initState :: Stream s => String -> s -> State s
 initState srcName s =
@@ -204,7 +201,7 @@ initState srcName s =
 
 updateBuf :: Stream s => Text -> s -> Text
 updateBuf buf s = case unCons s of
-  Just (c, cs)
+  Just (c, _)
     | c == '\n' || isEmpty buf -> T.pack $ takeStream (/= '\n') s
     | otherwise -> buf
   _ -> mempty
@@ -381,7 +378,7 @@ ta p = unwrap . parse' p
  where
   unwrap = \case
     Ok ok _ -> ok
-    Err state -> die . TL.unpack . pretty . stateErrors $ state
+    Err s -> die . TL.unpack . prettyError . stateErrors $ s
 
 -- | Tries to parse with 'parser' then returns 'Stream' @s@
 ts :: Stream s => S s a -> s -> s
@@ -427,30 +424,32 @@ instance Pretty Source where
       , TL.pack $ show sourceColumn ++ ")"
       ]
 
-instance {-# OVERLAPPING #-} Pretty [Error] where
-  pretty msgs = TL.pack $ concatMap ("\n\t" ++) msgs
-
 instance (Show s, Pretty s) => Pretty (State s) where
-  pretty s@State {..} =
+  pretty State {..} =
     TL.unlines
       [ "Source: "
       , pretty stateSource
       , mempty
       , "Errors: "
-      , pretty $ filter (not . null) stateErrors
+      , prettyError stateErrors
       , mempty
       , "Stream remaining (limited to 80 chars): "
       , TL.take 80 (pretty stateStream)
       ]
 
+prettyError :: [Error] -> LazyText
+prettyError errors =
+  TL.pack . concatMap ("\n\t" ++) $ filter (not . null) errors
+
 -- | Print where errors occurred using caret (^)
 caretError :: State s -> String
 caretError State {stateSource = Source {..}, ..} =
-  intercalate "\n" [x, o ++ T.unpack stateBuffer, x ++ caret]
+  intercalate "\n" [x, o ++ T.unpack (notab stateBuffer), x ++ caret]
  where
   x = replicate ((length . show $ sourceLine) + 1) ' ' ++ " | "
   o = concat [" ", show sourceLine, " | "]
   caret = replicate (sourceColumn - 1) ' ' ++ "^"
+  notab = T.replace "\t" " "
 
 -- | Print the number of chars remaining in the given stream
 charsLeft :: (Show s, Pretty s) => s -> String
@@ -464,18 +463,18 @@ charsLeft s
 
 instance (Show s, Pretty s, Pretty a) => Pretty (Result a s) where
   pretty = \case
-    Ok ok s@State {..} ->
+    Ok ok State {..} ->
       TL.unlines
         [ pretty ok
         , pretty stateSource
         , mempty
-        , pretty $ charsLeft stateStream
+        , TL.pack $ charsLeft stateStream
         ]
     Err s@State {..} ->
       TL.unlines
         [ pretty stateSource
         , TL.pack $ caretError s
-        , pretty $ filter (not . null) stateErrors
+        , prettyError stateErrors
         , mempty
         , TL.pack $ charsLeft stateStream
         ]
