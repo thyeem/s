@@ -1,18 +1,19 @@
 -- |
 -- Module      : Text.S.Expr
 -- License     : MIT
---
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
-module Text.S.Expr
-  ( module Text.S.Expr
-  )
-where
+--
+-- This module defines a generalized expression builder.
+-- One can easily write an expression parser by simply defining
+-- the expression unit (atom) and operator precedence (priority).
+module Text.S.Expr where
 
 import Control.Applicative ((<**>))
 import Control.Monad (MonadPlus (mzero))
 import Data.Functor (($>))
 import Data.List (foldl')
+import Text.S.Base
 import Text.S.Combinator
 import Text.S.Internal
 import Text.S.Lexeme
@@ -43,10 +44,18 @@ applyPriority unit level = choice [expr'l, expr'r, expr'p, expr'q, term]
  where
   (a, b, c, d, e, f) = foldl' groupOp ([], [], [], [], [], []) level
   term = (option id (choice a) <*> unit) <**> option id (choice b)
-  expr'l = null c ? mzero ::: term >>= chainl (choice c) term
-  expr'r = null d ? mzero ::: term >>= chainr (choice d) term
-  expr'q = null f ? mzero ::: term >>= chainq (choice f) term
-  expr'p = null e ? mzero ::: chainp1 (choice e) term
+  expr'l
+    | null c = mzero
+    | otherwise = term >>= chainl (choice c) term
+  expr'r
+    | null d = mzero
+    | otherwise = term >>= chainr (choice d) term
+  expr'q
+    | null f = mzero
+    | otherwise = term >>= chainq (choice f) term
+  expr'p
+    | null e = mzero
+    | otherwise = chainp1 (choice e) term
 {-# INLINEABLE applyPriority #-}
 
 groupOp :: OperatorRecord s a -> Operator s a -> OperatorRecord s a
@@ -89,11 +98,11 @@ postfixB sym = PostfixB . binop sym
 {-# INLINE postfixB #-}
 
 binop :: Stream s => String -> (a -> a -> b) -> S s (a -> a -> b)
-binop sym f = strip (symbol sym) $> f
+binop sym f = strip (string sym) $> f
 {-# INLINE binop #-}
 
 unop :: Stream s => String -> (a -> b) -> S s (a -> b)
-unop sym f = strip (symbol sym) $> f
+unop sym f = strip (string sym) $> f
 {-# INLINE unop #-}
 
 addOp :: (Stream s, Num a) => S s (a -> a -> a)

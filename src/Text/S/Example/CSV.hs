@@ -1,18 +1,7 @@
 module Text.S.Example.CSV where
 
 import Text.S
-  ( S
-  , Stream
-  , eof
-  , eol
-  , many
-  , noneOf
-  , sepBy
-  , some
-  , stringLit
-  , symbol
-  , (<|>)
-  )
+import Text.S.Lexer
 
 -- | CSV data is a Record set
 type CSV = [Record]

@@ -1,11 +1,16 @@
 -- |
 -- Module      : Text.S.Language
 -- License     : MIT
---
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
+--
+-- This module defines builders that can define
+-- the basic specifications of a language.
 module Text.S.Language
-  ( module Text.S.Language
+  ( LanguageSpec (..)
+  , haskellSpec
+  , lispSpec
+  , javaSpec
   )
 where
 
@@ -13,59 +18,41 @@ import Text.S.Base
 import Text.S.Combinator
 import Text.S.Internal
 
-data LanguageDef s = LanguageDef
-  { defCaseSensitive :: Bool
-  -- ^ Flag if the language letter is case-sensitive
-  , defCharLiteralMark :: S s String
+data LanguageSpec s = LanguageSpec
+  { charLiteral :: String
   -- ^ Characters assigned to indicate char literal region
-  , defStringLiteralMark :: S s String
+  , stringLiteral :: String
   -- ^ Characters assigned to indicate string literal region
-  , defCommentBlockBegin :: S s String
-  -- ^ Characters assigned to start a block comment
-  , defCommentBlockEnd :: S s String
-  -- ^ Characters assigned to end a block comment
-  , defCommentLine :: S s String
+  , commentLine :: String
   -- ^ Characters assigned to start a single-line comment
-  , defIdentifierBegin :: S s Char
+  , commentBegin :: String
+  -- ^ Characters assigned to start a block comment
+  , commentEnd :: String
+  -- ^ Characters assigned to end a block comment
+  , idenBegin :: S s Char
   -- ^ Characters assigned to start the name of identifiers
-  , defIdentifierName :: S s String
+  , idenLetter :: S s Char
   -- ^ Characters assigned identifier names except for its first letter
-  , defKeywords :: [String]
+  , reservedWords :: [String]
   -- ^ List of reserved names
-  , defReservedOps :: [String]
+  , reservedOps :: [String]
   -- ^ List of reserved operators and special charecters
+  , caseSensitive :: Bool
+  -- ^ Flag if the language letter is case-sensitive
   }
 
--- | Default Language definition
-def :: Stream s => LanguageDef s
-def =
-  LanguageDef
-    { defCaseSensitive = True
-    , defCharLiteralMark = string "'"
-    , defStringLiteralMark = string "\""
-    , defCommentBlockBegin = string "/*"
-    , defCommentBlockEnd = string "*/"
-    , defCommentLine = string "//"
-    , defIdentifierBegin = alpha <|> char '_'
-    , defIdentifierName = many $ alphaNum <|> char '_'
-    , defReservedOps = []
-    , defKeywords = []
-    }
-{-# INLINE def #-}
-
--- | Language definition of Haskell 2010
-haskelldef :: Stream s => LanguageDef s
-haskelldef =
-  LanguageDef
-    { defCaseSensitive = True
-    , defCharLiteralMark = string "'"
-    , defStringLiteralMark = string "\""
-    , defCommentBlockBegin = string "{-"
-    , defCommentBlockEnd = string "-}"
-    , defCommentLine = string "--"
-    , defIdentifierBegin = alpha <|> char '_'
-    , defIdentifierName = many $ choice [alphaNum, char '_', char '\'']
-    , defReservedOps =
+-- | Language spec of Haskell 2010
+haskellSpec :: Stream s => LanguageSpec s
+haskellSpec =
+  LanguageSpec
+    { charLiteral = "'"
+    , stringLiteral = "\""
+    , commentBegin = "{-"
+    , commentEnd = "-}"
+    , commentLine = "--"
+    , idenBegin = alpha <|> char '_'
+    , idenLetter = choice [alphaNum, char '_', char '\'']
+    , reservedOps =
         [ "#"
         , "'"
         , "*"
@@ -97,7 +84,7 @@ haskelldef =
         , "~"
         , "!"
         ]
-    , defKeywords =
+    , reservedWords =
         [ "as"
         , "case"
         , "class"
@@ -128,37 +115,37 @@ haskelldef =
         , "type"
         , "where"
         ]
+    , caseSensitive = True
     }
 
--- | Language definition of SLISP
-lispdef :: Stream s => LanguageDef s
-lispdef =
-  LanguageDef
-    { defCaseSensitive = True
-    , defCharLiteralMark = string "#\\"
-    , defStringLiteralMark = string "\""
-    , defCommentBlockBegin = string "#|"
-    , defCommentBlockEnd = string "|#"
-    , defCommentLine = string ";"
-    , defIdentifierBegin = noneOf " ()\",'`:;#|\\"
-    , defIdentifierName = many $ noneOf " ()\",'`:;|\\"
-    , defReservedOps = ["?", "!", "[", "]", "{", "}"]
-    , defKeywords = [".", "(", ")", "\"", ",", "'", "`", ":", ";", "#", "|", "\\"]
+-- | Language spec of LISP
+lispSpec :: Stream s => LanguageSpec s
+lispSpec =
+  LanguageSpec
+    { charLiteral = "#\\"
+    , stringLiteral = "\""
+    , commentBegin = "#|"
+    , commentEnd = "|#"
+    , commentLine = ";"
+    , idenBegin = noneOf " ()\",'`:;#|\\"
+    , idenLetter = noneOf " ()\",'`:;|\\"
+    , reservedOps = ["?", "!", "[", "]", "{", "}"]
+    , reservedWords = [".", "(", ")", "\"", ",", "'", "`", ":", ";", "#", "|", "\\"]
+    , caseSensitive = True
     }
 
--- | Language definition of Java
-javaDef :: Stream s => LanguageDef s
-javaDef =
-  LanguageDef
-    { defCaseSensitive = True
-    , defCharLiteralMark = string "'"
-    , defStringLiteralMark = string "\""
-    , defCommentBlockBegin = string "/*"
-    , defCommentBlockEnd = string "*/"
-    , defCommentLine = string "//"
-    , defIdentifierBegin = alpha <|> char '_'
-    , defIdentifierName = many $ alphaNum <|> char '_'
-    , defReservedOps =
+-- | Language spec of Java
+javaSpec :: Stream s => LanguageSpec s
+javaSpec =
+  LanguageSpec
+    { charLiteral = "'"
+    , stringLiteral = "\""
+    , commentBegin = "/*"
+    , commentEnd = "*/"
+    , commentLine = "//"
+    , idenBegin = alpha <|> oneOf "_$"
+    , idenLetter = alphaNum <|> oneOf "_$"
+    , reservedOps =
         [ "!"
         , "$"
         , "("
@@ -181,7 +168,7 @@ javaDef =
         , "}"
         , "'"
         ]
-    , defKeywords =
+    , reservedWords =
         [ "abstract"
         , "assert"
         , "boolean"
@@ -199,11 +186,11 @@ javaDef =
         , "else"
         , "enum"
         , "extends"
+        , "false"
         , "final"
         , "finally"
         , "float"
         , "for"
-        , "goto"
         , "if"
         , "implements"
         , "import"
@@ -213,6 +200,7 @@ javaDef =
         , "long"
         , "native"
         , "new"
+        , "null"
         , "package"
         , "private"
         , "protected"
@@ -228,9 +216,11 @@ javaDef =
         , "throw"
         , "throws"
         , "transient"
+        , "true"
         , "try"
         , "void"
         , "volatile"
         , "while"
         ]
+    , caseSensitive = True
     }

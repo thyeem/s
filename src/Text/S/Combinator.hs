@@ -3,7 +3,6 @@
 -- |
 -- Module      : Text.S.Combinator
 -- License     : MIT
---
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
 --
@@ -12,7 +11,35 @@
 -- Put simply, combining "sets of parsers" creates a single new large parser
 -- for more complex structures.
 module Text.S.Combinator
-  ( module Text.S.Combinator
+  ( many
+  , some
+  , choice
+  , count
+  , option
+  , optionMaybe
+  , between
+  , sepBy
+  , sepBy1
+  , sepBy'
+  , sepBy1'
+  , endBy
+  , endBy1
+  , manyTill
+  , someTill
+  , manyTill'
+  , someTill'
+  , skip
+  , skipMany
+  , skipSome
+  , skipCount
+  , chainl
+  , chainl1
+  , chainr
+  , chainr1
+  , chainp
+  , chainp1
+  , chainq
+  , chainq1
   )
 where
 
@@ -24,14 +51,17 @@ import Text.S.Internal
 
 -- $setup
 -- >>> import Text.S
+-- >>> import Text.S.Lexer
 
-some :: MonadPlus m => m a -> m [a]
-some p = liftA2 (:) p (many p)
-{-# INLINE some #-}
-
+-- | Zero or more
 many :: MonadPlus m => m a -> m [a]
 many p = some p <|> pure []
 {-# INLINE many #-}
+
+-- | One or more
+some :: MonadPlus m => m a -> m [a]
+some p = liftA2 (:) p (many p)
+{-# INLINE some #-}
 
 -- | Tries to parse with parsers in the list untill one of them succeeds.
 --
@@ -40,16 +70,6 @@ many p = some p <|> pure []
 choice :: MonadPlus m => [m a] -> m a
 choice = foldl' (<|>) mzero
 {-# INLINE choice #-}
-
--- | Firstly tries to parse with parser @__p__@.
---
--- If failed, it returns @__x__@. This is useful to set default value of parser @__p__@.
---
--- >>> ta (option "Mars" spaces) "nuclear-bomb-explosion -> Earth"
--- "Mars"
-option :: MonadPlus m => a -> m a -> m a
-option x p = p <|> return x
-{-# INLINE option #-}
 
 -- | Tries to parse @__n-times__@ with the given parser. The same as 'replicateM'.
 --
@@ -60,6 +80,16 @@ option x p = p <|> return x
 count :: MonadPlus m => Int -> m a -> m [a]
 count = replicateM
 {-# INLINE count #-}
+
+-- | Firstly tries to parse with parser @__p__@.
+--
+-- If failed, it returns @__x__@. This is useful to set default value of parser @__p__@.
+--
+-- >>> ta (option "Mars" spaces) "nuclear-bomb-explosion -> Earth"
+-- "Mars"
+option :: MonadPlus m => a -> m a -> m a
+option x p = p <|> pure x
+{-# INLINE option #-}
 
 -- | Tries to parse with parser @__p__@. If failed, it returns 'Nothing'.
 -- Otherwise, it returns the result of parser @__p__@ wrapped by 'Just'.
@@ -144,6 +174,44 @@ endBy1 :: MonadPlus m => m end -> m a -> m [a]
 endBy1 end p = some (p <* end)
 {-# INLINE endBy1 #-}
 
+-- | Parses @__0+(zero or more)__@ occurrences of parser @__p__@,
+-- which is separated by separator parser @__sep__@.
+--
+-- It's very look alike 'sepBy', but here the separator at the end is optional.
+-- it works no matter whether the separator is located in between or at the end.
+--
+-- This consumes the result of parser @__sep__@ from input stream.
+--
+-- See also 'sepBy' and `sepBy1'`.
+--
+-- >>> ta (sepBy' (symbol ",") decimal) "1,2,3,4,5"
+-- [1,2,3,4,5]
+--
+-- >>> ta (sepBy' (symbol ",") decimal) "1,2,3,4,5,"
+-- [1,2,3,4,5]
+sepBy' :: MonadPlus m => m sep -> m a -> m [a]
+sepBy' sep p = sepBy1' sep p <|> pure []
+
+-- | Parses @__1+(one or more)__@ occurrences of parser @__p__@,
+-- which is separated by separated parser @__sep__@.
+--
+-- It's very look alike 'sepBy1', but here the separator at the end is optional.
+-- it works no matter whether the separator is located in between or at the end.
+--
+-- This consumes the result of parser @__sep__@ from input stream.
+--
+-- See also 'sepBy1' and `sepBy'`.
+--
+-- >>> p = some $ choice [alphaNum, char '=', space]
+-- >>> ta (sepBy1' (symbol ";") p) "a=1; b=2"
+-- ["a=1","b=2"]
+--
+-- >>> ta (sepBy1' (symbol ";") p) "a=1; b=2;"
+-- ["a=1","b=2"]
+sepBy1' :: MonadPlus m => m sep -> m a -> m [a]
+sepBy1' sep p =
+  p >>= \x -> (sep *> sepBy' sep p >>= \xs -> pure (x : xs)) <|> pure [x]
+
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@
 -- until parser @__end__@ succeeds.
 --
@@ -151,13 +219,13 @@ endBy1 end p = some (p <* end)
 --
 -- See also 'manyTill''. It keeps the result of parser @__end__@.
 --
--- -- >>> p = string "{\-" *> manyTill (string "-\}") anychar
--- -- >>> ta p "{\- haskell block comment here -\}"
--- -- " haskell block comment here "
--- --
--- -- >>> q = string "{\-" *> manyTill (string "-\}") special
--- -- >>> ta q "{\--\}"
--- ""
+-- >>> p = string "<<" *> manyTill (string ">>") anychar
+-- >>> ta p "<<zeitgeist, spirit of the age>>"
+-- "zeitgeist, spirit of the age"
+--
+-- >>> p = alphaNum <|> space
+-- >>> ta (manyTill special p) "stop COVID-19"
+-- "stop COVID"
 manyTill :: MonadPlus m => m end -> m a -> m [a]
 manyTill end p = someTill end p <|> (end $> [])
 {-# INLINE manyTill #-}
@@ -215,14 +283,14 @@ someTill' end p = liftA2 f p (manyTill' end p) where f a = first (a :)
 -- | Tries to parse with parser @__p__@.
 -- If succeeds, then consume the result and throws it away. Otherwise ignore it.
 --
--- >>> ts (skipOptional special) "$PARSER_COMBINATOR"
+-- >>> ts (skip special) "$PARSER_COMBINATOR"
 -- "PARSER_COMBINATOR"
 --
--- >>> ts (skipOptional alpha) "$PARSER_COMBINATOR"
+-- >>> ts (skip alpha) "$PARSER_COMBINATOR"
 -- "$PARSER_COMBINATOR"
-skipOptional :: MonadPlus m => m a -> m ()
-skipOptional p = void p <|> pure ()
-{-# INLINE skipOptional #-}
+skip :: MonadPlus m => m a -> m ()
+skip p = void p <|> pure ()
+{-# INLINE skip #-}
 
 -- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@,
 -- then discards the result.
@@ -257,47 +325,6 @@ skipSome p = p *> skipMany p
 skipCount :: MonadPlus m => Int -> m a -> m ()
 skipCount = replicateM_
 {-# INLINE skipCount #-}
-
--- | Tries to parse @__0+(zero or more)-times__@ with parser @__p__@,
--- until parser @__end__@ succeeds.
---
--- That is, it okay for parser @__p__@ to fail as long as @__end__@ succeeds.
---
--- The result of parser @__end__@ is returned
--- while the result of parser @__p__@ is discarded.
---
--- See also 'skipSomeTill'.
---
--- >>> stopCodon = symbol "UAA"
--- >>> geneticSequence = "AUCUCGUCAUCUCGUUAACUCGUA"
--- >>> ta (skipManyTill stopCodon upper) geneticSequence
--- "UAA"
---
--- >>> ts (skipManyTill stopCodon upper) geneticSequence
--- "CUCGUA"
---
--- >>> ts (skipManyTill stopCodon upper) "UAACUCGUA"
--- "CUCGUA"
-skipManyTill :: MonadPlus m => m end -> m a -> m end
-skipManyTill end p = go where go = end <|> (p *> go)
-{-# INLINE skipManyTill #-}
-
--- | Tries to parse @__1+(one or more)-times__@ with parser @__p__@,
--- until parser @__end__@ succeeds.
---
--- The result of parser @__end__@ is returned
--- while the result of parser @__p__@ is discarded.
---
--- See also 'skipManyTill'.
---
--- >>> ta (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
--- '#'
---
--- >>> ts (skipSomeTill (char '#') anychar) "C-Db-D-Eb-E-F-F#-G-Ab-A-Bb-B"
--- "-G-Ab-A-Bb-B"
-skipSomeTill :: MonadPlus m => m end -> m a -> m end
-skipSomeTill end p = p *> skipManyTill end p
-{-# INLINE skipSomeTill #-}
 
 -- | Tries to repeatedly parse two @__p__@ operands
 -- with @__infix left-associative__@ binary operator @__op__@.

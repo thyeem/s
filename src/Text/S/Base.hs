@@ -1,20 +1,49 @@
 -- |
 -- Module      : Text.S.Combinator
 -- License     : MIT
---
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
 --
 -- This module defines a primitive char/string parser to be used for
 -- extensions such as lexeme parsers and more complex structured parsers.
 module Text.S.Base
-  ( module Text.S.Base
+  ( char
+  , anychar
+  , anycharBut
+  , string
+  , anystring
+  , anystringBut
+  , digit
+  , octDigit
+  , hexDigit
+  , alpha
+  , alphaNum
+  , lower
+  , upper
+  , special
+  , tab
+  , lf
+  , crlf
+  , eol
+  , blank
+  , space
+  , eof
+  , oneOf
+  , noneOf
   )
 where
 
 import Data.Char
-  ( isPunctuation
+  ( isAlpha
+  , isAlphaNum
+  , isDigit
+  , isHexDigit
+  , isLower
+  , isOctDigit
+  , isPunctuation
+  , isSpace
   , isSymbol
+  , isUpper
   )
 import Data.Functor (($>))
 import Text.S.Combinator
@@ -79,7 +108,15 @@ digit :: Stream s => S s Char
 digit = charBy isDigit <?> "digit"
 {-# INLINE digit #-}
 
--- | Parses any single hexadecimal number, the same as @__[0-9a-f]__@
+-- | Parses any single octal digit, the same as @__[0-7]__@
+--
+-- >>> ta (some octDigit) "15981119"
+-- "15"
+octDigit :: Stream s => S s Char
+octDigit = charBy isOctDigit <?> "oct-digit"
+{-# INLINE octDigit #-}
+
+-- | Parses any single hexadecimal digit, the same as @__[0-9a-f]__@
 --
 -- >>> ta (some hexDigit) "f8f8f8xyz"
 -- "f8f8f8"
@@ -201,40 +238,3 @@ noneOf cs = charBy (`notElem` cs) <?> label'noneof
  where
   label'noneof = unwords ["none of", show ((: []) <$> cs)]
 {-# INLINE noneOf #-}
-
--- | Check if a given char is one of whitespaces
---
--- This predicate gives correct answers for the ASCII encoding only.
-isSpace :: Char -> Bool
-isSpace c = (' ' == c) || ('\t' <= c && c <= '\r')
-{-# INLINE isSpace #-}
-
--- | Check if a given char is one of decimal digits.
-isDigit :: Char -> Bool
-isDigit c = c >= '0' && c <= '9'
-{-# INLINE isDigit #-}
-
--- | Check if a given char is one of hexadecimals
-isHexDigit :: Char -> Bool
-isHexDigit c = isDigit c || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
-{-# INLINE isHexDigit #-}
-
--- | Check if a given char is an ASCII letter.
-isAlpha :: Char -> Bool
-isAlpha c = isLower c || isUpper c
-{-# INLINE isAlpha #-}
-
--- | Check if a given char is an ASCII letter or a decimal digit.
-isAlphaNum :: Char -> Bool
-isAlphaNum c = isDigit c || isAlpha c
-{-# INLINE isAlphaNum #-}
-
--- | Check if a given char is an ASCII upper-case letter.
-isUpper :: Char -> Bool
-isUpper c = c <= 'Z' && c >= 'A'
-{-# INLINE isUpper #-}
-
--- | Check if a given char is an ASCII lower-case letter.
-isLower :: Char -> Bool
-isLower c = c <= 'z' && c >= 'a'
-{-# INLINE isLower #-}

@@ -1,5 +1,5 @@
 name: s
-version: 0.1.1
+version: 0.2.0
 github: thyeem/s
 license: MIT
 author: Francis Lim
@@ -25,6 +25,8 @@ library:
   source-dirs: src
   ghc-options:
   - -O2
+  - -g0
+  - -fexpose-all-unfoldings
   dependencies:
   - base
   - bytestring
@@ -34,10 +36,9 @@ library:
   - text
 
 tests:
-  doctest:
-    main: Spec.hs
-    source-dirs:
-    - test
+  doc:
+    main: doctest.hs
+    source-dirs: .
     ghc-options:
     - -threaded
     dependencies:

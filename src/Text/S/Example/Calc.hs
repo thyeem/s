@@ -4,6 +4,7 @@ import Control.Monad.IO.Class (MonadIO)
 import qualified Data.Text.Lazy as TL
 import System.Console.Haskeline
 import Text.S
+import Text.S.Lexer
 
 -- | Expr parser for left-associative infix operators
 infixl' :: Stream s => S s Double
@@ -77,7 +78,7 @@ print' = outputStrLn . TL.unpack . pretty
 
 -- | read-eval-print
 rep :: MonadIO m => S String Double -> String -> InputT m ()
-rep parser input = case parse' parser input of
+rep parser input = case parseStream parser input of
   Ok ok state@(State {stateStream = s})
     | null . stateStream $ state -> print' ok
     | otherwise -> err s

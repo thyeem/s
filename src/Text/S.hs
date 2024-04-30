@@ -5,7 +5,7 @@
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
 --
--- The parser-S is a generalized parser and its combinator easy-to-read.
+-- The parser 'S' is a generalized parser and its combinator easy-to-read.
 -- It is designed to focus on usability, scalability and non-verbosity.
 module Text.S
   ( module Text.S.Base

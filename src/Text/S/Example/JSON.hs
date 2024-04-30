@@ -4,6 +4,7 @@
 module Text.S.Example.JSON where
 
 import Text.S
+import Text.S.Lexer
 
 -- | Defines the unit of JSON structure
 data JSON
@@ -16,12 +17,10 @@ data JSON
   deriving (Show)
 
 -- | Key-Value pair in JSON Object
-data Pair = Pair Key JSON
-  deriving (Show)
+data Pair = Pair Key JSON deriving (Show)
 
 -- | Key string of of JSON Object
-newtype Key = K String
-  deriving (Show)
+newtype Key = K String deriving (Show)
 
 -- | Parse the whole JSON structure: the outermost function of JSON parser
 --
@@ -40,7 +39,7 @@ parseJSON =
 -- >>> ta parseNULL "null"
 -- NULL
 parseNULL :: Stream s => S s JSON
-parseNULL = NULL <$ (symbol "null" <* skip)
+parseNULL = NULL <$ symbol "null"
 {-# INLINE parseNULL #-}
 
 -- | Parse JSON bool, @__true__@ and @__false__@
@@ -53,8 +52,8 @@ parseNULL = NULL <$ (symbol "null" <* skip)
 parseBool :: Stream s => S s JSON
 parseBool = B <$> choice [true, false]
  where
-  true = True <$ (symbol "true" <* skip)
-  false = False <$ (symbol "false" <* skip)
+  true = True <$ symbol "true"
+  false = False <$ symbol "false"
 {-# INLINE parseBool #-}
 
 -- | Parse JSON @__number__@ like: @1234, 1.234, 1.234e-9,..@
@@ -62,7 +61,7 @@ parseBool = B <$> choice [true, false]
 -- >>> ta parseNumber "0.25"
 -- N (1 % 4)
 parseNumber :: Stream s => S s JSON
-parseNumber = N . toRational <$> (number <* skip)
+parseNumber = N . toRational <$> number
 {-# INLINE parseNumber #-}
 
 -- | Parse JSON @__string__@ like: @"json-parser",..@
@@ -70,7 +69,7 @@ parseNumber = N . toRational <$> (number <* skip)
 -- >>> ta parseString "\"JSON-parser\""
 -- Q "JSON-parser"
 parseString :: Stream s => S s JSON
-parseString = Q <$> (stringLit <* skip)
+parseString = Q <$> stringLit
 {-# INLINE parseString #-}
 
 -- | Parse JSON @__array__@ like: @[1, true, "", {}, [],..]@
@@ -78,8 +77,7 @@ parseString = Q <$> (stringLit <* skip)
 -- >>> ta parseArray "[2.5, true, \"JSON\"]"
 -- A [N (5 % 2),B True,Q "JSON"]
 parseArray :: Stream s => S s JSON
-parseArray =
-  A <$> between (symbol "[") (symbol "]") (sepBy (symbol ",") parseJSON)
+parseArray = A <$> between (symbol "[") (symbol "]") (sepBy (symbol ",") parseJSON)
 {-# INLINE parseArray #-}
 
 -- | Parse JSON @__object__@ like: @{"key": JSON}@
@@ -87,11 +85,9 @@ parseArray =
 -- >>> ta parseObject "{\"class\": [\"JavaScript\",\"HTML\",\"CSS\"]}"
 -- O [Pair (K "class") (A [Q "JavaScript",Q "HTML",Q "CSS"])]
 parseObject :: Stream s => S s JSON
-parseObject =
-  O
-    <$> between (symbol "{") (symbol "}") (sepBy (symbol ",") parsePair)
+parseObject = O <$> between (symbol "{") (symbol "}") (sepBy (symbol ",") parsePair)
  where
-  parseKey = K <$> (stringLit <* skip)
+  parseKey = K <$> stringLit
   parsePair = parseKey >>= \key -> Pair key <$> (symbol ":" *> parseJSON)
 {-# INLINE parseObject #-}
 

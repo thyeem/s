@@ -12,10 +12,10 @@
 -- Maintainer  : Francis Lim <thyeem@gmail.com>
 -- Stability   : experimental
 --
--- This module implements internal process the parser really does.
+-- This module implements internal process the parser 'S' really does.
 --
--- One of core works is to design the parser as a Monad instance
--- while defining several primitive data types surrounding it.
+-- This includes the definition of the parser 'S' and the design of types
+-- and behavior surrounding the parser 'S'.
 module Text.S.Internal
   ( Parser
   , Text
@@ -31,12 +31,16 @@ module Text.S.Internal
   , void
   , (<?>)
   , initState
+  , get'state
+  , set'state
+  , get'source
+  , set'source
   , label
   , try
   , forbid
   , charBy
   , parse
-  , parse'
+  , parseStream
   , parseFile
   , t
   , ta
@@ -44,25 +48,23 @@ module Text.S.Internal
   , die
   , liftA2
   , (<|>)
-  , CondExpr (..)
-  , (?)
   , Pretty (..)
   )
 where
 
-import Control.Applicative (Alternative (..), liftA2)
+import Control.Applicative (Alternative (..))
 import Control.Monad (MonadPlus (..))
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy.Char8 as CL
 import Data.Functor (void, (<&>))
-import Data.List (intercalate, uncons)
+import Data.List (intercalate, nub, uncons)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TLIO
 import Text.Pretty.Simple (pShowNoColor)
 
--- | Parser S currently supports stream types the following:
+-- | Parser 'S' currently supports stream types the following:
 --
 -- * 'Text'
 -- * 'LazyText'
@@ -176,9 +178,10 @@ instance Monoid Source where
   mempty = Source mempty 1 1
   {-# INLINE mempty #-}
 
-updateSrc :: Source -> Char -> Source
-updateSrc src@Source {..} = \case
-  '\n' -> src {sourceLine = sourceLine + 1, sourceColumn = 1}
+-- | Update header position of 'Source' based on a given char
+updateSource :: Source -> Char -> Source
+updateSource src@Source {..} = \case
+  '\n' -> src {sourceLine = sourceLine + 1, sourceColumn = 0}
   _ -> src {sourceColumn = sourceColumn + 1}
 
 data State s = State
@@ -211,9 +214,9 @@ data Result a s
   | Err !(State s)
   deriving (Show, Eq)
 
--- | Defines a monad transformer parser, 'S'
+-- | Defines the parser 'S'
 --
--- It self-describes the outline of the parsing process this parser does.
+-- It self-describes the outline of the parsing process this parser actually does.
 newtype S s a = S
   { unS
       :: forall b
@@ -308,10 +311,12 @@ splus p q = S $ \state fOk fErr ->
          in unS q state fOk fErr''
    in unS p state fOk fErr'
  where
-  merge s1@State {stateSource = src1} s2@State {stateSource = src2}
-    | src1 > src2 = s1
-    | src1 < src2 = s2
-    | otherwise = s1 {stateErrors = stateErrors s1 ++ stateErrors s2}
+  merge
+    s1@State {stateSource = src1, stateErrors = err1}
+    s2@State {stateSource = src2, stateErrors = err2}
+      | src1 > src2 = s1
+      | src1 < src2 = s2
+      | otherwise = s1 {stateErrors = nub $ err1 ++ err2}
 {-# INLINE splus #-}
 
 instance MonadFail (S s) where
@@ -346,23 +351,42 @@ forbid p = S $ \state fOk fErr ->
 --
 -- Here is where each parsing job starts.
 charBy :: Stream s => (Char -> Bool) -> S s Char
-charBy p = S $ \state@(State s src msgs buf) fOk fErr ->
+charBy p = S $ \state@(State s src errors buf) fOk fErr ->
   case unCons s of
     Nothing -> fErr state
     Just (c, cs)
-      | p c -> fOk c (State cs (updateSrc src c) msgs (updateBuf buf s))
+      | p c -> fOk c (State cs (updateSource src c) errors (updateBuf buf s))
       | otherwise ->
           fErr . joinError state $
             unwords ["Error, got unexpected token:", show c]
 {-# INLINE charBy #-}
 
--- | Takes a state and a parser, then parses it.
+get'state :: Stream s => S s (State s)
+get'state = update'state id
+
+set'state :: Stream s => State s -> S s (State s)
+set'state state = update'state (const state)
+
+update'state :: Stream s => (State s -> State s) -> S s (State s)
+update'state f = S $ \state fOk _ ->
+  let state' = f state
+   in fOk state' state'
+
+get'source :: Stream s => S s Source
+get'source = get'state <&> stateSource
+
+set'source :: Stream s => Source -> S s (State s)
+set'source src =
+  update'state
+    (\(State s _ errors buf) -> State s src errors buf)
+
+-- | Starts parsing using the given parser @p@ and state @state@
 parse :: Stream s => S s a -> State s -> Result a s
 parse p state = unS p state Ok Err
 
--- | The same as 'parse', but takes a in-memory stream instead of a state.
-parse' :: Stream s => S s a -> s -> Result a s
-parse' p s = parse p (initState "<in-memory>" s)
+-- | The same as 'parse', but takes a <stdin> stream instead of a state.
+parseStream :: Stream s => S s a -> s -> Result a s
+parseStream p s = parse p (initState "<stdin>" s)
 
 -- | The same as 'parse', but takes the stream from a given file
 parseFile :: Stream s => S s a -> FilePath -> IO (Result a s)
@@ -370,11 +394,11 @@ parseFile p file = readStream file <&> parse p . initState file
 
 -- | Tests parsers and its combinators with given stream, then print it.
 t :: (Stream s, Pretty s, Pretty a) => S s a -> s -> IO ()
-t p = pp . parse' p
+t p = pp . parseStream p
 
 -- | The same as 't' but returns the unwrapped 'Result' @a@, 'Ok', or 'Err'
 ta :: Stream s => S s a -> s -> a
-ta p = unwrap . parse' p
+ta p = unwrap . parseStream p
  where
   unwrap = \case
     Ok ok _ -> ok
@@ -382,7 +406,7 @@ ta p = unwrap . parse' p
 
 -- | Tries to parse with 'parser' then returns 'Stream' @s@
 ts :: Stream s => S s a -> s -> s
-ts p = stateStream . state . parse' p
+ts p = stateStream . state . parseStream p
  where
   state = \case
     Ok _ s -> s
@@ -391,20 +415,6 @@ ts p = stateStream . state . parse' p
 -- | Raise error without annoying stacktrace
 die :: String -> a
 die = errorWithoutStackTrace
-
--- | Conditional expression of if-then-else
-data CondExpr a = a ::: a
-
-infixl 1 ?
-
-infixl 2 :::
-
--- | Tenary operator
---
--- (bool condition) ? (expression-if-true) ::: (expression-if-false)
-(?) :: Bool -> CondExpr a -> a
-True ? (x ::: _) = x
-False ? (_ ::: y) = y
 
 -- | Pretty-Show and Pretty-Printer
 class Show a => Pretty a where
